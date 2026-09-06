@@ -51,6 +51,9 @@ from .baseview import BaseView, LeftView, RightView
 from .diffcolors import DiffColors
 from .diffdata import DiffData
 from .linediffbar import LineDiffBar
+from .locatorbar import LocatorBar
+from .movedblocks import mark_moved as mark_moved_blocks
+from .undo import AllViewState, get_undo
 from .viewdata import DiffState, EOL, HideState, ViewData
 
 
@@ -99,6 +102,15 @@ class MergeFrm(QMainWindow):
         tb.addSeparator()
         self._act_save = tb.addAction(tr("merge_save", "保存合并结果"))
         self._act_save.triggered.connect(self._save_result)
+        self._act_undo = tb.addAction(tr("merge_undo", "撤销"))
+        self._act_undo.triggered.connect(self._undo)
+        self._act_redo = tb.addAction(tr("merge_redo", "重做"))
+        self._act_redo.triggered.connect(self._redo)
+        tb.addSeparator()
+        self._act_find = tb.addAction(tr("merge_find", "查找"))
+        self._act_find.triggered.connect(self._find)
+        self._act_goto = tb.addAction(tr("merge_goto", "跳转行"))
+        self._act_goto.triggered.connect(self._goto_line)
         lay.addWidget(tb)
 
         split = QSplitter(Qt.Orientation.Horizontal, central)
@@ -119,9 +131,18 @@ class MergeFrm(QMainWindow):
 
     def _load(self):
         left, right = DiffData(self.repo).load(self.path, self.rev1, self.rev2)
+        # 移动块检测（对齐 TortoiseMerge MovedBlocks）：把左右匹配行标 MovedFrom/MovedTo
+        mark_moved_blocks(
+            left, right, left_lines=[vd.line for vd in left],
+            right_lines=[vd.line for vd in right], min_block=3)
         self.left_view.set_view_data(left)
         self.right_view.set_view_data(right)
+        self._undo_stack = get_undo()
+        self._undo_stack.clear()
         self.line_bar.set_rows([vd.state for vd in left])
+        self._locator = LocatorBar(self)
+        self._locator.set_states([vd.state for vd in left])
+        self._locator._on_locate = self._on_bar_click
         self._sync_scrolls()
         added = sum(1 for vd in right if vd.is_added)
         removed = sum(1 for vd in left if vd.is_removed)
@@ -154,10 +175,18 @@ class MergeFrm(QMainWindow):
         if nxt is not None and nxt >= 0:
             self.left_view.go_to_diff(nxt, self.right_view)
 
+    def _save_undo_step(self):
+        """记录一次变更前的状态到撤销栈（翻译 CBaseView::SaveUndoStep）。"""
+        st = AllViewState().snapshot(
+            [vd for vd in self.left_view.view_data],
+            [vd for vd in self.right_view.view_data])
+        self._undo_stack.add_state(st)
+
     def _take(self, side: str):
         line = self._current_line()
         if line < 0 or line >= len(self.left_view.view_data):
             return
+        self._save_undo_step()
         if side == "left":
             # 取左侧（旧）：把右侧该行替换为左侧内容并标记已解决
             self.right_view.take_block(line, self.left_view)
@@ -169,9 +198,65 @@ class MergeFrm(QMainWindow):
 
     def _mark_resolved(self):
         line = self._current_line()
+        self._save_undo_step()
         self.left_view.mark_resolved(line)
         self.right_view.mark_resolved(line)
         self._update_header()
+
+    def _undo(self):
+        if self._undo_stack.undo(
+                [vd for vd in self.left_view.view_data],
+                [vd for vd in self.right_view.view_data]):
+            self.left_view._rebuild()
+            self.right_view._rebuild()
+            self._update_header()
+
+    def _redo(self):
+        if self._undo_stack.redo(
+                [vd for vd in self.left_view.view_data],
+                [vd for vd in self.right_view.view_data]):
+            self.left_view._rebuild()
+            self.right_view._rebuild()
+            self._update_header()
+
+    def _find(self):
+        from .finddlg import FindDlg
+        dlg = FindDlg(self, replace_mode=False)
+        if dlg.exec():
+            self._find_text = dlg.get_find_string()
+            self._search_down = dlg.search_down
+            self._case = dlg.case_sensitive
+            self._highlight_find(self._find_text)
+
+    def _highlight_find(self, text: str):
+        if not text:
+            return
+        import re
+        flags = 0 if self._case else re.IGNORECASE
+        from PySide6.QtGui import QColor, QTextCharFormat
+        from PySide6.QtWidgets import QTextEdit
+        for view in (self.left_view, self.right_view):
+            extra = []
+            for block in range(view.document().blockCount()):
+                blk = view.document().findBlockByNumber(block)
+                if re.search(text, blk.text(), flags):
+                    sel = QTextEdit.ExtraSelection()
+                    sel.cursor = view.textCursor()
+                    sel.cursor.setPosition(blk.position())
+                    sel.cursor.setPosition(blk.position() + len(blk.text()),
+                                           sel.cursor.MoveMode.KeepAnchor)
+                    fmt = QTextCharFormat()
+                    fmt.setBackground(QColor(255, 255, 0))
+                    sel.format = fmt
+                    extra.append(sel)
+            view.setExtraSelections(extra)
+
+    def _goto_line(self):
+        from .gotolinedlg import GotoLineDlg
+        dlg = GotoLineDlg(self, line_count=max(1, len(self.left_view.view_data)))
+        if dlg.exec():
+            line = dlg.get_line_number() - 1
+            self.left_view.go_to_diff(line, self.right_view)
 
     def _update_header(self):
         added = sum(1 for vd in self.right_view.view_data if vd.is_added)

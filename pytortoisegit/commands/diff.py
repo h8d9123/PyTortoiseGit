@@ -32,6 +32,7 @@ from PySide6.QtWidgets import QDialog
 
 from ..dialogs.changedlg import ChangedDlg
 from ..dialogs.diffdlg import DiffDlg
+from ..merge.mergefrm import MergeFrm
 from ._util import repo_from_cl
 from .dispatcher import CommandContext, register
 
@@ -43,12 +44,18 @@ def _diff(ctx: CommandContext):
     rev2 = ctx.cl.value("rev2") if ctx.cl else None
 
     if paths and all(os.path.isfile(p) for p in paths):
-        dlg = DiffDlg(repo, rev1=rev1, rev2=rev2, paths=paths, parent=None)
-        dlg.exec()
+        # 单文件比较 → 打开 TortoiseGitMerge 风格并排视图
+        rel = os.path.relpath(paths[0], repo.root)
+        ref2 = rev2 if rev2 else None
+        base = (rev1 + "^") if rev1 and rev1 not in ("HEAD", None) else None
+        frm = MergeFrm(repo, rel.replace("\\", "/"), base or rev1, ref2,
+                       parent=None)
+        frm.show()
+        return "ok"
     else:
         dlg = ChangedDlg(repo, paths=paths or None, parent=None)
         dlg.exec()
-    return "ok" if dlg.result() == QDialog.DialogCode.Accepted else "cancel"
+        return "ok" if dlg.result() == QDialog.DialogCode.Accepted else "cancel"
 
 
 @register("diff")

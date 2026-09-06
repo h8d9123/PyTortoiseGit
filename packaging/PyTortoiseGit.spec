@@ -31,7 +31,11 @@ _dlg_mods = sorted(
     "pytortoisegit.dialogs." + p.stem
     for p in Path("pytortoisegit/dialogs").glob("*.py")
     if not p.stem.startswith("__"))
-hiddenimports += [m for m in _cmd_mods + _dlg_mods if not m.endswith(".tests")]
+_merge_mods = sorted(
+    "pytortoisegit.merge." + p.stem
+    for p in Path("pytortoisegit/merge").glob("*.py")
+    if not p.stem.startswith("__"))
+hiddenimports += [m for m in _cmd_mods + _dlg_mods + _merge_mods if not m.endswith(".tests")]
 
 # attention: 右键菜单入口使用 pythonw 解释器运行 app.py；
 # 打包后该入口由资源管理器调用，仍由本程序作为编译器环境提供。

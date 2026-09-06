@@ -355,10 +355,10 @@ class LogDlg(QDialog):
         commit = self._current_commit()
         if not path or commit is None:
             return
-        from .sbsdiffdlg import SideBySideDiffDlg
+        from ..merge.mergefrm import MergeFrm
         base = commit.hash + "^" if not commit.is_root else None
-        SideBySideDiffDlg(self.repo, path, base or None, commit.hash,
-                          parent=self).exec()
+        dlg = MergeFrm(self.repo, path, base or None, commit.hash, parent=self)
+        dlg.show()
 
     def _on_file_double_clicked(self, item, _col):
         """双击文件打开 diff 窗口。"""

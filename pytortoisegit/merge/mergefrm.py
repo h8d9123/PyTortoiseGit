@@ -74,6 +74,7 @@ class MergeFrm(QMainWindow):
         self._load()
 
     def _build_ui(self):
+        self._build_menu()
         central = QWidget(self)
         lay = QVBoxLayout(central)
         lay.setContentsMargins(6, 6, 6, 6)
@@ -87,7 +88,8 @@ class MergeFrm(QMainWindow):
         lay.addWidget(self.line_bar)
 
         # 合并工具栏（对齐 TortoiseMerge 主窗口）
-        tb = QToolBar(tr("merge_toolbar", "合并"), central)
+        self.toolbar = QToolBar(tr("merge_toolbar", "合并"), central)
+        tb = self.toolbar
         tb.setMovable(False)
         self._act_prev = tb.addAction(tr("merge_prev", "上一个差异"))
         self._act_prev.triggered.connect(lambda: self._goto_diff(-1))
@@ -142,6 +144,71 @@ class MergeFrm(QMainWindow):
         lay.addWidget(box)
 
         self.setCentralWidget(central)
+
+
+    def _build_menu(self):
+        """TortoiseMerge 风格菜单栏（File/Edit/View/Merge/Navigate）。"""
+        from PySide6.QtGui import QKeySequence
+        bar = self.menuBar()
+        # File
+        m_file = bar.addMenu(tr("menu_file", "文件(&F)"))
+        a = m_file.addAction(tr("menu_open", "打开…"))
+        a.triggered.connect(self._file_open)
+        a = m_file.addAction(tr("menu_reload", "重新加载"))
+        a.triggered.connect(self._load)
+        m_file.addSeparator()
+        a = m_file.addAction(tr("merge_save", "保存合并结果"))
+        a.triggered.connect(self._save_result)
+        a = m_file.addAction(tr("menu_close", "关闭"))
+        a.triggered.connect(self.close)
+        # Edit
+        m_edit = bar.addMenu(tr("menu_edit", "编辑(&E)"))
+        a = m_edit.addAction(tr("merge_undo", "撤销"))
+        a.triggered.connect(self._undo)
+        a = m_edit.addAction(tr("merge_redo", "重做"))
+        a.triggered.connect(self._redo)
+        m_edit.addSeparator()
+        a = m_edit.addAction(tr("merge_find", "查找"))
+        a.triggered.connect(self._find)
+        a = m_edit.addAction(tr("merge_goto", "跳转行"))
+        a.triggered.connect(self._goto_line)
+        # View
+        m_view = bar.addMenu(tr("menu_view", "视图(&V)"))
+        a = m_view.addAction(tr("merge_toolbar", "工具栏"))
+        a.setCheckable(True); a.setChecked(True)
+        a.toggled.connect(lambda on: self.toolbar.setVisible(on))
+        a = m_view.addAction(tr("merge_line_bar", "行差异条"))
+        a.setCheckable(True); a.setChecked(True)
+        a.toggled.connect(lambda on: self.line_bar.setVisible(on))
+        a = m_view.addAction(tr("merge_locator_bar", "定位条"))
+        a.setCheckable(True); a.setChecked(True)
+        a.toggled.connect(self._toggle_locator)
+        # Merge
+        m_merge = bar.addMenu(tr("menu_merge", "合并(&M)"))
+        a = m_merge.addAction(tr("merge_take_left", "取对方(theirs)"))
+        a.triggered.connect(lambda: self._take("left"))
+        a = m_merge.addAction(tr("merge_take_right", "取我方(ours)"))
+        a.triggered.connect(lambda: self._take("right"))
+        a = m_merge.addAction(tr("merge_mark", "标记已解决"))
+        a.triggered.connect(self._mark_resolved)
+        # Navigate
+        m_nav = bar.addMenu(tr("menu_navigate", "导航(&N)"))
+        a = m_nav.addAction(tr("merge_prev", "上一差异"))
+        a.triggered.connect(lambda: self._goto_diff(-1))
+        a = m_nav.addAction(tr("merge_next", "下一差异"))
+        a.triggered.connect(lambda: self._goto_diff(1))
+
+    def _file_open(self):
+        from .opendlg import OpenDlg
+        dlg = OpenDlg(self)
+        if dlg.exec():
+            # 简单处理：把 diff 文件加载进来
+            self._load()
+
+    def _toggle_locator(self, on: bool):
+        if hasattr(self, "_locator"):
+            self._locator.setVisible(on)
+
 
     def _load(self):
         if self.three_way:

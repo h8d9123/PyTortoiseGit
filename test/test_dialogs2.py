@@ -134,6 +134,10 @@ def test_push_dialog(qapp, repo):
     from pytortoisegit.dialogs.pushdlg import PushDlg
     dlg = _smoke(qapp, lambda: PushDlg(repo))
     assert dlg.local_combo.currentText() in ("main", "master")
+    assert dlg.local_combo.height() < 40
+    assert dlg.url_edit.height() < 40
+    assert dlg.ref_group.objectName() == "IDC_BRANCH_GROUP"
+    assert dlg.dest_group.width() > dlg.local_combo.width()
 
 
 def test_pull_dialog(qapp, repo):

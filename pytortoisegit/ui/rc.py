@@ -316,10 +316,33 @@ def build_dialog(spec: Dialog, parent=None):
     return dlg
 
 
+# Win32 ComboBox/ComboBoxEx 的 rc 高度是下拉列表高度，闭合态约等于按钮（14 DLU）
+_CLOSED_COMBO_DLU = 14
+_COMBO_CLASSES = {"ComboBox", "ComboBoxEx32"}
+_COMBO_KINDS = {"COMBOBOX"}
+
+
+def _is_combo_template(ctrl: Control) -> bool:
+    return ctrl.cls in _COMBO_CLASSES or ctrl.kind in _COMBO_KINDS
+
+
+def _closed_field_height(fu: DialogUnits, widget) -> int:
+    closed = fu.px(0, 0, 0, _CLOSED_COMBO_DLU).height()
+    hint = widget.sizeHint().height() if hasattr(widget, "sizeHint") else 0
+    return max(closed, hint) if hint > 0 else closed
+
+
 def place_widget(dlg, fu: DialogUnits, ctrl: Control, widget) -> None:
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QWidget
+    from PySide6.QtWidgets import QComboBox, QLineEdit, QWidget
     r = fu.px(ctrl.x, ctrl.y, ctrl.w, ctrl.h)
+    combo_like = _is_combo_template(ctrl) or isinstance(widget, QComboBox)
+    single_line = isinstance(widget, QLineEdit)
+    if (combo_like or single_line) and ctrl.h > 20:
+        r.setHeight(_closed_field_height(fu, widget))
+        if isinstance(widget, QComboBox):
+            extra = max(ctrl.h - _CLOSED_COMBO_DLU, 30)
+            widget.setMaxVisibleItems(max(8, extra // 12))
     widget.setParent(dlg)
     widget.setGeometry(r)
     widget.setObjectName(ctrl.ctrl_id)

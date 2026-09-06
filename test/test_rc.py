@@ -119,6 +119,29 @@ def test_build_dialog_offscreen(qapp):
     w.deleteLater()
 
 
+def test_place_widget_clamps_combo_dropdown_height(qapp):
+    """ComboBoxEx rc 高度是下拉列表，闭合态应压成单行。"""
+    from PySide6.QtWidgets import QComboBox, QLineEdit
+    d = _sample_parse()
+    fu = rc.DialogUnits(d.font_size, d.font)
+    dlg = rc.build_dialog(d)
+    combo_ctrl = rc.Control(
+        "CONTROL", "", "IDC_BRANCH_SOURCE", "ComboBoxEx32",
+        "CBS_DROPDOWN", 76, 33, 198, 140)
+    combo = QComboBox()
+    rc.place_widget(dlg, fu, combo_ctrl, combo)
+    full = fu.px(76, 33, 198, 140)
+    assert combo.height() < full.height() / 3
+    assert combo.height() <= fu.px(0, 0, 0, 22).height()
+    edit_ctrl = rc.Control(
+        "CONTROL", "", "IDC_URL", "ComboBoxEx32",
+        "CBS_DROPDOWN", 76, 111, 218, 140)
+    edit = QLineEdit()
+    rc.place_widget(dlg, fu, edit_ctrl, edit)
+    assert edit.height() < full.height() / 3
+    dlg.deleteLater()
+
+
 def test_defpushbutton_default(qapp):
     from PySide6.QtWidgets import QPushButton
     d = _sample_parse()

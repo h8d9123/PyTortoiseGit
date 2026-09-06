@@ -26,7 +26,8 @@ from __future__ import annotations
 import os
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QLabel, QLineEdit, QPushButton,
+    QButtonGroup, QCheckBox, QComboBox, QDialog, QGroupBox, QLabel,
+    QPushButton, QRadioButton,
 )
 from ..git.repo import Repository
 from ..res.strings import tr
@@ -51,21 +52,34 @@ class PushDlg(QDialog):
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
 
+        # 分组框（与其它控件同级，按 rc 顺序先放在底层）
+        self.ref_group = QGroupBox(tr("push_ref_group", "Ref"), self)
+        self.dest_group = QGroupBox(tr("push_dest_group", "Destination"), self)
+        self.opt_group = QGroupBox(tr("push_opt_group", "Options"), self)
+
         # Ref group
         self.chk_push_all = QCheckBox(tr("push_all", "&Push all branches"), self)
         self.local_label = QLabel(tr("push_local", "&Local:"), self)
         self.local_combo = QComboBox(self)
+        self.local_combo.setEditable(True)
         self.btn_browse_local = QPushButton("...", self)
         self.remote_label = QLabel(tr("push_remote", "&Remote:"), self)
         self.remote_combo = QComboBox(self)
+        self.remote_combo.setEditable(True)
         self.btn_browse_remote = QPushButton("...", self)
 
-        # Destination group
-        self.rd_remote = QCheckBox(tr("push_rd_remote", "Re&mote:"), self)
+        # Destination group（原版是单选）
+        self.rd_remote = QRadioButton(tr("push_rd_remote", "Re&mote:"), self)
         self.remote_name_combo = QComboBox(self)
         self.btn_manage = QPushButton(tr("push_manage", "Mana&ge"), self)
-        self.rd_url = QCheckBox(tr("push_rd_url", "Arbitrary &URL:"), self)
-        self.url_edit = QLineEdit(self)
+        self.rd_url = QRadioButton(tr("push_rd_url", "Arbitrary &URL:"), self)
+        self.url_edit = QComboBox(self)
+        self.url_edit.setEditable(True)
+        dest_btns = QButtonGroup(self)
+        dest_btns.addButton(self.rd_remote)
+        dest_btns.addButton(self.rd_url)
+        self.rd_remote.setChecked(True)
+        self.rd_remote.toggled.connect(self._on_dest_toggled)
 
         # Options group
         self.chk_force_with_lease = QCheckBox(tr("push_force_lease", "Force &with lease"), self)
@@ -77,9 +91,10 @@ class PushDlg(QDialog):
         self.chk_push_branch = QCheckBox(tr("push_push_branch", "Always push to selected remote branch"), self)
         self.sub_label = QLabel(tr("push_sub", "Recurse submodule"), self)
         self.sub_combo = QComboBox(self)
-        self.sub_combo.addItems(["Check ", "On-demand", "Off"])
+        self.sub_combo.addItems(["On-demand", "Check", "Off"])
         self.push_option_label = QLabel(tr("push_option", "Push &option:"), self)
-        self.push_option_edit = QLineEdit(self)
+        self.push_option_edit = QComboBox(self)
+        self.push_option_edit.setEditable(True)
 
         # Buttons
         self.btn_ok = QPushButton(tr("ok"), self)
@@ -93,6 +108,9 @@ class PushDlg(QDialog):
         self._details = QLabel(self)
 
         mapping = {
+            "IDC_BRANCH_GROUP": self.ref_group,
+            "IDC_URL_GROUP": self.dest_group,
+            "IDC_OPTION_GROUP": self.opt_group,
             "IDC_PUSHALL": self.chk_push_all,
             "IDC_STATIC_SOURCE": self.local_label,
             "IDC_BRANCH_SOURCE": self.local_combo,
@@ -136,7 +154,14 @@ class PushDlg(QDialog):
             if a:
                 self._anchors.add(wgt, a[0], a[1] if len(a) > 1 else None)
 
+        self._on_dest_toggled()
         self._populate()
+
+    def _on_dest_toggled(self, _checked: bool = False):
+        use_remote = self.rd_remote.isChecked()
+        self.remote_name_combo.setEnabled(use_remote)
+        self.btn_manage.setEnabled(use_remote)
+        self.url_edit.setEnabled(not use_remote)
 
     def _populate(self):
         branches = self.repo.runner.run("for-each-ref",
@@ -157,8 +182,8 @@ class PushDlg(QDialog):
     def _on_push(self):
         remote = self.remote_name_combo.currentText() or "origin"
         local_branch = self.local_combo.currentText()
-        if self.rd_url.isChecked() and self.url_edit.text():
-            remote = self.url_edit.text()
+        if self.rd_url.isChecked() and self.url_edit.currentText():
+            remote = self.url_edit.currentText()
         args = ["push", remote]
         if self.chk_push_all.isChecked():
             args.append("--all")
@@ -185,6 +210,9 @@ class PushDlg(QDialog):
 
 
 _PUSH_ANCHORS = {
+    "IDC_BRANCH_GROUP": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_URL_GROUP": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_OPTION_GROUP": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_PUSHALL": ("TOP_LEFT",),
     "IDC_STATIC_SOURCE": ("TOP_LEFT",),
     "IDC_BRANCH_SOURCE": ("TOP_LEFT", "TOP_RIGHT"),

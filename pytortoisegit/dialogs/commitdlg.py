@@ -621,7 +621,7 @@ class CommitDlg(QDialog):
             QMessageBox.warning(self, tr("commit_failed", "提交失败"), result.stderr)
             return
         if push:
-            # 对齐 CCommitDlg::DoPush → CAppUtils::Push：提交后弹出 Push 对话框
-            from .pushdlg import PushDlg
-            PushDlg(self.repo, parent=self).exec()
+            from .pushdlg import do_push_after_commit
+            do_push_after_commit(
+                self.repo, parent=self, amend=self.amend_box.isChecked())
         self.accept()

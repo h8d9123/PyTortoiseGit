@@ -1,6 +1,8 @@
 """commands/push.py —— /command:push 推送对话框。"""
 
-from ..dialogs.pushdlg import PushDlg
+from PySide6.QtWidgets import QDialog
+
+from ..dialogs.pushdlg import PushDlg, run_push
 from ._util import repo_from_cl_optional
 from .dispatcher import CommandContext, register
 
@@ -9,7 +11,8 @@ from .dispatcher import CommandContext, register
 def push(ctx: CommandContext):
     repo = repo_from_cl_optional(ctx.cl)
     dlg = PushDlg(repo, parent=None)
-    dlg.exec()
+    if dlg.exec() == QDialog.DialogCode.Accepted:
+        run_push(repo, dlg.push_opts())
     return "ok"
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.

@@ -153,17 +153,28 @@ def test_progress_dialog_success_and_fail_text(qapp):
     fail_dlg = _run(lambda: (False, 128))
     assert "128" in fail_dlg._label.text()
     assert fail_dlg._btn_close.isEnabled()
+    clicked = []
+    fail_dlg.add_post_action("Pull", lambda: clicked.append(True))
+    assert fail_dlg._post_box.count() == 1
     fail_dlg.deleteLater()
 
 
 def test_push_dialog(qapp, repo):
     from pytortoisegit.dialogs.pushdlg import PushDlg
+    from pytortoisegit.git.push import build_push_args
     dlg = _smoke(qapp, lambda: PushDlg(repo))
     assert dlg.local_combo.currentText() in ("main", "master")
     assert dlg.local_combo.height() < 40
     assert dlg.url_edit.height() < 40
     assert dlg.ref_group.objectName() == "IDC_BRANCH_GROUP"
     assert dlg.dest_group.width() > dlg.local_combo.width()
+    dlg.remote_name_combo.setCurrentText("origin")
+    dlg.remote_combo.setCurrentText("origin")
+    opts = dlg._collect_opts()
+    assert opts is not None
+    args = build_push_args(opts)
+    assert "main:origin" not in args
+    assert args[-2:] == ["origin", dlg.local_combo.currentText()]
 
 
 def test_pull_dialog(qapp, repo):

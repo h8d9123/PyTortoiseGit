@@ -10,7 +10,6 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog,
-    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -76,6 +75,8 @@ class ProgressDialog(QDialog):
         layout.addWidget(self.output, 1)
 
         buttons = QHBoxLayout()
+        self._post_box = QHBoxLayout()
+        buttons.addLayout(self._post_box)
         buttons.addStretch(1)
         self._btn_cancel = QPushButton(tr("abort", "中止"), self)
         self._btn_cancel.clicked.connect(self.cancel)
@@ -184,6 +185,17 @@ class ProgressDialog(QDialog):
         self._btn_close.setFocus()
         if self._on_finish:
             self._on_finish(ok)
+
+    def add_post_action(self, label: str, callback: Callable[[], None]):
+        """对齐 ProgressDlg 失败后的 post-cmd（Pull / Fetch / 再 Push）。"""
+        btn = QPushButton(label, self)
+
+        def _go():
+            self.accept()
+            callback()
+
+        btn.clicked.connect(_go)
+        self._post_box.addWidget(btn)
 
     def on_finish(self, callback: Callable[[bool], None]):
         self._on_finish = callback

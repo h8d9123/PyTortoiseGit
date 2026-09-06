@@ -23,24 +23,78 @@ Destination 组（Remote/URL）+ Options 组（force/tags/putty/upstream/submodu
 #
 # This program is derived from and mirrors the TortoiseGit project.
 from __future__ import annotations
-import os
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QDialog, QGroupBox, QLabel,
-    QPushButton, QRadioButton,
+    QMessageBox, QPushButton, QRadioButton,
 )
+from ..git.push import PushOpts, build_push_args, get_remote_push_branch
 from ..git.repo import Repository
 from ..res.strings import tr
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
-from .resize import AnchorLayout
 from .progress import ProgressDialog
+from .resize import AnchorLayout
+
+
+def run_push(repo: Repository, opts: PushOpts, parent=None) -> bool:
+    """对齐 CAppUtils::DoPush：关 Push 对话框后再跑进度窗。"""
+    args = build_push_args(opts)
+    dlg = ProgressDialog(parent=parent)
+
+    def _after(ok: bool):
+        if ok:
+            return
+        text = dlg.output.toPlainText()
+        if "! [rejected]" in text:
+            def _pull():
+                from .pulldlg import PullFetchDlg
+                PullFetchDlg(repo, fetch_only=False, parent=parent).exec()
+
+            def _fetch():
+                from .pulldlg import PullFetchDlg
+                PullFetchDlg(repo, fetch_only=True, parent=parent).exec()
+
+            dlg.add_post_action(tr("menu_pull"), _pull)
+            dlg.add_post_action(tr("menu_fetch"), _fetch)
+
+        def _repush():
+            again = PushDlg(repo, parent=parent, local_branch=opts.local_branch)
+            if again.exec() == QDialog.DialogCode.Accepted:
+                run_push(repo, again.push_opts(), parent=parent)
+
+        dlg.add_post_action(tr("menu_push"), _repush)
+
+    dlg.on_finish(_after)
+    dlg.run_git(repo.runner, *args)
+    return dlg.exec() == QDialog.DialogCode.Accepted and dlg._exit_code == 0
+
+
+def do_push_after_commit(repo: Repository, parent=None, amend: bool = False) -> bool:
+    """对齐 CCommitDlg::DoPush。"""
+    from ..git.push import should_open_push_dialog
+
+    head = repo.current_branch()
+    remote, rbranch = get_remote_push_branch(repo, head)
+    if should_open_push_dialog(amend, remote, rbranch):
+        dlg = PushDlg(repo, parent=parent, local_branch=head)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return False
+        return run_push(repo, dlg.push_opts(), parent=parent)
+    return run_push(
+        repo,
+        PushOpts(remote=remote, local_branch=head, remote_branch=rbranch),
+        parent=parent,
+    )
 
 
 class PushDlg(QDialog):
-    def __init__(self, repo: Repository, parent=None):
+    def __init__(self, repo: Repository, parent=None, local_branch: str = ""):
         super().__init__(parent, Qt.WindowType.Window)
         self.repo = repo
+        self._initial_local = local_branch
+        self._opts: PushOpts | None = None
         self._build_ui()
 
     def _build_ui(self):
@@ -99,7 +153,7 @@ class PushDlg(QDialog):
         # Buttons
         self.btn_ok = QPushButton(tr("ok"), self)
         self.btn_ok.setDefault(True)
-        self.btn_ok.clicked.connect(self._on_push)
+        self.btn_ok.clicked.connect(self._on_ok)
         self.btn_cancel = QPushButton(tr("cancel"), self)
         self.btn_cancel.clicked.connect(self.reject)
         self.btn_help = QPushButton(tr("help"), self)
@@ -154,6 +208,8 @@ class PushDlg(QDialog):
             if a:
                 self._anchors.add(wgt, a[0], a[1] if len(a) > 1 else None)
 
+        self.chk_push_all.toggled.connect(self._on_push_all)
+        self.local_combo.currentTextChanged.connect(self._on_local_changed)
         self._on_dest_toggled()
         self._populate()
 
@@ -164,44 +220,83 @@ class PushDlg(QDialog):
         self.url_edit.setEnabled(not use_remote)
 
     def _populate(self):
-        branches = self.repo.runner.run("for-each-ref",
-                                         "--format=%(refname:short)").stdout or ""
-        refs = [b.strip() for b in branches.splitlines() if b.strip()]
-        cur = self.repo.current_branch()
+        heads = self.repo.runner.run(
+            "for-each-ref", "--format=%(refname:short)", "refs/heads").stdout or ""
+        refs = [b.strip() for b in heads.splitlines() if b.strip()]
+        cur = self._initial_local or self.repo.current_branch()
+        self.local_combo.blockSignals(True)
         self.local_combo.addItems(refs or [cur])
-        if cur in refs:
+        if cur:
             self.local_combo.setCurrentText(cur)
-        self.remote_combo.addItems(["origin"])
-        self.remote_name_combo.addItems(["origin"])
+        self.local_combo.blockSignals(False)
+        remotes = [r.strip() for r in self.repo.get_remotes() if r.strip()]
+        self.remote_name_combo.addItems(remotes or ["origin"])
+        self._fill_dest_from_local(cur)
+        track_remote = self.repo.config(f"branch.{cur}.remote")
+        track_merge = self.repo.config(f"branch.{cur}.merge")
+        if not track_remote and not track_merge:
+            self.chk_set_upstream.setChecked(True)
+
+    def _fill_dest_from_local(self, local: str):
+        push_remote, push_branch = get_remote_push_branch(self.repo, local)
+        remotes = [self.remote_name_combo.itemText(i)
+                   for i in range(self.remote_name_combo.count())]
+        if push_remote and push_remote in remotes:
+            self.remote_name_combo.setCurrentText(push_remote)
+        dest = push_branch or local
+        if dest and dest == (push_remote or self.remote_name_combo.currentText()):
+            dest = local
+        self.remote_combo.clear()
+        if dest:
+            self.remote_combo.addItem(dest)
+            self.remote_combo.setCurrentText(dest)
+
+    def _on_local_changed(self, text: str):
+        if text.strip():
+            self._fill_dest_from_local(text.strip())
+
+    def _on_push_all(self, checked: bool):
+        for wgt in (self.local_combo, self.remote_combo,
+                    self.btn_browse_local, self.btn_browse_remote):
+            wgt.setEnabled(not checked)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if hasattr(self, "_anchors"):
             self._anchors.apply(self.width(), self.height())
 
-    def _on_push(self):
-        remote = self.remote_name_combo.currentText() or "origin"
-        local_branch = self.local_combo.currentText()
-        if self.rd_url.isChecked() and self.url_edit.currentText():
-            remote = self.url_edit.currentText()
-        args = ["push", "--progress"]
-        if self.chk_push_all.isChecked():
-            args.append("--all")
-        if self.chk_force.isChecked():
-            args.append("--force")
-        if self.chk_force_with_lease.isChecked():
-            args.append("--force-with-lease")
-        if self.chk_tags.isChecked():
-            args.append("--tags")
-        if self.chk_set_upstream.isChecked():
-            args.append("--set-upstream")
-        args += ["--", remote]
-        dest = self.remote_combo.currentText().strip()
-        if not self.chk_push_all.isChecked() and local_branch:
-            args.append(f"{local_branch}:{dest or local_branch}")
-        dlg = ProgressDialog(parent=self)
-        dlg.run_git(self.repo.runner, *args)
-        dlg.exec()
+    def push_opts(self) -> PushOpts:
+        if self._opts is None:
+            self._opts = self._collect_opts() or PushOpts(remote="")
+        return self._opts
+
+    def _collect_opts(self) -> PushOpts | None:
+        if self.rd_url.isChecked():
+            remote = self.url_edit.currentText().strip()
+        else:
+            remote = self.remote_name_combo.currentText().strip()
+        if not remote:
+            QMessageBox.warning(self, tr("warning"), tr("push_no_remote"))
+            return None
+        recurse_map = {"On-demand": "on-demand", "Check": "check", "Off": ""}
+        return PushOpts(
+            remote=remote,
+            local_branch=self.local_combo.currentText().strip(),
+            remote_branch=self.remote_combo.currentText().strip(),
+            all_branches=self.chk_push_all.isChecked(),
+            force=self.chk_force.isChecked(),
+            force_with_lease=self.chk_force_with_lease.isChecked(),
+            tags=self.chk_tags.isChecked(),
+            set_upstream=self.chk_set_upstream.isChecked(),
+            push_option=self.push_option_edit.currentText().strip(),
+            recurse=recurse_map.get(self.sub_combo.currentText(), ""),
+        )
+
+    def _on_ok(self):
+        opts = self._collect_opts()
+        if opts is None:
+            return
+        self._opts = opts
         self.accept()
 
 

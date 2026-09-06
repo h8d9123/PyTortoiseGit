@@ -57,7 +57,6 @@ from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
 from .diffdlg import DiffDlg
 from .resize import AnchorLayout
-from .widgets import DiffView
 
 
 class LogDlg(QDialog):
@@ -140,18 +139,13 @@ class LogDlg(QDialog):
         self.file_list.setRootIsDecorated(False)
         self.file_list.setIndentation(0)
         self.file_list.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.file_list.itemClicked.connect(self._on_file_clicked_preview)
+        self.file_list.itemClicked.connect(self._on_file_clicked)
         self.file_list.itemDoubleClicked.connect(self._on_file_double_clicked)
         self.file_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.file_list.customContextMenuRequested.connect(self._on_file_menu)
-        # 中部 MSGVIEW 区：文件列表 + 内嵌 diff 预览（点文件行即在下方显示 diff）
-        self.preview = DiffView(self)
-        self.preview.setObjectName("IDC_MSGVIEW_PREVIEW")
+        # 中部 MSGVIEW 区：受影响文件列表（点击文件 -> 弹出并排比较窗口）
         self.middle_splitter = QSplitter(Qt.Orientation.Vertical, self)
         self.middle_splitter.addWidget(self.file_list)
-        self.middle_splitter.addWidget(self.preview)
-        self.middle_splitter.setStretchFactor(0, 0)
-        self.middle_splitter.setStretchFactor(1, 1)
         self.middle_splitter.setObjectName("IDC_MSGVIEW")
         # 底部 LOGMSG 区：提交信息
         self.msg_box = QPlainTextEdit(self)
@@ -354,29 +348,17 @@ class LogDlg(QDialog):
         tree_item = self.tree.currentItem()
         return self._commit_of(tree_item) if tree_item is not None else None
 
-    def _load_file_patch_bg(self, commit, path: str) -> str:
-        """取某提交里指定文件的完整 diff（含 header 供 diff 预览/弹窗）。"""
-        base = commit.hash + "^" if not commit.is_root else None
-        try:
-            if base:
-                return self.repo.runner.run_checked(
-                    "diff", base, commit.hash, "--", path)
-            return self.repo.runner.run_checked(
-                "show", "--no-color", "--format=", commit.hash, "--", path)
-        except Exception:
-            return ""
 
-    def _on_file_clicked_preview(self, item, _col):
-        """单击文件行：内嵌显示该文件 diff（对齐 TGit MSGVIEW 内嵌）。"""
+    def _on_file_clicked(self, item, _col):
+        """单击文件行：打开并排比较窗口（对齐 TortoiseGitMerge）。"""
         path = item.data(0, Qt.ItemDataRole.UserRole)
         commit = self._current_commit()
         if not path or commit is None:
             return
-        run_async(self._load_file_patch_bg, args=(commit, path),
-                  on_done=self._on_preview_loaded, parent=self)
-
-    def _on_preview_loaded(self, patch: str):
-        self.preview.display_patch(patch)
+        from .sbsdiffdlg import SideBySideDiffDlg
+        base = commit.hash + "^" if not commit.is_root else None
+        SideBySideDiffDlg(self.repo, path, base or None, commit.hash,
+                          parent=self).exec()
 
     def _on_file_double_clicked(self, item, _col):
         """双击文件打开 diff 窗口。"""

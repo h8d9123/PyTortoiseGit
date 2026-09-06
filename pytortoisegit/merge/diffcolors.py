@@ -60,6 +60,15 @@ class DiffColors:
         DiffState.IdenticalMovedTo: QColor(255, 255, 255),
         DiffState.Edited: QColor(220, 220, 255),
         DiffState.Filtered: QColor(220, 255, 220),
+        DiffState.IdenticalRemoved: QColor(255, 220, 180),
+        DiffState.IdenticalAdded: QColor(255, 255, 180),
+        DiffState.TheirsRemoved: QColor(255, 200, 100),
+        DiffState.TheirsAdded: QColor(255, 255, 0),
+        DiffState.YoursRemoved: QColor(255, 200, 100),
+        DiffState.YoursAdded: QColor(255, 255, 0),
+        DiffState.ConflictResolvedEmpty: QColor(200, 200, 200),
+        DiffState.FilteredDiff: QColor(220, 255, 220),
+        DiffState.ConflictsResolved: QColor(200, 230, 200),
     }
 
     # 深色主题背景（Dark 版，近似）

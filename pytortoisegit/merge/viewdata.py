@@ -50,6 +50,14 @@ class DiffState(Enum):
     Edited = 17
     Filtered = 18
     ConflictsResolved = 19
+    IdenticalRemoved = 20
+    IdenticalAdded = 21
+    TheirsRemoved = 22
+    TheirsAdded = 23
+    YoursRemoved = 24
+    YoursAdded = 25
+    ConflictResolvedEmpty = 26
+    FilteredDiff = 27
 
 
 class HideState(Enum):
@@ -83,11 +91,15 @@ class ViewData:
     # ---- 状态判断（翻译 BaseView IsStateXxx）----
     @property
     def is_removed(self) -> bool:
-        return self.state in (DiffState.Removed, DiffState.MovedFrom)
+        return self.state in (DiffState.Removed, DiffState.MovedFrom,
+                              DiffState.TheirsRemoved, DiffState.YoursRemoved,
+                              DiffState.IdenticalRemoved)
 
     @property
     def is_added(self) -> bool:
-        return self.state in (DiffState.Added, DiffState.MovedTo)
+        return self.state in (DiffState.Added, DiffState.MovedTo,
+                              DiffState.TheirsAdded, DiffState.YoursAdded,
+                              DiffState.IdenticalAdded, DiffState.ConflictAdded)
 
     @property
     def is_conflict(self) -> bool:
@@ -96,8 +108,15 @@ class ViewData:
 
     @property
     def is_empty(self) -> bool:
-        return self.state == DiffState.Empty or not self.line
+        return self.state in (DiffState.Empty, DiffState.ConflictEmpty,
+                              DiffState.ConflictResolvedEmpty)
 
     @property
     def is_modified(self) -> bool:
         return self.state == DiffState.Edited
+
+    @property
+    def is_diff(self) -> bool:
+        return self.state not in (DiffState.Normal, DiffState.Unknown,
+                                  DiffState.Empty, DiffState.Filtered,
+                                  DiffState.ConflictsResolved)

@@ -40,5 +40,5 @@ def merge3(ctx: CommandContext):
         QMessageBox.information(None, "merge3", "需要 /path:<文件>")
         return "cancel"
     frm = MergeFrm(repo, path, their or "HEAD", our, three_way=True)
-    frm.show()
+    frm.exec()
     return "ok"

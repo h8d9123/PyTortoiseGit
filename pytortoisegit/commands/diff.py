@@ -50,7 +50,7 @@ def _diff(ctx: CommandContext):
         base = (rev1 + "^") if rev1 and rev1 not in ("HEAD", None) else None
         frm = MergeFrm(repo, rel.replace("\\", "/"), base or rev1, ref2,
                        parent=None)
-        frm.show()
+        frm.exec()
         return "ok"
     else:
         dlg = ChangedDlg(repo, paths=paths or None, parent=None)

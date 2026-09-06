@@ -17,52 +17,113 @@
 #
 # This program is derived from and mirrors the TortoiseGit project.
 
-"""baseview.py —— TortoiseGitMerge 的 BaseView / LeftView / RightView（并排视图）。
-
-用 PySide6 QPlainTextEdit 复刻 CBaseView 的查看/渲染能力：
-  * 按 ViewData.state 逐行着色的 diff 视图
-  * 同步滚动、行号、差异跳转、LineDiffBar 联动
-  * 只读查看（Compare 模式）
-功能流程对齐 TortoiseGitMerge（src/TortoiseMerge/BaseView.cpp）：
-  * ScrollToLine / GoToLine / ScrollAllToLine（同步）
-  * ShowDiffLines、HasNext/PrevDiff、HasNext/PrevConflict
-  * RecalcVertScrollBar、BuildAllScreen2ViewVector（行对齐）
-"""
+"""baseview.py —— TortoiseGitMerge 的 BaseView / LeftView / RightView。"""
 
 from __future__ import annotations
 
 from typing import List, Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen, QTextCharFormat, QTextCursor
-from PySide6.QtWidgets import (QAbstractScrollArea, QPlainTextEdit, QScrollBar,
-                               QVBoxLayout, QWidget)
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import (
+    QColor, QFont, QFontMetrics, QPainter, QPen, QTextCharFormat, QTextCursor,
+)
+from PySide6.QtWidgets import QPlainTextEdit, QWidget
 
 from .diffcolors import DiffColors
-from .viewdata import DiffState, EOL, HideState, ViewData
+from .inlinediff import inline_spans
+from .viewdata import DiffState, HideState, ViewData
+
+
+class _LineNumberArea(QWidget):
+    def __init__(self, editor: "BaseView"):
+        super().__init__(editor)
+        self._editor = editor
+
+    def sizeHint(self):
+        from PySide6.QtCore import QSize
+        return QSize(self._editor.line_number_width(), 0)
+
+    def paintEvent(self, event):
+        self._editor.paint_line_numbers(event)
 
 
 class BaseView(QPlainTextEdit):
     """一个并排 diff 视图（对应 CBaseView）。"""
 
+    line_moved = Signal(int)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.view_data: List[ViewData] = []
+        self.other_view: Optional["BaseView"] = None
         self.colors = DiffColors()
+        self.inline_diff = True
+        self.inline_word = True
+        self.show_whitespaces = False
+        self.collapsed = False
         self.setReadOnly(True)
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.setMinimumWidth(360)
+        self.setMinimumWidth(280)
         mono = QFont("Consolas")
         mono.setStyleHint(QFont.StyleHint.Monospace)
         mono.setPointSize(10)
         self.setFont(mono)
         self._line_height = QFontMetrics(mono).height()
-        # 行号边距
-        self.setViewportMargins(66, 0, 0, 0)
-        self._first_view_line = 0
+        self._line_area = _LineNumberArea(self)
+        self.blockCountChanged.connect(self._update_line_area_width)
+        self.updateRequest.connect(self._update_line_area)
+        self.cursorPositionChanged.connect(self._emit_line)
+        self.verticalScrollBar().valueChanged.connect(self._emit_line)
+        self._update_line_area_width(0)
         self._on_line_clicked = None
+        self._screen_to_view: List[int] = []
 
-    # ---- 数据 ----
+    def line_number_width(self) -> int:
+        return 62
+
+    def _update_line_area_width(self, _n=0):
+        self.setViewportMargins(self.line_number_width(), 0, 0, 0)
+
+    def _update_line_area(self, rect, dy):
+        if dy:
+            self._line_area.scroll(0, dy)
+        else:
+            self._line_area.update(0, rect.y(), self._line_area.width(), rect.height())
+        if rect.contains(self.viewport().rect()):
+            self._update_line_area_width()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        cr = self.contentsRect()
+        self._line_area.setGeometry(cr.left(), cr.top(), self.line_number_width(), cr.height())
+
+    def paint_line_numbers(self, event):
+        p = QPainter(self._line_area)
+        p.fillRect(event.rect(), QColor(245, 245, 245))
+        p.setPen(QColor(140, 140, 140))
+        block = self.firstVisibleBlock()
+        block_n = block.blockNumber()
+        top = int(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
+        bottom = top + int(self.blockBoundingRect(block).height())
+        fm = QFontMetrics(self.font())
+        while block.isValid() and top <= event.rect().bottom():
+            if block.isVisible() and bottom >= event.rect().top():
+                view_i = self._screen_to_view[block_n] if 0 <= block_n < len(self._screen_to_view) else block_n
+                if 0 <= view_i < len(self.view_data):
+                    vd = self.view_data[view_i]
+                    num = str(vd.linenumber) if vd.linenumber >= 0 else ""
+                    p.drawText(4, top, 36, fm.height(), Qt.AlignmentFlag.AlignRight, num)
+                    icon = self._state_icon(vd.state)
+                    if icon is not None:
+                        p.drawPixmap(42, top + max(0, (fm.height() - 16) // 2), icon.pixmap(16, 16))
+            block = block.next()
+            top = bottom
+            bottom = top + int(self.blockBoundingRect(block).height())
+            block_n += 1
+        p.setPen(QColor(200, 200, 200))
+        p.drawLine(self._line_area.width() - 1, 0, self._line_area.width() - 1, self.height())
+        p.end()
+
     def set_view_data(self, data: List[ViewData], colors: DiffColors | None = None):
         self.view_data = data
         if colors is not None:
@@ -70,36 +131,96 @@ class BaseView(QPlainTextEdit):
         self._rebuild()
 
     def set_writable(self, writable: bool):
-        """翻译 SetWritable：合并输出视图可编辑。"""
         self.setReadOnly(not writable)
+
+    def set_wrap(self, wrap: bool):
+        self.setLineWrapMode(
+            QPlainTextEdit.LineWrapMode.WidgetWidth if wrap
+            else QPlainTextEdit.LineWrapMode.NoWrap)
 
     def get_line_count(self) -> int:
         return len(self.view_data)
 
-    # ---- 渲染 ----
+    def current_view_line(self) -> int:
+        block = self.textCursor().blockNumber()
+        if 0 <= block < len(self._screen_to_view):
+            return self._screen_to_view[block]
+        return block
+
+    def _display_text(self, text: str) -> str:
+        if not self.show_whitespaces:
+            return text
+        return text.replace(" ", "·").replace("\t", "→   ")
+
     def _rebuild(self):
+        self._screen_to_view = []
         self.clear()
         doc = self.document()
+        other = self.other_view.view_data if self.other_view is not None else []
         for i, vd in enumerate(self.view_data):
+            unchanged = vd.state in (DiffState.Normal, DiffState.Filtered,
+                                    DiffState.FilteredDiff)
+            if self.collapsed and unchanged:
+                if self._screen_to_view:
+                    prev = self.view_data[self._screen_to_view[-1]]
+                    if prev.state in (DiffState.Normal, DiffState.Filtered,
+                                      DiffState.FilteredDiff):
+                        continue
+                cursor = QTextCursor(doc)
+                cursor.movePosition(QTextCursor.MoveOperation.End)
+                cursor.insertText("···\n")
+                self._screen_to_view.append(i)
+                continue
             cursor = QTextCursor(doc)
             cursor.movePosition(QTextCursor.MoveOperation.End)
-            text = vd.line if not vd.is_empty else ""
+            text = "" if vd.is_empty else self._display_text(vd.line)
             cursor.insertText(text)
+            block = doc.findBlockByNumber(doc.blockCount() - 1)
+            sel = QTextCursor(block)
+            sel.select(QTextCursor.SelectionType.LineUnderCursor)
             bg = self.colors.back_color(vd.state)
-            if bg is not None:
+            if bg is not None and vd.state != DiffState.Normal:
                 fmt = QTextCharFormat()
                 fmt.setBackground(bg)
-                block = doc.findBlockByNumber(doc.blockCount() - 1)
-                sel = QTextCursor(block)
-                sel.select(QTextCursor.SelectionType.LineUnderCursor)
                 sel.mergeCharFormat(fmt)
+            if self.inline_diff and i < len(other):
+                ov = other[i]
+                if (vd.state in (DiffState.Removed, DiffState.TheirsRemoved, DiffState.YoursRemoved)
+                        and ov.state in (DiffState.Added, DiffState.TheirsAdded, DiffState.YoursAdded,
+                                         DiffState.ConflictAdded)) or (
+                        vd.state in (DiffState.Added, DiffState.TheirsAdded, DiffState.YoursAdded,
+                                     DiffState.ConflictAdded)
+                        and ov.state in (DiffState.Removed, DiffState.TheirsRemoved, DiffState.YoursRemoved)):
+                    lspans, rspans = inline_spans(vd.line, ov.line, self.inline_word)
+                    spans = lspans if vd.is_removed else rspans
+                    color = (self.colors.inline_removed_color() if vd.is_removed
+                             else self.colors.inline_added_color())
+                    for a, b in spans:
+                        if a >= len(text) or b <= 0:
+                            continue
+                        ic = QTextCursor(block)
+                        ic.setPosition(block.position() + max(0, a))
+                        ic.setPosition(block.position() + min(len(text), b),
+                                       QTextCursor.MoveMode.KeepAnchor)
+                        fmt = QTextCharFormat()
+                        fmt.setBackground(color)
+                        ic.mergeCharFormat(fmt)
             cursor.insertText("\n")
+            self._screen_to_view.append(i)
+        self._update_line_area_width()
 
-    # ---- 滚动/跳转（翻译 ScrollToLine / GoToLine / ScrollAllToLine）----
+    def _emit_line(self, *_):
+        self.line_moved.emit(self.current_view_line())
+
     def scroll_to_line(self, line: int):
         if line < 0 or line >= len(self.view_data):
             return
-        cursor = QTextCursor(self.document().findBlockByNumber(line))
+        screen = 0
+        for s, v in enumerate(self._screen_to_view):
+            if v >= line:
+                screen = s
+                break
+        cursor = QTextCursor(self.document().findBlockByNumber(screen))
         self.setTextCursor(cursor)
         self.centerCursor()
 
@@ -113,9 +234,13 @@ class BaseView(QPlainTextEdit):
         if sync_to is not None:
             sync_to.scroll_to_line(line)
 
-    # ---- 差异/冲突：HasNext/PrevDiff、HasNext/PrevConflict ----
     def _states(self) -> List[DiffState]:
         return [vd.state for vd in self.view_data]
+
+    def _is_diff(self, s: DiffState) -> bool:
+        return s not in (DiffState.Normal, DiffState.Unknown, DiffState.Empty,
+                         DiffState.Filtered, DiffState.ConflictsResolved,
+                         DiffState.FilteredDiff)
 
     def has_next_diff(self, from_line: int = 0) -> bool:
         return self._find_next(from_line, self._is_diff) is not None
@@ -131,27 +256,28 @@ class BaseView(QPlainTextEdit):
                 return i
         return None
 
-    def _is_diff(self, s: DiffState) -> bool:
-        return s in (DiffState.Removed, DiffState.Added, DiffState.Edited,
-                     DiffState.MovedFrom, DiffState.MovedTo)
-
     def show_diff_lines(self, line: int, other: "BaseView | None" = None):
         self.scroll_to_line(line)
         if other is not None:
             other.scroll_to_line(line)
 
-    # ---- 行号绘制（DrawMargin / CalcLineCharDim 的简化）----
-    # ---- 行左侧 TortoiseMerge 状态图标 ----
     _STATE_ICON = {
         DiffState.Added: "IDI_ADDEDLINE",
         DiffState.Removed: "IDI_REMOVEDLINE",
         DiffState.Edited: "IDI_LINEEDITED",
         DiffState.Conflict: "IDI_CONFLICTEDLINE",
         DiffState.ConflictIgnored: "IDI_CONFLICTEDIGNOREDLINE",
+        DiffState.ConflictAdded: "IDI_CONFLICTEDLINE",
         DiffState.WhitespaceDiff: "IDI_WHITESPACELINE",
         DiffState.MovedFrom: "IDI_MOVEDLINE",
         DiffState.MovedTo: "IDI_MOVEDLINE",
         DiffState.Normal: "IDI_EQUALLINE",
+        DiffState.TheirsAdded: "IDI_ADDEDLINE",
+        DiffState.YoursAdded: "IDI_ADDEDLINE",
+        DiffState.TheirsRemoved: "IDI_REMOVEDLINE",
+        DiffState.YoursRemoved: "IDI_REMOVEDLINE",
+        DiffState.IdenticalAdded: "IDI_ADDEDLINE",
+        DiffState.IdenticalRemoved: "IDI_REMOVEDLINE",
     }
 
     def _state_icon(self, state: DiffState):
@@ -164,33 +290,6 @@ class BaseView(QPlainTextEdit):
         except Exception:
             return None
 
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        p = QPainter(self.viewport())
-        p.setPen(QPen(QColor(160, 160, 160)))
-        fm = QFontMetrics(self.font())
-        top = self.verticalScrollBar().value() * self._line_height
-        y = 2
-        line = int(top / self._line_height)
-        # 行号在第 4px；状态图标在第 44px
-        icon_x = 44
-        while y < self.viewport().height():
-            if 0 <= line < len(self.view_data):
-                vd = self.view_data[line]
-                p.drawText(4, y + fm.ascent(), str(line + 1))
-                icon = self._state_icon(vd.state)
-                if icon is not None:
-                    pix = icon.pixmap(16, 16)
-                    p.drawPixmap(icon_x, y, pix)
-            line += 1
-            y += self._line_height
-        p.end()
-
-    # 行号边距画竖线
-    def _paint_line_number_margin(self):
-        pass
-
-    # ---- 差异块导航（翻译 HasNextDiff/OnNavigateNextdiff）----
     def first_diff_line(self) -> int:
         for i, vd in enumerate(self.view_data):
             if self._is_diff(vd.state):
@@ -198,7 +297,6 @@ class BaseView(QPlainTextEdit):
         return -1
 
     def next_diff_from(self, line: int) -> int:
-        """从 line 之后找下一差异行；找不到返回 -1。"""
         for i in range(line + 1, len(self.view_data)):
             if self._is_diff(self.view_data[i].state):
                 return i
@@ -210,12 +308,36 @@ class BaseView(QPlainTextEdit):
                 return i
         return -1
 
+    def next_conflict_from(self, line: int) -> int:
+        for i in range(line + 1, len(self.view_data)):
+            if self.view_data[i].is_conflict:
+                return i
+        return -1
+
+    def prev_conflict_from(self, line: int) -> int:
+        for i in range(line - 1, -1, -1):
+            if self.view_data[i].is_conflict:
+                return i
+        return -1
+
+    def block_range(self, line: int) -> tuple:
+        if not (0 <= line < len(self.view_data)):
+            return 0, -1
+        if not self._is_diff(self.view_data[line].state):
+            return line, line
+        start = line
+        while start > 0 and self._is_diff(self.view_data[start - 1].state):
+            start -= 1
+        end = line
+        while end + 1 < len(self.view_data) and self._is_diff(self.view_data[end + 1].state):
+            end += 1
+        return start, end
+
     def go_to_diff(self, line: int, other: "BaseView | None" = None):
         self.go_to_line(line)
         if other is not None:
             other.go_to_line(line)
 
-    # ---- 合并操作（翻译 MarkBlock / SetViewMarked / SetViewState）----
     def set_marked_block(self, first: int, last: int, marked: bool):
         for i in range(first, min(last + 1, len(self.view_data))):
             self.view_data[i].marked = marked
@@ -225,38 +347,72 @@ class BaseView(QPlainTextEdit):
             self.view_data[index].state = state
 
     def take_block(self, index: int, from_other: "BaseView", marked_other: bool = True):
-        """把 other 的 index 行文本与状态复制到本视图 index（合并取对方）。"""
-        if not (0 <= index < len(self.view_data) and 0 <= index < len(from_other.view_data)):
+        start, end = self.block_range(index)
+        if end < start:
             return
-        src = from_other.view_data[index]
-        self.view_data[index].line = src.line
-        self.view_data[index].state = DiffState.ConflictsResolved
-        self.view_data[index].marked = marked_other
-        # 同步另一侧为空占位
-        if 0 <= index < len(from_other.view_data):
-            from_other.view_data[index].marked = marked_other
+        for i in range(start, end + 1):
+            if i >= len(self.view_data) or i >= len(from_other.view_data):
+                continue
+            src = from_other.view_data[i]
+            self.view_data[i].line = src.line
+            self.view_data[i].state = DiffState.ConflictsResolved
+            self.view_data[i].marked = marked_other
+            from_other.view_data[i].marked = marked_other
+        self._rebuild()
+        from_other._rebuild()
+
+    def take_file(self, from_other: "BaseView"):
+        n = min(len(self.view_data), len(from_other.view_data))
+        for i in range(n):
+            self.view_data[i].line = from_other.view_data[i].line
+            self.view_data[i].state = DiffState.ConflictsResolved
         self._rebuild()
 
     def mark_resolved(self, index: int):
-        if 0 <= index < len(self.view_data):
-            self.view_data[index].state = DiffState.ConflictsResolved
-            self.view_data[index].marked = False
-            self._rebuild()
+        start, end = self.block_range(index)
+        for i in range(start, end + 1):
+            if 0 <= i < len(self.view_data):
+                self.view_data[i].state = DiffState.ConflictsResolved
+                self.view_data[i].marked = False
+        self._rebuild()
 
     def merged_lines(self) -> List[str]:
-        """返回合并后结果行（ConflictsResolved 的行；Normal/Added 保留；Empty 去掉）。"""
         out = []
         for vd in self.view_data:
-            if vd.is_empty and vd.state in (DiffState.Empty, DiffState.ConflictEmpty):
+            if vd.is_empty:
                 continue
-            if vd.state == DiffState.ConflictsResolved or not vd.is_empty:
-                out.append(vd.line)
+            out.append(vd.line)
         return out
+
+    def first_inline_col(self, line: int, forward: bool = True) -> int:
+        if self.other_view is None or not (0 <= line < len(self.view_data)):
+            return -1
+        if line >= len(self.other_view.view_data):
+            return -1
+        mine = self.view_data[line].line
+        other = self.other_view.view_data[line].line
+        lspans, rspans = inline_spans(mine, other, self.inline_word)
+        spans = lspans if self is getattr(self.other_view, "other_view", None) else lspans
+        if self.other_view and getattr(self, "_side", "left") == "right":
+            spans = rspans
+        if not spans:
+            return -1
+        return spans[0][0] if forward else spans[-1][0]
 
 
 class LeftView(BaseView):
-    """左视图（旧版本/base side）。"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._side = "left"
 
 
 class RightView(BaseView):
-    """右视图（新版本/target side）。"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._side = "right"
+
+
+class BottomView(BaseView):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._side = "bottom"

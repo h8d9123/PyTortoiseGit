@@ -58,7 +58,7 @@ class BaseView(QPlainTextEdit):
         self.setFont(mono)
         self._line_height = QFontMetrics(mono).height()
         # 行号边距
-        self.setViewportMargins(60, 0, 0, 0)
+        self.setViewportMargins(66, 0, 0, 0)
         self._first_view_line = 0
         self._on_line_clicked = None
 
@@ -141,6 +141,29 @@ class BaseView(QPlainTextEdit):
             other.scroll_to_line(line)
 
     # ---- 行号绘制（DrawMargin / CalcLineCharDim 的简化）----
+    # ---- 行左侧 TortoiseMerge 状态图标 ----
+    _STATE_ICON = {
+        DiffState.Added: "IDI_ADDEDLINE",
+        DiffState.Removed: "IDI_REMOVEDLINE",
+        DiffState.Edited: "IDI_LINEEDITED",
+        DiffState.Conflict: "IDI_CONFLICTEDLINE",
+        DiffState.ConflictIgnored: "IDI_CONFLICTEDIGNOREDLINE",
+        DiffState.WhitespaceDiff: "IDI_WHITESPACELINE",
+        DiffState.MovedFrom: "IDI_MOVEDLINE",
+        DiffState.MovedTo: "IDI_MOVEDLINE",
+        DiffState.Normal: "IDI_EQUALLINE",
+    }
+
+    def _state_icon(self, state: DiffState):
+        key = self._STATE_ICON.get(state)
+        if not key:
+            return None
+        try:
+            from ..res import icons
+            return icons.icon(key)
+        except Exception:
+            return None
+
     def paintEvent(self, event):
         super().paintEvent(event)
         p = QPainter(self.viewport())
@@ -149,8 +172,16 @@ class BaseView(QPlainTextEdit):
         top = self.verticalScrollBar().value() * self._line_height
         y = 2
         line = int(top / self._line_height)
+        # 行号在第 4px；状态图标在第 44px
+        icon_x = 44
         while y < self.viewport().height():
-            p.drawText(4, y + fm.ascent(), str(line))
+            if 0 <= line < len(self.view_data):
+                vd = self.view_data[line]
+                p.drawText(4, y + fm.ascent(), str(line + 1))
+                icon = self._state_icon(vd.state)
+                if icon is not None:
+                    pix = icon.pixmap(16, 16)
+                    p.drawPixmap(icon_x, y, pix)
             line += 1
             y += self._line_height
         p.end()

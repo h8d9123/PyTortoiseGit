@@ -125,19 +125,19 @@ class MergeFrm(QMainWindow):
         self.ribbon = QToolBar(tr("merge_ribbon", "Ribbon"), self)
         self.ribbon.setMovable(False)
         self.ribbon.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        try:
-            from ..res import icons as _icons
-        except Exception:
-            _icons = None
-
-        def _btn(label, icon_id, slot):
+        def _btn(label, standard, slot):
+            """standard: QStyle.StandardPixmap 枚举名；用 Qt 标准图标贴近 Office。"""
             b = QToolButton(self.ribbon)
             b.setText(label)
             b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            if _icons is not None:
-                ic = _icons.icon(icon_id)
-                if ic is not None and not ic.isNull():
+            from PySide6.QtWidgets import QStyle
+            try:
+                std = getattr(QStyle.StandardPixmap, standard)
+                ic = self.style().standardIcon(std)
+                if not ic.isNull():
                     b.setIcon(ic)
+            except Exception:
+                pass
             b.clicked.connect(slot)
             self.ribbon.addWidget(b)
             return b
@@ -148,24 +148,24 @@ class MergeFrm(QMainWindow):
             return lab
 
         _title(tr("merge_group_file", "文件"))
-        _btn(tr("merge_save", "保存"), "IDI_SAVE", self._save_result)
-        _btn(tr("merge_reload", "重新加载"), "IDI_REFRESH", self._load)
+        _btn(tr("merge_save", "保存"), "SP_DialogSaveButton", self._save_result)
+        _btn(tr("merge_reload", "重新加载"), "SP_BrowserReload", self._load)
         self.ribbon.addSeparator()
         _title(tr("merge_group_edit", "编辑"))
-        _btn(tr("merge_undo", "撤销"), "IDI_RESTORE", self._undo)
-        _btn(tr("merge_redo", "重做"), "IDI_RESTOREOVL", self._redo)
-        _btn(tr("merge_find", "查找"), "IDI_LOGFILTER", self._find)
-        _btn(tr("merge_goto", "跳转行"), "IDI_OPEN", self._goto_line)
+        _btn(tr("merge_undo", "撤销"), "SP_DialogResetButton", self._undo)
+        _btn(tr("merge_redo", "重做"), "SP_FileDialogContentsView", self._redo)
+        _btn(tr("merge_find", "查找"), "SP_FileDialogContentsView", self._find)
+        _btn(tr("merge_goto", "跳转行"), "SP_ArrowForward", self._goto_line)
         self.ribbon.addSeparator()
         _title(tr("merge_group_nav", "导航"))
-        _btn(tr("merge_prev", "上一差异"), "IDI_SWITCHLEFTRIGHT", lambda: self._goto_diff(-1))
-        _btn(tr("merge_next", "下一差异"), "IDI_SWITCHLEFTRIGHT", lambda: self._goto_diff(1))
+        _btn(tr("merge_prev", "上一差异"), "SP_ArrowBack", lambda: self._goto_diff(-1))
+        _btn(tr("merge_next", "下一差异"), "SP_ArrowForward", lambda: self._goto_diff(1))
         self.ribbon.addSeparator()
         _title(tr("merge_group_merge", "合并"))
-        _btn(tr("merge_take_left", "取左侧"), "IDI_ACTIONDELETED", lambda: self._take("left"))
-        _btn(tr("merge_take_right", "取右侧"), "IDI_ACTIONADDED", lambda: self._take("right"))
-        _btn(tr("merge_mark", "标记已解决"), "IDI_MERGEACTIVE", self._mark_resolved)
-        _btn(tr("merge_undo", "撤销合并"), "IDI_RESTORE", self._undo)
+        _btn(tr("merge_take_left", "取左侧"), "SP_ArrowBack", lambda: self._take("left"))
+        _btn(tr("merge_take_right", "取右侧"), "SP_ArrowForward", lambda: self._take("right"))
+        _btn(tr("merge_mark", "标记已解决"), "SP_DialogApplyButton", self._mark_resolved)
+        _btn(tr("merge_undo", "撤销合并"), "SP_DialogResetButton", self._undo)
         self.addToolBar(self.ribbon)
 
     def _file_open(self):

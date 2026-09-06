@@ -1,0 +1,196 @@
+"""firststartdlg.py —— FirstStartWizard：首次启动向导（镜像 TortoiseGit 5 页模板）。
+
+页序：Start → Language → Git → User → Authentication。
+"""
+
+# PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
+# Copyright (C) 2026  PyTortoiseGit contributors
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 2 of the License, or (at your option) any later
+# version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 51
+# Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# This program is derived from and mirrors the TortoiseGit project.
+from __future__ import annotations
+import os
+import shutil
+import subprocess
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QCheckBox, QComboBox, QLabel, QLineEdit, QPushButton, QWizard,
+    QWizardPage,
+)
+from ..git.git import GitRunner
+from ..res.strings import tr
+from ..ui import rc as rc_mod
+from ..ui.rc import DialogUnits
+
+
+class _WizardPage(QWizardPage):
+    def __init__(self, template: str, parent=None):
+        super().__init__(parent)
+        self.template = template
+
+
+class _StartPage(_WizardPage):
+    def __init__(self, parent=None):
+        super().__init__("IDD_FIRSTSTARTWIZARD_START", parent)
+        self.title = tr("firststart_title", "欢迎使用 PyTortoiseGit")
+        self.setTitle(self.title)
+        spec = rc_mod.load_spec("IDD_FIRSTSTARTWIZARD_START")
+        fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
+        hint = QLabel(tr(
+            "firststart_hint",
+            "此向导引导你完成基础 Git 配置：\n1. 选择界面语言\n"
+            "2. 定位 git.exe\n3. 填写姓名/邮箱\n4. 选择 SSH 客户端\n"), self)
+        hint.setWordWrap(True)
+        ctrl = spec.controls[0]
+        hint.setGeometry(fu.px(ctrl.x, ctrl.y, ctrl.w, ctrl.h))
+
+
+class _LanguagePage(_WizardPage):
+    def __init__(self, parent=None):
+        super().__init__("IDD_FIRSTSTARTWIZARD_LANGUAGE", parent)
+        self.setTitle(tr("firststart_language", "界面语言"))
+        spec = rc_mod.load_spec("IDD_FIRSTSTARTWIZARD_LANGUAGE")
+        fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
+
+        def placed(id_, wgt):
+            for c in spec.controls:
+                if c.ctrl_id == id_:
+                    wgt.setGeometry(fu.px(c.x, c.y, c.w, c.h))
+                    break
+            return wgt
+        hint = placed("IDC_FIRSTSTART_HINT", QLabel(
+            tr("firststart_lang_hint", "选择界面语言。"), self))
+        hint.setWordWrap(True)
+        self.lang_label = placed("IDC_STATIC", QLabel(tr("firststart_lang", "&Language:"), self))
+        self.lang_combo = placed("IDC_LANGUAGECOMBO", QComboBox(self))
+        self.lang_combo.addItems(["English", "简体中文", "繁體中文", "Deutsch"])
+        self.btn_refresh = placed("IDC_REFRESH", QPushButton(tr("refresh"), self))
+        self.link_label = QLabel("", self)
+        for c in spec.controls:
+            if c.ctrl_id == "IDC_LINK":
+                self.link_label.setGeometry(fu.px(c.x, c.y, c.w, c.h))
+
+
+class _GitPage(_WizardPage):
+    def __init__(self, parent=None):
+        super().__init__("IDD_FIRSTSTARTWIZARD_GIT", parent)
+        self.setTitle(tr("firststart_git", "Git 可执行文件"))
+        spec = rc_mod.load_spec("IDD_FIRSTSTARTWIZARD_GIT")
+        fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
+
+        def placed(id_, wgt):
+            for c in spec.controls:
+                if c.ctrl_id == id_:
+                    wgt.setGeometry(fu.px(c.x, c.y, c.w, c.h))
+                    break
+            return wgt
+        self.info = placed("IDC_STATIC", QLabel(tr(
+            "firststart_git_hint",
+            "TortoiseGit 需要一个 git.exe。"), self))
+        self.info.setWordWrap(True)
+        self.git_path = placed("IDC_MSYSGIT_PATH", QLineEdit(
+            shutil.which("git") or "", self))
+        self.btn_browse = placed("IDC_MSYSGIT_BROWSE", QPushButton("...", self))
+        self.extern_path = placed("IDC_MSYSGIT_EXTERN_PATH", QLineEdit("", self))
+        self.git_ver = placed("IDC_MSYSGIT_VER", QLabel("", self))
+        self.btn_check = placed("IDC_MSYSGIT_CHECK",
+                                QPushButton(tr("firststart_check", "C&heck now"), self))
+        self.btn_check.clicked.connect(self._check)
+        self.link_label = QLabel("", self)
+        for c in spec.controls:
+            if c.ctrl_id == "IDC_LINK":
+                self.link_label.setGeometry(fu.px(c.x, c.y, c.w, c.h))
+        self._check()
+
+    def _check(self):
+        git = self.git_path.text().strip() or shutil.which("git")
+        if git:
+            try:
+                out = subprocess.run([git, "--version"], capture_output=True,
+                                     text=True).stdout.strip()
+                self.git_ver.setText(f"Git: {out}")
+            except Exception:
+                self.git_ver.setText("")
+
+    def isComplete(self):
+        g = self.git_path.text().strip() or shutil.which("git")
+        return bool(g)
+
+
+class _UserPage(_WizardPage):
+    def __init__(self, parent=None):
+        super().__init__("IDD_FIRSTSTARTWIZARD_USER", parent)
+        self.setTitle(tr("firststart_user", "用户信息"))
+        spec = rc_mod.load_spec("IDD_FIRSTSTARTWIZARD_USER")
+        fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
+
+        def placed(id_, wgt):
+            for c in spec.controls:
+                if c.ctrl_id == id_:
+                    wgt.setGeometry(fu.px(c.x, c.y, c.w, c.h))
+                    break
+            return wgt
+        self.name_label = placed("IDC_STATIC", QLabel(tr("firststart_name", "&Name:"), self))
+        self.name_edit = placed("IDC_GIT_USERNAME", QLineEdit("", self))
+        self.email_edit = placed("IDC_GIT_USEREMAIL", QLineEdit("", self))
+        self.chk_dontsave = placed("IDC_DONTSAVE", QCheckBox(
+            tr("firststart_dontsave", "&Don't store these settings now."), self))
+
+
+class _AuthPage(_WizardPage):
+    def __init__(self, parent=None):
+        super().__init__("IDD_FIRSTSTARTWIZARD_AUTHENTICATION", parent)
+        self.setTitle(tr("firststart_auth", "身份验证"))
+        spec = rc_mod.load_spec("IDD_FIRSTSTARTWIZARD_AUTHENTICATION")
+        fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
+
+        def placed(id_, wgt):
+            for c in spec.controls:
+                if c.ctrl_id == id_:
+                    wgt.setGeometry(fu.px(c.x, c.y, c.w, c.h))
+                    break
+            return wgt
+        self.ssh_label = placed("IDC_STATIC", QLabel(tr(
+            "firststart_ssh", 'SSH (URLs look like "git@example.com")'), self))
+        self.ssh_hint = placed("IDC_FIRSTSTART_SSHHINT", QLabel(
+            tr("firststart_ssh_hint", "选择 SSH 客户端。"), self))
+        self.ssh_hint.setWordWrap(True)
+        self.ssh_combo = placed("IDC_COMBO_SSHCLIENT", QComboBox(self))
+        self.ssh_combo.addItems(["PuTTY (TortoiseGitPlink)", "ssh.exe (OpenSSH)"])
+        self.btn_genkey = placed("IDC_GENERATEPUTTYKEY",
+                                 QPushButton(tr("firststart_genkey", "&Generate PuTTY key pair"), self))
+        self.cred_combo = placed("IDC_COMBO_SIMPLECREDENTIAL", QComboBox(self))
+        self.cred_combo.addItems(["Automatic", "Store in memory", "Use credential helper"])
+        self.chk_dontsave = placed("IDC_DONTSAVE", QCheckBox(
+            tr("firststart_dontsave", "&Don't store these settings now."), self))
+        self.btn_adv = placed("IDC_ADVANCEDCONFIGURATION",
+                              QPushButton(tr("firststart_adv", "&Advanced..."), self))
+
+
+class FirstStartWizard(QWizard):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(tr("firststart_title", "First Start Wizard - PyTortoiseGit"))
+        self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
+        self._pages = [_StartPage(self), _LanguagePage(self),
+                       _GitPage(self), _UserPage(self), _AuthPage(self)]
+        for p in self._pages:
+            self.addPage(p)
+        self.language = "English"
+
+    def exec_wizard(self) -> bool:
+        result = self.exec()
+        return result == QWizard.DialogCode.Accepted if hasattr(QWizard, "DialogCode") else result == 1

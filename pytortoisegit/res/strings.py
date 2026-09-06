@@ -1,0 +1,174 @@
+"""strings.py —— 镜像 TortoiseGit 的 ResText。
+
+界面文案统一放在中文字符串表，通过 tr() 取用，便于后续替换为完整 i18n。
+"""
+
+# PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
+# Copyright (C) 2026  PyTortoiseGit contributors
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 2 of the License, or (at your option) any later
+# version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 51
+# Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# This program is derived from and mirrors the TortoiseGit project.
+
+from __future__ import annotations
+
+from typing import Callable, Dict, Optional
+
+# 缓存自实现，若启用 Qt QTranslator 可替换 _current_gettext
+_translator: Optional[Callable[[str], str]] = None
+
+STRINGS: Dict[str, str] = {
+    # ---- 通用 ----
+    "app_name": "PyTortoiseGit",
+    "ok": "确定",
+    "cancel": "取消",
+    "close": "关闭",
+    "apply": "应用",
+    "yes": "是",
+    "no": "否",
+    "browse": "浏览...",
+    "loading": "加载中...",
+    "error": "错误",
+    "warning": "警告",
+    "information": "提示",
+    "progress": "进度",
+    "refresh": "刷新",
+    "settings": "设置",
+    "repository": "仓库",
+    "file": "文件",
+    "folder": "文件夹",
+
+    # ---- 关于对话框 (AboutDlg) ----
+    "about_title": "关于",
+    "about_text": "PyTortoiseGit 是基于 PySide6 用 Python 重写的 TortoiseGit 跨平台客户端。",
+    "about_version": "版本",
+    "about_website": "仓库",
+    "about_git_version": "Git 版本",
+
+    # ---- 命令行分发 ----
+    "unknown_command": "未知命令：{command}",
+    "missing_command": "请使用 /command:<name> 指定要执行的命令",
+    "command_failed": "命令执行失败：{name} —— {message}",
+
+    # ---- 仓库 ----
+    "repo_not_found": "不是 git 仓库：{path}",
+    "select_repo_folder": "选择存放 Git 仓库的文件夹",
+    "open_repo": "打开仓库...",
+
+    # ---- Stash (StashDlg) ----
+    "stash_title": "暂存 (Stash)",
+    "stash_ref": "引用",
+    "stash_subject": "说明",
+    "stash_date": "时间",
+    "stash_create": "创建暂存",
+    "stash_apply": "应用",
+    "stash_pop": "弹出并应用",
+    "stash_drop": "丢弃",
+    "stash_clear": "清空全部",
+    "stash_msg": "暂存说明",
+    "stash_untracked": "包含未跟踪文件",
+    "stash_empty": "没有暂存的修改",
+    "stash_confirm_clear": "确定清空全部暂存吗？",
+    "stash_created": "已创建暂存",
+    "stash_applied": "已应用暂存",
+    "stash_popped": "已弹出暂存",
+    "stash_dropped": "已丢弃暂存",
+
+    # ---- 合并/变基与冲突 ----
+    "merge_title": "合并",
+    "merge_branch": "合并分支",
+    "merge_noff": "不使用快进 (--no-ff)",
+    "merge_squash": "压缩提交 (--squash)",
+    "merge_nocommit": "不自动提交 (--no-commit)",
+    "merge_message": "提交信息",
+    "merge_perform": "开始合并",
+    "merge_merged": "合并完成",
+    "merge_conflicts": "存在冲突，请解决后在提交对话框中提交",
+    "merge_in_progress": "仓库正处于合并状态",
+    "merge_abort": "中止合并",
+    "merge_aborted": "已中止合并",
+    "merge_pick": "选择要合并的分支",
+    "rebase_title": "变基 (Rebase)",
+    "rebase_target": "目标分支",
+    "rebase_interactive": "交互式 (-i)",
+    "rebase_autostash": "自动暂存 (--autostash)",
+    "rebase_start": "开始变基",
+    "rebase_continue": "继续变基",
+    "rebase_abort": "中止变基",
+    "conflict_resolved": "已标记解决",
+    "conflict_mark": "标记解决",
+    "conflict_ours": "采用我方 (ours)",
+    "conflict_theirs": "采用对方 (theirs)",
+    "conflict_extmerge": "外部合并工具",
+    "conflict_all": "全部标记解决",
+    "conflicts_title": "合并冲突",
+    "conflicts_none": "没有冲突",
+
+    # ---- Submodule ----
+    "submodule_title": "子模块",
+    "submodule_path": "路径",
+    "submodule_sha": "提交",
+    "submodule_status": "状态",
+    "submodule_desc": "远程/说明",
+    "submodule_add": "添加子模块",
+    "submodule_update": "更新",
+    "submodule_update_recursive": "递归更新 (--recursive)",
+    "submodule_update_init": "初始化后更新 (--init)",
+    "submodule_sync": "同步",
+    "submodule_deinit": "取消初始化",
+    "submodule_url": "URL",
+    "submodule_open_log": "打开日志",
+    "submodule_empty": "没有子模块",
+    "submodule_added": "已添加子模块",
+    "submodule_updated": "子模块已更新",
+    "submodule_deinited": "子模块已取消初始化",
+
+    # ---- 外部工具 ----
+    "xtool_diffcmd": "外部 diff 工具命令",
+    "xtool_mergecmd": "外部 merge 工具命令",
+    "xtool_diff_hint": "示例：\"d:\\bin\\bc.exe\" {left} {right}",
+    "xtool_merge_hint": "示例：\"d:\\bin\\bc.exe\" {base} {ours} {theirs} {out}",
+    "xtool_launch_diff": "外部工具比较",
+    "xtool_launch_merge": "外部工具合并",
+    "xtool_not_configured": "未配置外部工具，请在设置中填写命令模板",
+    "xtool_diff": "外部差异工具 (tortoisegit.externaldiff)",
+    "xtool_merge": "外部合并工具 (tortoisegit.externalmerge)",
+    "rebase_aborted": "已中止变基",
+    "status": "状态",
+    "confirm": "确认",
+}
+
+
+def tr(key: str, default: str | None = None) -> str:
+    """取界面文案。缺 key 时返回 default 或原 key。"""
+    if _translator is not None:
+        translated = _translator(key)
+        if translated:
+            return translated
+    return STRINGS.get(key, default or key)
+
+
+def set_translator(func: Optional[Callable[[str], str]]) -> None:
+    """安装自定义翻译函数（例如接入 Qt QTranslator 后）。"""
+    global _translator
+    _translator = func
+
+
+def format_string(text: str, **kwargs) -> str:
+    """格式化字符串表项（未提供参数时保留原占位符）。"""
+    try:
+        return text.format(**kwargs)
+    except (KeyError, IndexError):
+        return text

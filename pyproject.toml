@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytortoisegit"
+version = "0.1.0"
+description = "基于 PySide6 重写的 TortoiseGit 跨平台 Git 客户端"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+build = [
+    "pyinstaller>=6.0",
+]
+
+[project.scripts]
+pytortoisegit = "pytortoisegit.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["pytortoisegit*"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]

@@ -77,6 +77,7 @@ class BaseView(QPlainTextEdit):
         self._update_line_area_width(0)
         self._on_line_clicked = None
         self._screen_to_view: List[int] = []
+        self.modified = False
 
     def line_number_width(self) -> int:
         return 62
@@ -132,6 +133,12 @@ class BaseView(QPlainTextEdit):
 
     def set_writable(self, writable: bool):
         self.setReadOnly(not writable)
+
+    def is_writable(self) -> bool:
+        return not self.isReadOnly()
+
+    def set_modified(self, on: bool = True):
+        self.modified = on
 
     def set_wrap(self, wrap: bool):
         self.setLineWrapMode(
@@ -347,33 +354,48 @@ class BaseView(QPlainTextEdit):
             self.view_data[index].state = state
 
     def take_block(self, index: int, from_other: "BaseView", marked_other: bool = True):
+        from .blocks import use_view_block
         start, end = self.block_range(index)
         if end < start:
             return
-        for i in range(start, end + 1):
-            if i >= len(self.view_data) or i >= len(from_other.view_data):
-                continue
-            src = from_other.view_data[i]
-            self.view_data[i].line = src.line
-            self.view_data[i].state = DiffState.ConflictsResolved
-            self.view_data[i].marked = marked_other
-            from_other.view_data[i].marked = marked_other
+        use_view_block(self.view_data, from_other.view_data, start, end)
+        if marked_other:
+            for i in range(start, min(end + 1, len(self.view_data), len(from_other.view_data))):
+                self.view_data[i].marked = True
+                from_other.view_data[i].marked = True
+        self.set_modified()
         self._rebuild()
         from_other._rebuild()
 
     def take_file(self, from_other: "BaseView"):
-        n = min(len(self.view_data), len(from_other.view_data))
-        for i in range(n):
-            self.view_data[i].line = from_other.view_data[i].line
-            self.view_data[i].state = DiffState.ConflictsResolved
+        from .blocks import use_view_block
+        if not self.view_data:
+            return
+        use_view_block(self.view_data, from_other.view_data, 0, len(self.view_data) - 1)
+        self.set_modified()
         self._rebuild()
 
+    def use_resolved_block(self, from_other: "BaseView", first: int, last: int):
+        from .blocks import use_resolved_block
+        if last < first:
+            return
+        use_resolved_block(self.view_data, from_other.view_data, first, last)
+        self.set_modified()
+        self._rebuild()
+
+    def use_resolved_file(self, from_other: "BaseView"):
+        if not self.view_data:
+            return
+        self.use_resolved_block(from_other, 0, len(self.view_data) - 1)
+
     def mark_resolved(self, index: int):
+        from .blocks import resolve_state
         start, end = self.block_range(index)
         for i in range(start, end + 1):
             if 0 <= i < len(self.view_data):
-                self.view_data[i].state = DiffState.ConflictsResolved
+                self.view_data[i].state = resolve_state(self.view_data[i].state)
                 self.view_data[i].marked = False
+        self.set_modified()
         self._rebuild()
 
     def merged_lines(self) -> List[str]:

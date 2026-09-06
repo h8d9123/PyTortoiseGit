@@ -20,7 +20,7 @@
 """undo.py —— TortoiseMerge 的 CUndo（撤销/重做），逐行翻译 Undo.h/.cpp。
 
 viewstate：一次变更的数据（各行文本/状态/EOL/marked/增删、删除/替换的行）。
-allviewstate：左右视图状态快照。CUndo 维护 undo/redo 栈 + 分组(Grouping)。
+allviewstate：左/右/底栏快照。CUndo 维护 undo/redo 栈 + 分组(Grouping)。
 """
 
 from __future__ import annotations
@@ -28,7 +28,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-from .viewdata import DiffState, EOL, HideState, ViewData
+from .viewdata import DiffState, EOL, ViewData
+
+
+def _clone_list(data: Optional[list]) -> Optional[List[ViewData]]:
+    if data is None:
+        return None
+    return [vd.clone() for vd in data]
+
+
+def _replace_list(target: list, snap: Optional[list]) -> None:
+    if snap is None:
+        return
+    target[:] = [vd.clone() for vd in snap]
 
 
 @dataclass
@@ -73,16 +85,26 @@ class ViewState:
 
 @dataclass
 class AllViewState:
-    left: ViewState = field(default_factory=ViewState)
-    right: ViewState = field(default_factory=ViewState)
+    left: List[ViewData] = field(default_factory=list)
+    right: List[ViewData] = field(default_factory=list)
+    bottom: Optional[List[ViewData]] = None
 
     def is_empty(self) -> bool:
-        return self.left.is_empty() and self.right.is_empty()
+        return not self.left and not self.right and not self.bottom
 
-    def snapshot(self, left_data: list, right_data: list) -> "AllViewState":
-        self.left = ViewState.from_view(None, left_data)
-        self.right = ViewState.from_view(None, right_data)
+    def snapshot(self, left_data: list, right_data: list,
+                 bottom_data: Optional[list] = None) -> "AllViewState":
+        self.left = _clone_list(left_data) or []
+        self.right = _clone_list(right_data) or []
+        self.bottom = _clone_list(bottom_data)
         return self
+
+    def restore_into(self, left_data: list, right_data: list,
+                     bottom_data: Optional[list] = None) -> None:
+        _replace_list(left_data, self.left)
+        _replace_list(right_data, self.right)
+        if bottom_data is not None:
+            _replace_list(bottom_data, self.bottom)
 
 
 class CUndo:
@@ -114,7 +136,6 @@ class CUndo:
 
     # ---- AddState ----
     def add_state(self, state: AllViewState):
-        # 新变更清空 redo
         self._redo.clear()
         self._undo.append(state)
 
@@ -122,27 +143,26 @@ class CUndo:
         self._undo.clear()
         self._redo.clear()
 
-    # ---- Undo / Redo ----
-    def undo(self, left_data: list, right_data: list) -> bool:
+    def _snap(self, left_data: list, right_data: list,
+              bottom_data: Optional[list] = None) -> AllViewState:
+        return AllViewState().snapshot(left_data, right_data, bottom_data)
+
+    def undo(self, left_data: list, right_data: list,
+             bottom_data: Optional[list] = None) -> bool:
         if not self._undo:
             return False
         state = self._undo.pop()
-        # 先保存当前状态到 redo
-        cur = AllViewState().snapshot(left_data, right_data)
-        self._redo.append(cur)
-        # 恢复
-        state.left.restore(left_data)
-        state.right.restore(right_data)
+        self._redo.append(self._snap(left_data, right_data, bottom_data))
+        state.restore_into(left_data, right_data, bottom_data)
         return True
 
-    def redo(self, left_data: list, right_data: list) -> bool:
+    def redo(self, left_data: list, right_data: list,
+             bottom_data: Optional[list] = None) -> bool:
         if not self._redo:
             return False
         state = self._redo.pop()
-        cur = AllViewState().snapshot(left_data, right_data)
-        self._undo.append(cur)
-        state.left.restore(left_data)
-        state.right.restore(right_data)
+        self._undo.append(self._snap(left_data, right_data, bottom_data))
+        state.restore_into(left_data, right_data, bottom_data)
         return True
 
 

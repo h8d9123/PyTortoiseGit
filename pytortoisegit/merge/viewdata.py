@@ -88,6 +88,10 @@ class ViewData:
         self.hidestate = hidestate
         self.marked = marked
 
+    def clone(self) -> "ViewData":
+        return ViewData(self.line, self.state, self.linenumber,
+                        self.ending, self.hidestate, self.marked)
+
     # ---- 状态判断（翻译 BaseView IsStateXxx）----
     @property
     def is_removed(self) -> bool:

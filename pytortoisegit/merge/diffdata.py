@@ -46,6 +46,70 @@ class DiffData:
         patch_text = self._diff(path, rev1, rev2)
         return self._align(old_lines, new_lines, patch_text)
 
+    def three_way(self, path: str, our_rev: str, their_rev: str):
+        """三栏合并：base=merge-base(our,their)，左=theirs、右=ours、
+        底=git merge-file 合并结果(冲突标记)。
+
+        翻译 DiffData::DoThreeWayDiff：
+          * 左右两栏用 base→theirs / base→ours 的独立 diff(现有 load)
+          * bottom 用 git merge-file 做真正的三路合并(冲突 <<<<<<< ======= >>>>>>>)
+        """
+        base = self.repo.runner.run(
+            "merge-base", our_rev, their_rev).stdout.strip() or our_rev
+        # 左右两栏(独立 diff)
+        _, their_rows = self.load(path, base, their_rev)   # theirs 侧
+        _, our_rows = self.load(path, base, our_rev)       # ours 侧
+        # bottom: git merge-file
+        merged_lines = self._merge_file(path, base, our_rev, their_rev)
+        # 对齐 bottom 行
+        bottom: List[ViewData] = []
+        for line in merged_lines:
+            state = DiffState.Conflict if line.startswith(("<<<<<<<", "=======", ">>>>>>>")) \
+                else DiffState.Normal
+            bottom.append(ViewData(line, state, len(bottom) + 1))
+        return their_rows, our_rows, bottom
+
+    def _merge_file(self, path: str, base, our, their) -> List[str]:
+        """用 git 读取三个版本内容，git merge-file 合并。"""
+        import subprocess
+        b = self._read(path, base)
+        o = self._read(path, our)
+        t = self._read(path, their)
+        if not b and not o and not t:
+            return []
+        # 写到临时文件，git merge-file --dd 合并 o(ours) t(theirs) b(base)
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as td:
+            def write(name, lines):
+                fp = os.path.join(td, name)
+                with open(fp, "w", encoding="utf-8", newline="\n") as fh:
+                    fh.write("\n".join(lines) + ("\n" if lines else ""))
+                return fp
+            bf = write("base", b)
+            of = write("ours", o)
+            tf = write("theirs", t)
+            res = subprocess.run(
+                ["git", "merge-file", "-p", of, bf, tf],
+                capture_output=True, text=True)
+            out = res.stdout or ""
+            return out.splitlines()
+
+    def _build_side_map(self, base_lines, side_lines, path, base, rev) -> dict:
+        """返回 {base行号: side文本}，用 unified diff 的行号映射。"""
+        diff_text = self._diff(path, base, rev)
+        full = self._align(base_lines, side_lines, diff_text)
+        left_rows, right_rows = full
+        # left_rows 下标与 base 对齐（含 Empty 占位）
+        mapping = {}
+        for i, vd in enumerate(left_rows):
+            if vd.state in (DiffState.Empty, DiffState.Removed) and not vd.line:
+                mapping[i] = ""
+            else:
+                # left_rows[i] 对应该 base 行；联动 right_rows[i] 是该方向文本
+                if i < len(right_rows):
+                    mapping[i] = right_rows[i].line if not right_rows[i].is_empty else ""
+        return mapping
+
     def _read(self, path: str, rev: str | None) -> List[str]:
         if rev:
             out = self.repo.runner.run("show", f"{rev}:{path}").stdout

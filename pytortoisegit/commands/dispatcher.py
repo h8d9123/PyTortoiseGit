@@ -95,7 +95,7 @@ def _ensure_imports():
                 "worktreelist", "newworktree", "switch", "repobrowser",
                 "revisiongraph",
                 "requestpull", "sendmail", "lfslock", "lfslocks",
-                "mergeabort", "addremote", "firststart", "menu",
+                "mergeabort", "merge3", "addremote", "firststart", "menu",
                 "stashsave", "stashpop", "stashapply", "stashlist",
                 "subsync", "worktreecreate", "unignore", "lfsunlock",
                 "cat", "cleanup", "rename", "resolve", "commitisonrefs",

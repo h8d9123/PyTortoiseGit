@@ -61,14 +61,15 @@ class MergeFrm(QMainWindow):
     """并排 diff 主窗口（对齐 TortoiseGitMerge CMainFrame）。"""
 
     def __init__(self, repo: Repository, path: str, rev1: str | None,
-                 rev2: str | None, parent=None):
+                 rev2: str | None, parent=None, three_way: bool = False):
         super().__init__(parent, Qt.WindowType.Window)
         self.repo = repo
         self.path = path
         self.rev1 = rev1
         self.rev2 = rev2
+        self.three_way = three_way
         self.setWindowTitle(tr("merge_title", "比较 - {}").format(path))
-        self.resize(1020, 660)
+        self.resize(1020, 680 if not three_way else 760)
         self._build_ui()
         self._load()
 
@@ -120,7 +121,20 @@ class MergeFrm(QMainWindow):
         split.addWidget(self.right_view)
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 1)
-        lay.addWidget(split, 1)
+
+        if self.three_way:
+            # 三栏合并：上方左右对比 + 下方合并输出
+            outer = QSplitter(Qt.Orientation.Vertical, central)
+            outer.addWidget(split)
+            self.bottom_view = LeftView(outer)
+            self._bottom_label = QLabel(tr("merge_output", "合并输出"), outer)
+            bottom_box = _wrap_box(outer, self.bottom_view, self._bottom_label)
+            outer.addWidget(bottom_box)
+            outer.setStretchFactor(0, 3)
+            outer.setStretchFactor(1, 2)
+            lay.addWidget(outer, 1)
+        else:
+            lay.addWidget(split, 1)
 
         box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, central)
         box.rejected.connect(self.close)
@@ -130,6 +144,27 @@ class MergeFrm(QMainWindow):
         self.setCentralWidget(central)
 
     def _load(self):
+        if self.three_way:
+            left, right, bottom = DiffData(self.repo).three_way(
+                self.path, self.rev2 or "HEAD", self.rev1 or "HEAD")
+            mark_moved_blocks(
+                left, right, left_lines=[vd.line for vd in left],
+                right_lines=[vd.line for vd in right], min_block=3)
+            self.left_view.set_view_data(left)
+            self.right_view.set_view_data(right)
+            self.bottom_view.set_view_data(bottom)
+            self._undo_stack = get_undo()
+            self._undo_stack.clear()
+            self.line_bar.set_rows([vd.state for vd in left])
+            self._locator = LocatorBar(self)
+            self._locator.set_states([vd.state for vd in left])
+            self._locator._on_locate = self._on_bar_click
+            self._sync_scrolls()
+            conflicts = sum(1 for vd in bottom if vd.is_conflict)
+            self._header.setText(
+                f" {self.path}  ·  ours={self.rev2 or '工作区'}  theirs={self.rev1 or '工作区'}   "
+                f"冲突 {conflicts}")
+            return
         left, right = DiffData(self.repo).load(self.path, self.rev1, self.rev2)
         # 移动块检测（对齐 TortoiseMerge MovedBlocks）：把左右匹配行标 MovedFrom/MovedTo
         mark_moved_blocks(
@@ -155,6 +190,11 @@ class MergeFrm(QMainWindow):
             self.right_view.verticalScrollBar().setValue)
         self.right_view.verticalScrollBar().valueChanged.connect(
             self.left_view.verticalScrollBar().setValue)
+        if self.three_way and hasattr(self, "bottom_view"):
+            self.left_view.verticalScrollBar().valueChanged.connect(
+                self.bottom_view.verticalScrollBar().setValue)
+            self.right_view.verticalScrollBar().valueChanged.connect(
+                self.bottom_view.verticalScrollBar().setValue)
 
     def _on_bar_click(self, line: int):
         self.left_view.scroll_all_to_line(line, self.right_view)
@@ -259,6 +299,12 @@ class MergeFrm(QMainWindow):
             self.left_view.go_to_diff(line, self.right_view)
 
     def _update_header(self):
+        if self.three_way and hasattr(self, "bottom_view"):
+            conflicts = sum(1 for vd in self.bottom_view.view_data if vd.is_conflict)
+            self._header.setText(
+                f" {self.path}  ·  ours={self.rev2 or '工作区'}  theirs={self.rev1 or '工作区'}   "
+                f"冲突 {conflicts}")
+            return
         added = sum(1 for vd in self.right_view.view_data if vd.is_added)
         removed = sum(1 for vd in self.left_view.view_data if vd.is_removed)
         solved = sum(1 for vd in self.right_view.view_data
@@ -268,7 +314,10 @@ class MergeFrm(QMainWindow):
             f"+{added}/-{removed}   已解决 {solved}")
 
     def _save_result(self):
-        merged = self.right_view.merged_lines()
+        if self.three_way and hasattr(self, "bottom_view"):
+            merged = self.bottom_view.merged_lines()
+        else:
+            merged = self.right_view.merged_lines()
         if not merged:
             QMessageBox.information(self, tr("merge_save", "保存"),
                                     tr("merge_no_result", "没有可保存的合并结果。"))
@@ -293,4 +342,15 @@ def open_merge_window(repo: Repository, path: str, rev1: str | None,
     """打开一个并排 diff 主窗口。"""
     frm = MergeFrm(repo, path, rev1, rev2, parent)
     frm.show()
+
+
+def _wrap_box(parent, view, label):
+    """把 label + view 包进一个 QWidget。"""
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+    box = QWidget(parent)
+    v = QVBoxLayout(box)
+    v.setContentsMargins(0, 0, 0, 0)
+    v.addWidget(label)
+    v.addWidget(view, 1)
+    return box
     return frm

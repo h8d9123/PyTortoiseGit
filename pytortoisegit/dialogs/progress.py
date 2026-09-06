@@ -55,6 +55,7 @@ class ProgressDialog(QDialog):
         self._worker_thread: Optional[threading.Thread] = None
         self._poll: QTimer | None = None
         self._on_finish: Optional[Callable[[bool], None]] = None
+        self._morphed = False
         self._build_ui()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._drain)
@@ -124,7 +125,14 @@ class ProgressDialog(QDialog):
     def run(self, fn: Callable):
         """在后台线程执行 fn()；返回 True 或 (ok, exit_code)。完成后调用 _on_finish。"""
         self._done = False
+        # 恢复“中止”按钮形态（可能已被 _finish 改写成“关闭”）
+        self._btn_close.show()
         self._btn_close.setEnabled(False)
+        if self._cancellable and self._morphed:
+            self._btn_cancel.setText(tr("abort", "中止"))
+            self._btn_cancel.clicked.disconnect(self.accept)
+            self._btn_cancel.clicked.connect(self.cancel)
+            self._morphed = False
         self.progress.setRange(0, 0)
         self._worker_thread = threading.Thread(
             target=self._runner, args=(fn,), daemon=True)
@@ -174,15 +182,26 @@ class ProgressDialog(QDialog):
             msg = tr("progress_success", "成功")
             self._label.setText(msg)
             self.log("\n" + msg)
-            self._btn_cancel.setEnabled(False)
         else:
             msg = tr("progress_unclean", "git 未能干净退出（退出码 {}）").format(code)
             self._label.setText(msg)
             self.log("\n" + msg)
             self.progress.setStyleSheet(
                 "QProgressBar::chunk { background-color: #c00000; }")
-        self._btn_close.setEnabled(True)
-        self._btn_close.setFocus()
+        # 对齐用户预期：操作结束后“中止”按钮就地变成“关闭”
+        close_btn = self._btn_close
+        if self._cancellable and not self._morphed:
+            self._btn_close.hide()
+            self._btn_cancel.setText(tr("close"))
+            self._btn_cancel.clicked.disconnect(self.cancel)
+            self._btn_cancel.clicked.connect(self.accept)
+            self._morphed = True
+        if self._cancellable:
+            self._btn_cancel.setEnabled(True)
+            close_btn = self._btn_cancel
+        close_btn.setEnabled(True)
+        close_btn.setDefault(True)
+        close_btn.setFocus()
         if self._on_finish:
             self._on_finish(ok)
 

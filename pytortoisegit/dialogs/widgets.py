@@ -42,12 +42,25 @@ class DiffView(QPlainTextEdit):
 #
 # This program is derived from and mirrors the TortoiseGit project.
 
-    COLORS = {
-        "addition": QColor("#223322"),
-        "deletion": QColor("#332222"),
-        "hunk": QColor("#d8a000"),
-        "meta": QColor("#777777"),
-    }
+    # TortoiseGit TortoiseUDiff 配色（浅色默认 / 深色）
+    LIGHT = dict(
+        text="#0A2436", back="#ffffff",
+        add_back="#CCFFCC", add_fore="#000000",
+        del_back="#FFDDDD", del_fore="#000000",
+        header_back="#FFFF80", header_fore="#800000",
+        position_fore="#FF0000",
+        comment_fore="#008000",
+        command_back="#FFFFFF", command_fore="#0A2436",
+    )
+    DARK = dict(
+        text="#DDDDDD", back="#202020",
+        add_back="#104010", add_fore="#C8FFC8",
+        del_back="#402020", del_fore="#FFC8C8",
+        header_back="#303000", header_fore="#C00000",
+        position_fore="#FF2020",
+        comment_fore="#008000",
+        command_back="#202020", command_fore="#CCE2F5",
+    )
 
     def __init__(self, parent=None, monospace: bool = True):
         super().__init__(parent)
@@ -58,13 +71,25 @@ class DiffView(QPlainTextEdit):
             f.setStyleHint(QFont.StyleHint.Monospace)
             f.setPointSize(10)
             self.setFont(f)
-        self._loader = DiffHighlighter(self.document())
+        self._loader = DiffHighlighter(self.document(), self._palette())
+
+    @staticmethod
+    def is_dark() -> bool:
+        try:
+            from PySide6.QtGui import QGuiApplication
+            return QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
+        except Exception:
+            return False
+
+    def _palette(self) -> dict:
+        return self.DARK if self.is_dark() else self.LIGHT
 
     def display_text(self, text: str, title: str = ""):
         self.clear()
         if title:
             self.appendPlainText(title)
         self.appendPlainText(text)
+        self._loader.update_palette(self._palette())
         self._loader._rebuild()
 
     def display_patch(self, text: str, title: str = ""):
@@ -72,23 +97,42 @@ class DiffView(QPlainTextEdit):
 
 
 class DiffHighlighter(QSyntaxHighlighter):
-    """按 diff 行类型着色。"""
+    """按 diff 行类型着色（对齐 TortoiseGit TortoiseUDiff 的 SCE_DIFF_* 语义）。"""
 
-    def __init__(self, document):
+    def __init__(self, document, palette: dict | None = None):
         super().__init__(document)
-        self._cache: List[tuple] = []
-        fmt = QTextCharFormat()
-        self._fmt_add = QTextCharFormat()
-        self._fmt_add.setBackground(QColor("#2a3a2a"))
-        self._fmt_add.setForeground(QColor("#9fdc9f"))
-        self._fmt_del = QTextCharFormat()
-        self._fmt_del.setBackground(QColor("#3a2a2a"))
-        self._fmt_del.setForeground(QColor("#f0b0b0"))
-        self._fmt_hunk = QTextCharFormat()
-        self._fmt_hunk.setForeground(QColor("#e0a000"))
-        self._fmt_meta = QTextCharFormat()
-        self._fmt_meta.setForeground(QColor("#888888"))
         self._lines: List[str] = []
+        self.update_palette(palette or DiffView.LIGHT)
+
+    def update_palette(self, p: dict):
+        self._p = p
+        fmt = QTextCharFormat()
+        # 默认文本
+        self._fmt_default = QTextCharFormat()
+        self._fmt_default.setForeground(QColor(p["text"]))
+        self._fmt_default.setBackground(QColor(p["back"]))
+        # 添加行（SCE_DIFF_ADDED）
+        self._fmt_add = QTextCharFormat()
+        self._fmt_add.setBackground(QColor(p["add_back"]))
+        self._fmt_add.setForeground(QColor(p["add_fore"]))
+        # 删除行（SCE_DIFF_DELETED）
+        self._fmt_del = QTextCharFormat()
+        self._fmt_del.setBackground(QColor(p["del_back"]))
+        self._fmt_del.setForeground(QColor(p["del_fore"]))
+        # 位置行 @@（SCE_DIFF_POSITION）
+        self._fmt_position = QTextCharFormat()
+        self._fmt_position.setForeground(QColor(p["position_fore"]))
+        # header（SCE_DIFF_HEADER）
+        self._fmt_header = QTextCharFormat()
+        self._fmt_header.setForeground(QColor(p["header_fore"]))
+        self._fmt_header.setBackground(QColor(p["header_back"]))
+        # 注释/元信息（diff --git / index / --- / +++）
+        self._fmt_meta = QTextCharFormat()
+        self._fmt_meta.setForeground(QColor(p["comment_fore"]))
+        # 命令（+/- 行正文，与添加/删除同底色但更浅）
+        self._fmt_cmd = QTextCharFormat()
+        self._fmt_cmd.setForeground(QColor(p["command_fore"]))
+        self._fmt_cmd.setBackground(QColor(p["command_back"]))
 
     def _rebuild(self):
         doc = self.document()
@@ -103,16 +147,21 @@ class DiffHighlighter(QSyntaxHighlighter):
             line = self._lines[idx]
         except IndexError:
             line = text
+        n = len(line)
         if line.startswith("@@") or line.startswith("==="):
-            self.setFormat(0, len(line), self._fmt_hunk)
+            self.setFormat(0, n, self._fmt_position)
+        elif line.startswith(("diff --git", "index ")):
+            self.setFormat(0, n, self._fmt_meta)
+        elif line.startswith(("--- ", "+++ ", "new file", "old mode", "new mode")):
+            self.setFormat(0, n, self._fmt_header)
         elif line.startswith("+"):
-            self.setFormat(0, len(line), self._fmt_del if False else self._fmt_add)
+            self.setFormat(0, n, self._fmt_add)
         elif line.startswith("-"):
-            self.setFormat(0, len(line), self._fmt_del)
-        elif line.startswith(("diff --git", "index ", "---", "+++", "new file", "old mode", "new mode")):
-            self.setFormat(0, len(line), self._fmt_meta)
+            self.setFormat(0, n, self._fmt_del)
         elif line.startswith("***"):
-            self.setFormat(0, len(line), self._fmt_hunk)
+            self.setFormat(0, n, self._fmt_position)
+        else:
+            self.setFormat(0, n, self._fmt_default)
 
 
 def author_color(author_name: str) -> QColor:

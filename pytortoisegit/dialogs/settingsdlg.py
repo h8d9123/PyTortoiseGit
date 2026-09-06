@@ -1,10 +1,7 @@
 """settingsdlg.py —— SettingsDlg：设置对话框（属性页，镜像 TortoiseGit）。
 
-用 QTreeWidget(左侧树) + QStackedWidget(右侧页) 复刻 TortoiseGit 的
-CPropertySheet 属性页。页面按 IDD_SETTINGS* 模板排版。
-当前复刻核心页：General / Context Menu / ExtMenu / Dialogs / Git /
-Diff Viewer / Merge Tool / Network(Proxy) / Saved Data / Credential /
-Advanced(Git config)。
+用 QTreeWidget + QStackedWidget 复刻 CTreePropSheet。
+页面树对齐 CSettings::AddPropPages，各页按 IDD_SETTINGS* 模板排版。
 """
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
@@ -31,20 +28,14 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from typing import List, Tuple
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
     QDialog,
     QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QListWidget,
     QMessageBox,
-    QPlainTextEdit,
     QPushButton,
     QSplitter,
     QStackedWidget,
@@ -59,7 +50,12 @@ from ..git.repo import Repository
 from ..res.strings import tr
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
-from ..utils.pick import pick_file
+
+
+def _is_win11() -> bool:
+    if sys.platform != "win32":
+        return False
+    return sys.getwindowsversion().build >= 22000
 
 
 # ---------------------------------------------------------------------------
@@ -113,22 +109,13 @@ class _SettingPage(QWidget):
         pass
 
 
-# ---------------------------------------------------------------------------
-# General 页（IDD_SETTINGSMAIN）
-# ---------------------------------------------------------------------------
+class _RcPage(_SettingPage):
+    """按模板 ID 生成的通用设置页。"""
 
-class _GeneralPage(_SettingPage):
-    TEMPLATE = "IDD_SETTINGSMAIN"
+    def __init__(self, template: str, parent=None):
+        self.TEMPLATE = template
+        super().__init__(parent)
 
-    def _build_ui(self):
-        super()._build_ui()
-        self.name_edit = None
-        self.email_edit = None
-
-
-# ---------------------------------------------------------------------------
-# Git 页（IDD_SETTINGIT_CONFIG）
-# ---------------------------------------------------------------------------
 
 class _GitPage(_SettingPage):
     TEMPLATE = "IDD_SETTINGIT_CONFIG"
@@ -141,10 +128,6 @@ class _GitPage(_SettingPage):
     def email_edit(self):
         return self._ctl.get("IDC_GIT_USEREMAIL")
 
-
-# ---------------------------------------------------------------------------
-# 外部程序页（Diff / Merge）
-# ---------------------------------------------------------------------------
 
 class _DiffPage(_SettingPage):
     TEMPLATE = "IDD_SETTINGSPROGSDIFF"
@@ -166,10 +149,6 @@ class _MergePage(_SettingPage):
         return self._ctl.get("IDC_EXTMERGE")
 
 
-# ---------------------------------------------------------------------------
-# Network 页（IDD_SETTINGSPROXY）
-# ---------------------------------------------------------------------------
-
 class _NetworkPage(_SettingPage):
     TEMPLATE = "IDD_SETTINGSPROXY"
 
@@ -180,46 +159,6 @@ class _NetworkPage(_SettingPage):
     @property
     def port_edit(self):
         return self._ctl.get("IDC_SERVERPORT")
-
-
-# ---------------------------------------------------------------------------
-# 其他简单页面：直接按 rc 生成控件（无特殊逻辑）
-# ---------------------------------------------------------------------------
-
-class _LookAndFeelPage(_SettingPage):
-    TEMPLATE = "IDD_SETTINGSLOOKANDFEEL"
-
-
-class _ExtMenuPage(_SettingPage):
-    TEMPLATE = "IDD_SETTINGSEXTMENU"
-
-
-class _DialogsPage(_SettingPage):
-    TEMPLATE = "IDD_SETTINGSDIALOGS"
-
-
-class _Dialogs2Page(_SettingPage):
-    TEMPLATE = "IDD_SETTINGSDIALOGS2"
-
-
-class _ColorsPage(_SettingPage):
-    TEMPLATE = "IDD_SETTINGSCOLORS_1"
-
-
-class _SavedDataPage(_SettingPage):
-    TEMPLATE = "IDD_SETTINGSSAVEDDATA"
-
-
-class _OverlayPage(_SettingPage):
-    TEMPLATE = "IDD_SETTINGSOVERLAY"
-
-
-class _CredentialPage(_SettingPage):
-    TEMPLATE = "IDD_SETTINGSCREDENTIAL"
-
-
-class _AdvancedPage(_SettingPage):
-    TEMPLATE = "IDD_SETTINGS_CONFIG"
 
 
 # ---------------------------------------------------------------------------
@@ -243,29 +182,37 @@ class SettingsDlg(QDialog):
 
     # ---- UI ----
     def _build_ui(self):
-        self.setWindowTitle(tr("settings_title", "设置"))
-        self.resize(760, 500)
+        title = tr("settings_title", "设置")
+        if self.repo is not None:
+            title = f"{title} - {self.repo.root}"
+        self.setWindowTitle(title)
+        self.resize(860, 560)
         root = QVBoxLayout(self)
 
         split = QSplitter(self)
         self.tree = QTreeWidget(split)
         self.tree.setHeaderHidden(True)
-        self.tree.setFixedWidth(200)
+        self.tree.setMinimumWidth(220)
         self.stack = QStackedWidget(split)
         split.addWidget(self.tree)
         split.addWidget(self.stack)
+        split.setStretchFactor(0, 0)
+        split.setStretchFactor(1, 1)
+        split.setSizes([220, 620])
         root.addWidget(split, 1)
 
         btnbar = QHBoxLayout()
         btnbar.addStretch(1)
         self.btn_ok = QPushButton(tr("ok"), self)
         self.btn_ok.setDefault(True)
-        self.btn_ok.clicked.connect(self._save_all)
+        self.btn_ok.clicked.connect(self._on_ok)
         self.btn_cancel = QPushButton(tr("cancel"), self)
         self.btn_cancel.clicked.connect(self.reject)
         self.btn_apply = QPushButton(tr("apply"), self)
-        self.btn_apply.clicked.connect(self._save_all)
-        for b in (self.btn_ok, self.btn_cancel, self.btn_apply):
+        self.btn_apply.clicked.connect(self._apply)
+        self.btn_help = QPushButton(tr("help"), self)
+        self.btn_help.clicked.connect(self._on_help)
+        for b in (self.btn_ok, self.btn_cancel, self.btn_apply, self.btn_help):
             btnbar.addWidget(b)
         root.addLayout(btnbar)
 
@@ -273,63 +220,94 @@ class SettingsDlg(QDialog):
         self._build_pages()
 
     def _build_pages(self):
-        # (标题, 类别, 页面实例)
-        pages = [
-            (tr("settings_general", "General"), None, _GeneralPage(self)),
-            (tr("settings_look", "Context Menu"), "general", _LookAndFeelPage(self)),
-            (tr("settings_extmenu", "Context Menu 2"), "general", _ExtMenuPage(self)),
-            (tr("settings_dialogs", "Dialogs"), "general", _DialogsPage(self)),
-            (tr("settings_dialogs2", "Dialogs 2"), "general", _Dialogs2Page(self)),
-            (tr("settings_colors", "Colors"), "general", _ColorsPage(self)),
-            (tr("settings_git", "Git"), None, _GitPage(self)),
-            (tr("settings_diff", "Diff Viewer"), "git", _DiffPage(self)),
-            (tr("settings_merge", "Merge Tool"), "git", _MergePage(self)),
-            (tr("settings_network", "Network"), None, _NetworkPage(self)),
-            (tr("settings_saved", "Saved Data"), None, _SavedDataPage(self)),
-            (tr("settings_overlay", "Overlay Icons"), None, _OverlayPage(self)),
-            (tr("settings_credential", "Credential"), None, _CredentialPage(self)),
-            (tr("settings_advanced", "Advanced"), None, _AdvancedPage(self)),
-        ]
-        parents: dict = {}
+        """对齐 CSettings::AddPropPages 的树结构与顺序。"""
+        self._items: dict[str, QTreeWidgetItem] = {}
+        has_repo = self.repo is not None
+
+        main = self._add_page("main", _RcPage("IDD_SETTINGSMAIN", self), "IDI_GENERAL")
+        self._add_page("look", _RcPage("IDD_SETTINGSLOOKANDFEEL", self), "IDI_MISC", main)
+        self._add_page("extmenu", _RcPage("IDD_SETTINGSEXTMENU", self), "IDI_MISC", main)
+        if _is_win11():
+            self._add_page(
+                "win11menu",
+                _RcPage("IDD_SETTINGSWIN11CONTEXTMENU", self),
+                "IDI_MISC",
+                main,
+            )
+        self._add_page("dialog", _RcPage("IDD_SETTINGSDIALOGS", self), "IDI_DIALOGS", main)
+        self._add_page("dialog2", _RcPage("IDD_SETTINGSDIALOGS2", self), "IDI_DIALOGS", main)
+        self._add_page("dialog3", _RcPage("IDD_SETTINGSDIALOGS3", self), "IDI_DIALOGS", main)
+        self._add_page("color1", _RcPage("IDD_SETTINGSCOLORS_1", self), "IDI_LOOKANDFEEL", main)
+        self._add_page("color2", _RcPage("IDD_SETTINGSCOLORS_2", self), "IDI_LOOKANDFEEL", main)
+        self._add_page("color3", _RcPage("IDD_SETTINGSCOLORS_3", self), "IDI_LOOKANDFEEL", main)
+        self._add_page(
+            "alternativeeditor",
+            _RcPage("IDD_SETTINGSPROGSALTERNATIVEEDITOR", self),
+            "IDI_NOTEPAD",
+            main,
+        )
+
+        git = self._add_page("gitconfig", _GitPage(self), "IDI_GITCONFIG")
+        if has_repo:
+            self._add_page("gitremote", _RcPage("IDD_SETTINREMOTE", self), "IDI_GITREMOTE", git)
+        self._add_page(
+            "gitcredential", _RcPage("IDD_SETTINGSCREDENTIAL", self), "IDI_GITCREDENTIAL", git)
+
+        hooks = self._add_page("hooks", _RcPage("IDD_SETTINGSHOOKS", self), "IDI_HOOK")
+        self._add_page("bugtraq", _RcPage("IDD_SETTINGSBUGTRAQ", self), "IDI_BUGTRAQ", hooks)
+        if has_repo:
+            self._add_page(
+                "bugtraqconfig",
+                _RcPage("IDD_SETTINGSBUGTRAQ_CONFIG", self),
+                "IDI_BUGTRAQ",
+                hooks,
+            )
+
+        overlay = self._add_page("overlay", _RcPage("IDD_SETTINGSOVERLAY", self), "IDI_SET_OVERLAYS")
+        self._add_page("overlays", _RcPage("IDD_SETOVERLAYICONS", self), "IDI_ICONSET", overlay)
+        self._add_page(
+            "overlayshandlers",
+            _RcPage("IDD_SETTINGSOVERLAYHANDLERS", self),
+            "IDI_SET_OVERLAYS",
+            overlay,
+        )
+
+        proxy = self._add_page("proxy", _NetworkPage(self), "IDI_PROXY")
+        self._add_page("smtp", _RcPage("IDD_SETTINGSMTP", self), "IDI_MISC", proxy)
+
+        diff = self._add_page("diff", _DiffPage(self), "IDI_SWITCHLEFTRIGHT")
+        self._add_page("merge", _MergePage(self), "IDI_MERGEACTIVE", diff)
+
+        self._add_page("save", _RcPage("IDD_SETTINGSSAVEDDATA", self), "IDI_SAVEDDATA")
+        self._add_page("blame", _RcPage("IDD_SETTINGSTBLAME", self), "IDI_TORTOISEBLAME")
+        self._add_page("udiff", _RcPage("IDD_SETTINGSUDIFF", self), "IDI_TORTOISEUDIFF")
+        self._add_page("advanced", _RcPage("IDD_SETTINGS_CONFIG", self), "IDI_GENERAL")
+
+        self.tree.expandAll()
+        default = "gitconfig" if has_repo else "main"
+        item = self._items.get(default) or self._items.get("main")
+        if item is not None:
+            self.tree.setCurrentItem(item)
+
+    def _add_page(self, key: str, page: _SettingPage, icon_name: str,
+                  parent: QTreeWidgetItem | None = None) -> QTreeWidgetItem:
+        idx = self.stack.count()
+        self.stack.addWidget(page)
+        item = QTreeWidgetItem(parent if parent is not None else self.tree)
+        caption = getattr(page, "_spec", None)
+        item.setText(0, caption.caption if caption and caption.caption else key)
+        item.setData(0, Qt.ItemDataRole.UserRole, idx)
+        item.setData(0, Qt.ItemDataRole.UserRole + 1, key)
         try:
             from ..res import icons as _icons
+            ic = _icons.icon(icon_name)
+            if ic is not None and not ic.isNull():
+                item.setIcon(0, ic)
         except Exception:
-            _icons = None
-        for label, category, page in pages:
-            # 找已存在的单个同名项避免重复堆叠
-            where = self.stack.count()
-            self.stack.addWidget(page)
-            dupe = QTreeWidgetItem(parents.get(category))
-            dupe.setText(0, label)
-            dupe.setData(0, Qt.ItemDataRole.UserRole, where)
-            parents.setdefault(category, dupe)
-            if _icons is not None:
-                icon_name = self._icon_of(page)
-                if icon_name:
-                    ic = _icons.icon(icon_name)
-                    if ic is not None and not ic.isNull():
-                        dupe.setIcon(0, ic)
-            self.pages.append((dupe, page))
-
-    def _icon_of(self, page) -> str:
-        """按页面类型选 TGit 图标（IDI_* 或别名）。"""
-        name = type(page).__name__
-        return {
-            "_GeneralPage": "IDI_GENERAL",
-            "_LookAndFeelPage": "IDI_LOOKANDFEEL",
-            "_ExtMenuPage": "IDI_LOOKANDFEEL",
-            "_DialogsPage": "IDI_DIALOGS",
-            "_Dialogs2Page": "IDI_DIALOGS",
-            "_ColorsPage": "IDI_ICONSET",
-            "_GitPage": "IDI_GITCONFIG",
-            "_DiffPage": "IDI_SWITCHLEFTRIGHT",
-            "_MergePage": "IDI_MERGEACTIVE",
-            "_NetworkPage": "IDI_PROXY",
-            "_SavedDataPage": "IDI_SAVEDDATA",
-            "_OverlayPage": "IDI_SET_OVERLAYS",
-            "_CredentialPage": "IDI_GITCREDENTIAL",
-            "_AdvancedPage": "IDI_GITCONFIG",
-        }.get(name)
+            pass
+        self._items[key] = item
+        self.pages.append((item, page))
+        return item
 
     def _on_tree_changed(self, item, _prev):
         if item is None:
@@ -337,6 +315,9 @@ class SettingsDlg(QDialog):
         idx = item.data(0, Qt.ItemDataRole.UserRole)
         if idx is not None:
             self.stack.setCurrentIndex(idx)
+
+    def _on_help(self):
+        QMessageBox.information(self, tr("help"), tr("settings_title", "设置"))
 
     # ---- 命名自定义逻辑（Git 页）----
     @property
@@ -423,7 +404,11 @@ class SettingsDlg(QDialog):
                     except Exception:
                         pass
 
-    def _save_all(self):
+    def _on_ok(self):
+        self._apply()
+        self.accept()
+
+    def _apply(self):
         if self.name_edit is not None:
             self._set_global("user.name", self.name_edit.text().strip())
         if self.email_edit is not None:
@@ -441,7 +426,6 @@ class SettingsDlg(QDialog):
             elif isinstance(page, _MergePage):
                 val = page.merge_edit.text().strip() if page.merge_edit else ""
                 self._set_global("tortoisegit.externalmerge", val or None)
-        self.accept()
 
     def _set_global(self, key: str, val: str | None):
         if val:

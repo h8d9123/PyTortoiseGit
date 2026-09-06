@@ -93,10 +93,50 @@ def test_sync_dialog(qapp, repo):
     assert dlg.branch_label.text() in ("main", "")
 
 
+def _settings_roots(dlg):
+    return [dlg.tree.topLevelItem(i).text(0) for i in range(dlg.tree.topLevelItemCount())]
+
+
+def _settings_children(item):
+    return [item.child(i).text(0) for i in range(item.childCount())]
+
+
 def test_settings_dialog_readonly(qapp):
     from pytortoisegit.dialogs.settingsdlg import SettingsDlg
     dlg = _smoke(qapp, lambda: SettingsDlg(None))
     assert dlg.name_edit is not None
+    roots = _settings_roots(dlg)
+    assert roots[0] == "General"
+    assert "Git" in roots
+    assert "Diff Viewer" in roots
+    assert "Hook Scripts" in roots
+    assert "Icon Overlays" in roots
+    assert "Network" in roots
+    assert "Credential" not in roots
+    general = dlg.tree.topLevelItem(0)
+    kids = _settings_children(general)
+    assert "Context Menu" in kids
+    assert "Dialogs 1" in kids
+    assert "Dialogs 3" in kids
+    assert "Colors 1" in kids
+    assert "Alternative editor" in kids
+    git = next(dlg.tree.topLevelItem(i) for i in range(dlg.tree.topLevelItemCount())
+               if dlg.tree.topLevelItem(i).text(0) == "Git")
+    assert "Credential" in _settings_children(git)
+    assert "Remote" not in _settings_children(git)
+    diff = next(dlg.tree.topLevelItem(i) for i in range(dlg.tree.topLevelItemCount())
+                if dlg.tree.topLevelItem(i).text(0) == "Diff Viewer")
+    assert "Merge Tool" in _settings_children(diff)
+
+
+def test_settings_dialog_repo_pages(qapp, repo):
+    from pytortoisegit.dialogs.settingsdlg import SettingsDlg
+    dlg = _smoke(qapp, lambda: SettingsDlg(repo))
+    git = next(dlg.tree.topLevelItem(i) for i in range(dlg.tree.topLevelItemCount())
+               if dlg.tree.topLevelItem(i).text(0) == "Git")
+    assert "Remote" in _settings_children(git)
+    assert dlg.tree.currentItem() is not None
+    assert dlg.tree.currentItem().text(0) == "Git"
 
 
 def test_clone_dialog(qapp):

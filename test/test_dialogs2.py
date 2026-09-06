@@ -130,6 +130,32 @@ def test_command_registry_has_new_commands():
         assert expected in cmds
 
 
+def test_progress_dialog_success_and_fail_text(qapp):
+    from PySide6.QtCore import QEventLoop, QTimer
+    from pytortoisegit.dialogs.progress import ProgressDialog
+
+    def _run(fn):
+        dlg = ProgressDialog()
+        loop = QEventLoop()
+        dlg.on_finish(lambda _ok: loop.quit())
+        dlg.run(fn)
+        QTimer.singleShot(2000, loop.quit)
+        loop.exec()
+        return dlg
+
+    ok_dlg = _run(lambda: (True, 0))
+    assert "成功" in ok_dlg._label.text()
+    assert ok_dlg._btn_close.isEnabled()
+    assert not ok_dlg._btn_cancel.isEnabled()
+    assert ok_dlg.progress.value() == 100
+    ok_dlg.deleteLater()
+
+    fail_dlg = _run(lambda: (False, 128))
+    assert "128" in fail_dlg._label.text()
+    assert fail_dlg._btn_close.isEnabled()
+    fail_dlg.deleteLater()
+
+
 def test_push_dialog(qapp, repo):
     from pytortoisegit.dialogs.pushdlg import PushDlg
     dlg = _smoke(qapp, lambda: PushDlg(repo))

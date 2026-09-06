@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
 )
@@ -257,13 +258,15 @@ class CommitDlg(QDialog):
         self.chk_message_only = add(QCheckBox(self), "IDC_COMMIT_MESSAGEONLY")
         self.chk_message_only.setText(tr("commit_message_only", "Message onl&y"))
 
-        self.btn_commit = add(QPushButton(tr("commit", "C&ommit"), self), "IDOK")
-        from PySide6.QtWidgets import QMenu as _QMenu
-        menu = _QMenu(self.btn_commit)
+        self.btn_commit = add(QToolButton(self), "IDOK")
+        self.btn_commit.setText(tr("commit", "C&ommit"))
+        self.btn_commit.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.btn_commit.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        menu = QMenu(self.btn_commit)
         self._act_commit = menu.addAction(tr("commit", "C&ommit"))
         self._act_commit_push = menu.addAction(tr("commit_push", "Commit and &Push"))
         self.btn_commit.setMenu(menu)
-        self.btn_commit.clicked.connect(lambda: self._accept_commit(False))
+        self.btn_commit.setDefaultAction(self._act_commit)
         self._act_commit.triggered.connect(lambda *_: self._accept_commit(False))
         self._act_commit_push.triggered.connect(lambda *_: self._accept_commit(True))
         self.btn_cancel = add(QPushButton(tr("cancel"), self), "IDCANCEL")
@@ -618,10 +621,7 @@ class CommitDlg(QDialog):
             QMessageBox.warning(self, tr("commit_failed", "提交失败"), result.stderr)
             return
         if push:
-            branch = self.repo.current_branch()
-            remote = "origin"
-            pr = self.repo.runner.run_interactive("push", remote, branch)
-            if pr.returncode != 0:
-                QMessageBox.warning(self, tr("push_failed", "推送失败"), pr.stderr)
-                return
+            # 对齐 CCommitDlg::DoPush → CAppUtils::Push：提交后弹出 Push 对话框
+            from .pushdlg import PushDlg
+            PushDlg(self.repo, parent=self).exec()
         self.accept()

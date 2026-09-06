@@ -184,7 +184,7 @@ class PushDlg(QDialog):
         local_branch = self.local_combo.currentText()
         if self.rd_url.isChecked() and self.url_edit.currentText():
             remote = self.url_edit.currentText()
-        args = ["push", remote]
+        args = ["push", "--progress"]
         if self.chk_push_all.isChecked():
             args.append("--all")
         if self.chk_force.isChecked():
@@ -195,16 +195,12 @@ class PushDlg(QDialog):
             args.append("--tags")
         if self.chk_set_upstream.isChecked():
             args.append("--set-upstream")
-        if local_branch:
-            args.append(f"{local_branch}:{local_branch}")
-        dlg = ProgressDialog(title=tr("progress", "Progress"), parent=self)
-        dlg.set_label("git " + " ".join(args))
-        def _bg():
-            r = self.repo.runner.run_interactive(*args)
-            if r.stdout: dlg.log(r.stdout)
-            if r.stderr: dlg.log(r.stderr)
-            return r.returncode == 0
-        dlg.run(_bg)
+        args += ["--", remote]
+        dest = self.remote_combo.currentText().strip()
+        if not self.chk_push_all.isChecked() and local_branch:
+            args.append(f"{local_branch}:{dest or local_branch}")
+        dlg = ProgressDialog(parent=self)
+        dlg.run_git(self.repo.runner, *args)
         dlg.exec()
         self.accept()
 

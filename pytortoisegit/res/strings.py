@@ -339,6 +339,22 @@ STRINGS: Dict[str, str] = {
     "log_copy_full": "完整路径",
     "log_copy_rel": "相对路径",
     "log_copy_name": "文件名",
+
+    # ---- 仓库管理面板 (MainMenuDlg) ----
+    "repo_manager_title": "仓库管理",
+    "repo_manager_hint": "双击仓库切换；展开可查看子模块",
+    "repo_menu_commit": "Commit…",
+    "repo_menu_log": "Show log",
+    "repo_menu_pull": "Pull…",
+    "repo_menu_push": "Push…",
+    "repo_menu_sync": "Sync",
+    "repo_menu_revert": "Revert…",
+    "repo_menu_cleanup": "Clean Up…",
+    "repo_menu_remove": "从列表移除",
+    "repo_menu_open_sub": "打开子模块",
+    "menu_repo_manager": "仓库管理面板",
+    "menu_submodule": "子模块",
+    "menu_submodule_hint": "双击子模块打开其窗口",
 }
 
 

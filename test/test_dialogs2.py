@@ -484,6 +484,120 @@ def test_mainmenu_executes_diff(qapp, repo):
     dlg.reject()
 
 
+@pytest.fixture()
+def isolated_settings(tmp_path, monkeypatch):
+    """把 general_settings 隔离到临时 INI 文件，避免污染真实注册表。"""
+    from PySide6.QtCore import QSettings
+    s = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr(
+        "pytortoisegit.dialogs.settingsdlg.general_settings", lambda: s)
+    return s
+
+
+def test_mainmenu_opens_repo_auto_adds(qapp, repo, isolated_settings):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from PySide6.QtCore import Qt
+    dlg = MainMenuDlg(repo_path=str(repo.root))
+    assert str(repo.root) in dlg._repo_list
+    assert dlg.repo_tree.topLevelItemCount() == 1
+    top = dlg.repo_tree.topLevelItem(0)
+    assert top.data(0, Qt.ItemDataRole.UserRole + 1) == "repo"
+    dlg.reject()
+
+
+def test_mainmenu_repo_list_persists(qapp, repo, isolated_settings):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    dlg = MainMenuDlg(repo_path=str(repo.root))
+    dlg.reject()
+    # 重新打开窗口应从上一次的 QSettings 恢复列表
+    dlg2 = MainMenuDlg()
+    assert str(repo.root) in dlg2._repo_list
+    assert dlg2.repo_tree.topLevelItemCount() == 1
+    dlg2.reject()
+
+
+def test_mainmenu_removes_repo(qapp, repo, isolated_settings):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    dlg = MainMenuDlg(repo_path=str(repo.root))
+    top = dlg.repo_tree.topLevelItem(0)
+    dlg._remove_repo_from_list(top)
+    assert dlg._repo_list == []
+    assert dlg.repo_tree.topLevelItemCount() == 0
+    dlg.reject()
+
+
+def test_mainmenu_double_click_switches_repo(
+        qapp, repo, isolated_settings, tmp_path_factory):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    from PySide6.QtCore import Qt
+    root2 = tmp_path_factory.mktemp("repo2")
+    r2 = GitRunner(cwd=str(root2))
+    r2.init(str(root2), initial_branch="main")
+    r2.run("config", "user.email", "t@example.com")
+    r2.run("config", "user.name", "Tester")
+    (root2 / "b.txt").write_text("b\n", encoding="utf-8")
+    r2.run("add", "-A")
+    assert r2.run("commit", "-m", "init").returncode == 0
+
+    dlg = MainMenuDlg(repo_path=str(repo.root))
+    dlg.open_repo(str(root2))
+    assert dlg.repo.root == str(root2)
+    # 双击第一个仓库节点切回第一个仓库
+    top = dlg.repo_tree.topLevelItem(0)
+    assert top.data(0, Qt.ItemDataRole.UserRole) == str(repo.root)
+    dlg._on_repo_double_clicked(top, 0)
+    assert dlg.repo is not None and dlg.repo.root == str(repo.root)
+    dlg.reject()
+
+
+def test_mainmenu_submodule_lazy_load(qapp, isolated_settings, tmp_path_factory):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    from PySide6.QtCore import Qt
+    subroot = tmp_path_factory.mktemp("subrepo")
+    sr = GitRunner(cwd=str(subroot))
+    sr.init(str(subroot), initial_branch="main")
+    sr.run("config", "user.email", "t@example.com")
+    sr.run("config", "user.name", "Tester")
+    (subroot / "s.txt").write_text("s\n", encoding="utf-8")
+    sr.run("add", "-A")
+    assert sr.run("commit", "-m", "init").returncode == 0
+    sub_sha = sr.run("rev-parse", "HEAD").stdout.strip()
+
+    mainroot = tmp_path_factory.mktemp("mainrepo")
+    mr = GitRunner(cwd=str(mainroot))
+    mr.init(str(mainroot), initial_branch="main")
+    mr.run("config", "user.email", "t@example.com")
+    mr.run("config", "user.name", "Tester")
+    (mainroot / "m.txt").write_text("m\n", encoding="utf-8")
+    mr.run("add", "-A")
+    assert mr.run("commit", "-m", "init").returncode == 0
+    # 手工构造子模块：等价于先 clone 再 commit（避免 file 协议限制）
+    (mainroot / ".gitmodules").write_text(
+        "[submodule \"mysub\"]\n\tpath = mysub\n\turl = {}\n".format(
+            str(subroot).replace("\\", "/")),
+        encoding="utf-8")
+    mr.run("add", ".gitmodules")
+    res = mr.run("update-index", "--add", "--cacheinfo", "160000",
+                 sub_sha, "mysub")
+    assert res.returncode == 0, res.stderr
+    assert mr.run("commit", "-m", "add submodule").returncode == 0
+
+    dlg = MainMenuDlg(repo_path=str(mainroot))
+    assert dlg.repo_tree.topLevelItemCount() == 1
+    top = dlg.repo_tree.topLevelItem(0)
+    # 当前仓库节点自动展开 → 子模块已懒加载
+    assert top.childCount() == 1
+    child = top.child(0)
+    assert child.data(0, Qt.ItemDataRole.UserRole + 1) == "submodule"
+    assert child.data(0, Qt.ItemDataRole.UserRole).replace("\\", "/").endswith("mysub")
+    # 重复展开不重复加载
+    dlg._on_item_expanded(top)
+    assert top.childCount() == 1
+    dlg.reject()
+
+
 def test_packaging_specs_compile():
     import ast
     from pathlib import Path

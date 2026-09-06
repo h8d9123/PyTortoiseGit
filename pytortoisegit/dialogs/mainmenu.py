@@ -1,4 +1,4 @@
-"""mainmenu.py —— 主窗口：菜单栏 + Git 操作工具栏 + 左侧子模块管理树。
+"""mainmenu.py —— 主窗口：菜单栏 + Git 操作工具栏 + 左侧仓库管理树。
 
 GUI 入口（`python -m pytortoisegit` 无参数时打开此窗口），
 或 `/command:menu` 显式打开。
@@ -6,7 +6,7 @@ GUI 入口（`python -m pytortoisegit` 无参数时打开此窗口），
 布局（从顶部到底部）：
   1. 菜单栏（文件 / 视图 / 帮助）
   2. 工具栏：QToolButton 一排 Git 操作按钮（图标用 TortoiseGit icon）
-  3. 主区：左侧子模块管理树(QTreeWidget) + 右侧命令列表 / 欢迎页
+  3. 主区：左侧仓库管理树(QTreeWidget) + 右侧命令列表 / 欢迎页
   4. 底部：仓库路径 + 按钮 + 状态栏
 """
 
@@ -20,11 +20,9 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QMessageBox,
     QPushButton,
     QSplitter,
     QToolButton,
@@ -39,9 +37,16 @@ from ..git.repo import Repository
 from ..res.strings import format_string, tr
 from .widgets import RepoPickerRow
 
+_KEY_REPOS = "Browser/Repos"
+# 树节点数据角色
+ROLE_PATH = Qt.ItemDataRole.UserRole        # 仓库/子模块 绝对路径
+ROLE_KIND = Qt.ItemDataRole.UserRole + 1    # "repo" / "submodule"
+ROLE_PARENT = Qt.ItemDataRole.UserRole + 2  # 子模块的父仓库根
+ROLE_LOADED = Qt.ItemDataRole.UserRole + 3  # 仓库节点是否已加载子模块
+
 
 class MainMenuDlg(QMainWindow):
-    """主窗口：菜单栏 + 工具栏 + 子模块树 + 命令面板。"""
+    """主窗口：菜单栏 + 工具栏 + 仓库管理树 + 命令面板。"""
 
     # 工具栏按钮：(命令名, 资源图标 IDI, 标签)
     TOOLBAR = [
@@ -71,11 +76,15 @@ class MainMenuDlg(QMainWindow):
             pass
         self.repo: Repository | None = None
         self.commands: List[str] = []
+        self._repo_list: list[str] = []
         self._build_menu()
         self._build_toolbar()
         self._build_central()
         self._populate_commands()
         self._build_statusbar()
+        # 从 QSettings 加载已添加仓库并刷新树
+        self._repo_list = self._load_repo_list()
+        self._refresh_repo_tree()
         if repo_path:
             self.path_row.setText(repo_path)
             self.open_repo(repo_path)
@@ -94,11 +103,11 @@ class MainMenuDlg(QMainWindow):
         m_file.addAction(act_exit)
         # 视图
         m_view = bar.addMenu(tr("menu_view", "视图(&V)"))
-        act_sub = QAction(tr("menu_submodule", "子模块面板"), self)
-        act_sub.setCheckable(True)
-        act_sub.setChecked(True)
-        act_sub.toggled.connect(lambda on: self.sub_module_dock.setVisible(on))
-        m_view.addAction(act_sub)
+        act_repo = QAction(tr("menu_repo_manager", "仓库管理面板"), self)
+        act_repo.setCheckable(True)
+        act_repo.setChecked(True)
+        act_repo.toggled.connect(lambda on: self.repo_manager_panel.setVisible(on))
+        m_view.addAction(act_repo)
         act_tool = QAction(tr("menu_toolbar", "工具栏"), self)
         act_tool.setCheckable(True)
         act_tool.setChecked(True)
@@ -130,26 +139,32 @@ class MainMenuDlg(QMainWindow):
             self.toolbar.addWidget(btn)
             self.toolbar.addSeparator()
 
-    # ---- 主区：左侧子模块树 + 右侧命令列表 ----
+    # ---- 主区：左侧仓库管理树 + 右侧命令列表 ----
     def _build_central(self):
         split = QSplitter(Qt.Orientation.Horizontal, self)
-        self.sub_module_dock = QWidget(self)
-        sub_lay = QVBoxLayout(self.sub_module_dock)
-        sub_lay.setContentsMargins(4, 4, 4, 4)
-        sub_lay.addWidget(QLabel(tr("menu_submodule", "子模块"), self.sub_module_dock))
-        self.sub_tree = QTreeWidget(self.sub_module_dock)
-        self.sub_tree.setColumnCount(3)
-        self.sub_tree.setHeaderLabels([
-            tr("submodule_path", "路径"), tr("submodule_status", "状态"),
-            tr("submodule_sha", "SHA")])
-        self.sub_tree.setRootIsDecorated(False)
-        self.sub_tree.setIndentation(0)
-        self.sub_tree.itemDoubleClicked.connect(self._on_submodule_open)
-        self.sub_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        sub_lay.addWidget(self.sub_tree)
-        sub_lay.addWidget(QLabel(
-            tr("menu_submodule_hint", "双击子模块打开其窗口"), self.sub_module_dock))
-        split.addWidget(self.sub_module_dock)
+        self.repo_manager_panel = QWidget(self)
+        panel_lay = QVBoxLayout(self.repo_manager_panel)
+        panel_lay.setContentsMargins(4, 4, 4, 4)
+        panel_lay.addWidget(
+            QLabel(tr("repo_manager_title", "仓库管理"), self.repo_manager_panel))
+        self.repo_tree = QTreeWidget(self.repo_manager_panel)
+        self.repo_tree.setColumnCount(3)
+        self.repo_tree.setHeaderLabels([
+            tr("submodule_path", "路径"),
+            tr("submodule_status", "状态"),
+            tr("submodule_sha", "SHA"),
+        ])
+        self.repo_tree.setRootIsDecorated(True)
+        self.repo_tree.setIndentation(16)
+        self.repo_tree.itemDoubleClicked.connect(self._on_repo_double_clicked)
+        self.repo_tree.itemExpanded.connect(self._on_item_expanded)
+        self.repo_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.repo_tree.customContextMenuRequested.connect(self._on_repo_context_menu)
+        panel_lay.addWidget(self.repo_tree)
+        panel_lay.addWidget(QLabel(
+            tr("repo_manager_hint", "双击仓库切换；展开可查看子模块"),
+            self.repo_manager_panel))
+        split.addWidget(self.repo_manager_panel)
 
         right = QWidget(self)
         right_lay = QVBoxLayout(right)
@@ -157,9 +172,9 @@ class MainMenuDlg(QMainWindow):
         self.path_row.setText(os.getcwd())
         self.path_row.connect_editingFinished(self._on_path_changed)
         right_lay.addWidget(self.path_row)
-        self._welcome = QLabel(tr("menu_welcome",
-                                  "双击命令或选择后点击执行；左侧为子模块管理树。"),
-                              right)
+        self._welcome = QLabel(
+            tr("menu_welcome", "双击命令或选择后点击执行；左侧为仓库管理树。"),
+            right)
         self._welcome.setWordWrap(True)
         right_lay.addWidget(self._welcome)
         self.command_list = QListWidget(right)
@@ -208,35 +223,149 @@ class MainMenuDlg(QMainWindow):
             return None
         return item.data(Qt.ItemDataRole.UserRole)
 
-    # ---- 仓库与子模块 ----
+    # ---- QSettings 持久化 ----
+    @staticmethod
+    def _load_repo_list() -> list[str]:
+        from .settingsdlg import general_settings
+        return general_settings().value(_KEY_REPOS, [], type=list)
+
+    def _save_repo_list(self):
+        from .settingsdlg import general_settings
+        general_settings().setValue(_KEY_REPOS, self._repo_list)
+
+    def _ensure_in_repo_list(self, path: str):
+        """打开仓库成功后自动加入管理列表并刷新树。"""
+        norm = os.path.abspath(path)
+        if os.path.normcase(norm) not in {os.path.normcase(p) for p in self._repo_list}:
+            self._repo_list.append(norm)
+            self._save_repo_list()
+        self._refresh_repo_tree()
+
+    def _refresh_repo_tree(self):
+        """重建仓库管理树（保留展开状态）。"""
+        # 记录当前展开状态
+        expanded_paths: set[str] = set()
+        for i in range(self.repo_tree.topLevelItemCount()):
+            it = self.repo_tree.topLevelItem(i)
+            if it.isExpanded():
+                p = it.data(0, ROLE_PATH)
+                if p:
+                    expanded_paths.add(p)
+        self.repo_tree.clear()
+        for path in self._repo_list:
+            # 路径失效则静默清理
+            try:
+                repo = Repository.open(path)
+            except Exception:
+                continue
+            display = f"{repo.name}  ({path})"
+            item = QTreeWidgetItem([display])
+            item.setData(0, ROLE_PATH, path)
+            item.setData(0, ROLE_KIND, "repo")
+            self.repo_tree.addTopLevelItem(item)
+            if path in expanded_paths:
+                item.setExpanded(True)
+        # 确保当前仓库节点被选中并展开
+        if self.repo:
+            cur_path = os.path.normcase(os.path.abspath(self.repo.root))
+            for i in range(self.repo_tree.topLevelItemCount()):
+                it = self.repo_tree.topLevelItem(i)
+                if os.path.normcase(it.data(0, ROLE_PATH)) == cur_path:
+                    self.repo_tree.setCurrentItem(it)
+                    # 确保子模块已加载（触发展开）
+                    if not it.isExpanded():
+                        it.setExpanded(True)
+                    break
+
+    # ---- 树控件行为 ----
+    def _on_item_expanded(self, item):
+        """仓库节点展开时懒加载子模块。"""
+        if item.data(0, ROLE_KIND) != "repo" or item.data(0, ROLE_LOADED):
+            return
+        repo_path = item.data(0, ROLE_PATH)
+        if not repo_path:
+            return
+        try:
+            from ..git.repo import Repository as _Repo
+            from ..git.submodule import GitSubmodule
+            repo = _Repo.open(repo_path)
+            for e in GitSubmodule(repo).list(recursive=False):
+                sub_abs = os.path.join(repo_path, e.path)
+                sub = QTreeWidgetItem([e.path, e.status_text, (e.sha1 or "")[:8]])
+                sub.setData(0, ROLE_PATH, sub_abs)
+                sub.setData(0, ROLE_KIND, "submodule")
+                sub.setData(0, ROLE_PARENT, repo_path)
+                item.addChild(sub)
+        except Exception:
+            pass
+        item.setData(0, ROLE_LOADED, True)
+
+    def _on_repo_double_clicked(self, item, _col):
+        """双击仓库→切换；双击子模块→打开。"""
+        if item.data(0, ROLE_KIND) == "submodule":
+            sub_path = item.data(0, ROLE_PATH)
+            self._run_async_command("submodule", extra={"path": sub_path})
+        else:
+            path = item.data(0, ROLE_PATH)
+            if path:
+                self.open_repo(path)
+
+    def _on_repo_context_menu(self, pos):
+        item = self.repo_tree.itemAt(pos)
+        if item is None:
+            return
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self.repo_tree)
+        if item.data(0, ROLE_KIND) == "repo":
+            # 仓库节点：经典 TortoiseGit 菜单 + 移除
+            path = item.data(0, ROLE_PATH)
+            for cmd, label in [
+                ("commit", tr("repo_menu_commit", "Commit…")),
+                ("log", tr("repo_menu_log", "Show log")),
+                ("pull", tr("repo_menu_pull", "Pull…")),
+                ("push", tr("repo_menu_push", "Push…")),
+                ("sync", tr("repo_menu_sync", "Sync")),
+                ("revert", tr("repo_menu_revert", "Revert…")),
+                ("cleanup", tr("repo_menu_cleanup", "Clean Up…")),
+            ]:
+                act = menu.addAction(label)
+                act.triggered.connect(
+                    lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
+            menu.addSeparator()
+            act_rem = menu.addAction(tr("repo_menu_remove", "从列表移除"))
+            act_rem.triggered.connect(
+                lambda _=False, it=item: self._remove_repo_from_list(it))
+        else:
+            # 子模块节点：打开子模块
+            sub_path = item.data(0, ROLE_PATH)
+            act = menu.addAction(tr("repo_menu_open_sub", "打开子模块"))
+            act.triggered.connect(
+                lambda _=False, p=sub_path:
+                self._run_async_command("submodule", extra={"path": p}))
+        menu.exec(self.repo_tree.viewport().mapToGlobal(pos))
+
+    def _remove_repo_from_list(self, item):
+        """从持久化列表中移除指定仓库。"""
+        path = item.data(0, ROLE_PATH)
+        norm = os.path.normcase(os.path.abspath(path))
+        self._repo_list = [
+            p for p in self._repo_list
+            if os.path.normcase(os.path.abspath(p)) != norm
+        ]
+        self._save_repo_list()
+        self._refresh_repo_tree()
+
+    # ---- 仓库 ----
     def open_repo(self, path: str):
         try:
             self.repo = Repository.open(path)
         except Exception as exc:
-            self.status.setText(format_string(tr("menu_not_repo", "不是 Git 仓库：{msg}"), msg=exc))
-            self.sub_tree.clear()
+            self.status.setText(
+                format_string(tr("menu_not_repo", "不是 Git 仓库：{msg}"), msg=exc))
             return
         self.path_row.setText(path)
-        self._load_submodules()
         self.status.setText(f" {path} · {self.repo.current_branch()}")
-
-    def _load_submodules(self):
-        self.sub_tree.clear()
-        if self.repo is None:
-            return
-        try:
-            from ..git.submodule import GitSubmodule
-            for e in GitSubmodule(self.repo).list(recursive=False):
-                it = QTreeWidgetItem([e.path, e.status_text, (e.sha1 or "")[:8]])
-                it.setData(0, Qt.ItemDataRole.UserRole, e.path)
-                self.sub_tree.addTopLevelItem(it)
-        except Exception:
-            pass
-
-    def _on_submodule_open(self, item, _col):
-        path = item.data(0, Qt.ItemDataRole.UserRole)
-        if path:
-            self._run_async_command("submodule", extra={"path": path})
+        self._ensure_in_repo_list(path)
 
     def _on_path_changed(self):
         p = self.path_row.text().strip()
@@ -245,7 +374,8 @@ class MainMenuDlg(QMainWindow):
 
     def _open_repo_dialog(self):
         from PySide6.QtWidgets import QFileDialog
-        d = QFileDialog.getExistingDirectory(self, tr("menu_open_repo", "打开仓库"), self.path_row.text())
+        d = QFileDialog.getExistingDirectory(
+            self, tr("menu_open_repo", "打开仓库"), self.path_row.text())
         if d:
             self.open_repo(d)
 
@@ -264,7 +394,8 @@ class MainMenuDlg(QMainWindow):
                 cl.options[k] = [v]
         from ..commands.dispatcher import CommandContext
         ctx = CommandContext(qapp=None, cl=cl)
-        self.status.setText(format_string(tr("menu_running", "正在执行：{name}"), name=name))
+        self.status.setText(
+            format_string(tr("menu_running", "正在执行：{name}"), name=name))
         QTimer.singleShot(0, lambda: self._run(ctx, name))
 
     def _execute_selected(self):
@@ -281,11 +412,14 @@ class MainMenuDlg(QMainWindow):
         from ..commands.dispatcher import dispatch, UnknownCommandError
         try:
             dispatch(name, ctx)
-            self.status.setText(format_string(tr("menu_done", "完成：{name}"), name=name))
+            self.status.setText(
+                format_string(tr("menu_done", "完成：{name}"), name=name))
         except UnknownCommandError:
-            self.status.setText(format_string(tr("unknown_command"), command=name))
+            self.status.setText(
+                format_string(tr("unknown_command"), command=name))
         except Exception as exc:  # noqa: BLE001
-            self.status.setText(format_string(tr("command_failed"), name=name, message=exc))
+            self.status.setText(
+                format_string(tr("command_failed"), name=name, message=exc))
             from ..utils.logging_utils import get_logger
             get_logger().exception("menu 命令失败: %s", name)
 

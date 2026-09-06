@@ -34,6 +34,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QDialogButtonBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -41,6 +42,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QToolBar,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -87,34 +89,6 @@ class MergeFrm(QMainWindow):
         self.line_bar._on_click = self._on_bar_click
         lay.addWidget(self.line_bar)
 
-        # 合并工具栏（对齐 TortoiseMerge 主窗口）
-        self.toolbar = QToolBar(tr("merge_toolbar", "合并"), central)
-        tb = self.toolbar
-        tb.setMovable(False)
-        self._act_prev = tb.addAction(tr("merge_prev", "上一个差异"))
-        self._act_prev.triggered.connect(lambda: self._goto_diff(-1))
-        self._act_next = tb.addAction(tr("merge_next", "下一个差异"))
-        self._act_next.triggered.connect(lambda: self._goto_diff(1))
-        tb.addSeparator()
-        self._act_take_left = tb.addAction(tr("merge_take_left", "取左侧"))
-        self._act_take_left.triggered.connect(lambda: self._take("left"))
-        self._act_take_right = tb.addAction(tr("merge_take_right", "取右侧"))
-        self._act_take_right.triggered.connect(lambda: self._take("right"))
-        self._act_mark = tb.addAction(tr("merge_mark", "标记已解决"))
-        self._act_mark.triggered.connect(self._mark_resolved)
-        tb.addSeparator()
-        self._act_save = tb.addAction(tr("merge_save", "保存合并结果"))
-        self._act_save.triggered.connect(self._save_result)
-        self._act_undo = tb.addAction(tr("merge_undo", "撤销"))
-        self._act_undo.triggered.connect(self._undo)
-        self._act_redo = tb.addAction(tr("merge_redo", "重做"))
-        self._act_redo.triggered.connect(self._redo)
-        tb.addSeparator()
-        self._act_find = tb.addAction(tr("merge_find", "查找"))
-        self._act_find.triggered.connect(self._find)
-        self._act_goto = tb.addAction(tr("merge_goto", "跳转行"))
-        self._act_goto.triggered.connect(self._goto_line)
-        lay.addWidget(tb)
 
         split = QSplitter(Qt.Orientation.Horizontal, central)
         self.left_view = LeftView(split)
@@ -147,68 +121,62 @@ class MergeFrm(QMainWindow):
 
 
     def _build_menu(self):
-        """TortoiseMerge 风格菜单栏（File/Edit/View/Merge/Navigate）。"""
-        from PySide6.QtGui import QKeySequence
-        bar = self.menuBar()
-        # File
-        m_file = bar.addMenu(tr("menu_file", "文件(&F)"))
-        a = m_file.addAction(tr("menu_open", "打开…"))
-        a.triggered.connect(self._file_open)
-        a = m_file.addAction(tr("menu_reload", "重新加载"))
-        a.triggered.connect(self._load)
-        m_file.addSeparator()
-        a = m_file.addAction(tr("merge_save", "保存合并结果"))
-        a.triggered.connect(self._save_result)
-        a = m_file.addAction(tr("menu_close", "关闭"))
-        a.triggered.connect(self.close)
-        # Edit
-        m_edit = bar.addMenu(tr("menu_edit", "编辑(&E)"))
-        a = m_edit.addAction(tr("merge_undo", "撤销"))
-        a.triggered.connect(self._undo)
-        a = m_edit.addAction(tr("merge_redo", "重做"))
-        a.triggered.connect(self._redo)
-        m_edit.addSeparator()
-        a = m_edit.addAction(tr("merge_find", "查找"))
-        a.triggered.connect(self._find)
-        a = m_edit.addAction(tr("merge_goto", "跳转行"))
-        a.triggered.connect(self._goto_line)
-        # View
-        m_view = bar.addMenu(tr("menu_view", "视图(&V)"))
-        a = m_view.addAction(tr("merge_toolbar", "工具栏"))
-        a.setCheckable(True); a.setChecked(True)
-        a.toggled.connect(lambda on: self.toolbar.setVisible(on))
-        a = m_view.addAction(tr("merge_line_bar", "行差异条"))
-        a.setCheckable(True); a.setChecked(True)
-        a.toggled.connect(lambda on: self.line_bar.setVisible(on))
-        a = m_view.addAction(tr("merge_locator_bar", "定位条"))
-        a.setCheckable(True); a.setChecked(True)
-        a.toggled.connect(self._toggle_locator)
-        # Merge
-        m_merge = bar.addMenu(tr("menu_merge", "合并(&M)"))
-        a = m_merge.addAction(tr("merge_take_left", "取对方(theirs)"))
-        a.triggered.connect(lambda: self._take("left"))
-        a = m_merge.addAction(tr("merge_take_right", "取我方(ours)"))
-        a.triggered.connect(lambda: self._take("right"))
-        a = m_merge.addAction(tr("merge_mark", "标记已解决"))
-        a.triggered.connect(self._mark_resolved)
-        # Navigate
-        m_nav = bar.addMenu(tr("menu_navigate", "导航(&N)"))
-        a = m_nav.addAction(tr("merge_prev", "上一差异"))
-        a.triggered.connect(lambda: self._goto_diff(-1))
-        a = m_nav.addAction(tr("merge_next", "下一差异"))
-        a.triggered.connect(lambda: self._goto_diff(1))
+        """Ribbon 风格分组工具栏（对齐 TortoiseGitMerge UIRibbon 观感）。"""
+        self.ribbon = QToolBar(tr("merge_ribbon", "Ribbon"), self)
+        self.ribbon.setMovable(False)
+        self.ribbon.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        try:
+            from ..res import icons as _icons
+        except Exception:
+            _icons = None
+
+        def _btn(label, icon_id, slot):
+            b = QToolButton(self.ribbon)
+            b.setText(label)
+            b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            if _icons is not None:
+                ic = _icons.icon(icon_id)
+                if ic is not None and not ic.isNull():
+                    b.setIcon(ic)
+            b.clicked.connect(slot)
+            self.ribbon.addWidget(b)
+            return b
+
+        def _title(text):
+            lab = QLabel(text, self.ribbon)
+            self.ribbon.addWidget(lab)
+            return lab
+
+        _title(tr("merge_group_file", "文件"))
+        _btn(tr("merge_save", "保存"), "IDI_SAVE", self._save_result)
+        _btn(tr("merge_reload", "重新加载"), "IDI_REFRESH", self._load)
+        self.ribbon.addSeparator()
+        _title(tr("merge_group_edit", "编辑"))
+        _btn(tr("merge_undo", "撤销"), "IDI_MISC", self._undo)
+        _btn(tr("merge_redo", "重做"), "IDI_MISC", self._redo)
+        _btn(tr("merge_find", "查找"), "IDI_MISC", self._find)
+        _btn(tr("merge_goto", "跳转行"), "IDI_MISC", self._goto_line)
+        self.ribbon.addSeparator()
+        _title(tr("merge_group_nav", "导航"))
+        _btn(tr("merge_prev", "上一差异"), "IDI_MISC", lambda: self._goto_diff(-1))
+        _btn(tr("merge_next", "下一差异"), "IDI_MISC", lambda: self._goto_diff(1))
+        self.ribbon.addSeparator()
+        _title(tr("merge_group_merge", "合并"))
+        _btn(tr("merge_take_left", "取左侧"), "IDI_MISC", lambda: self._take("left"))
+        _btn(tr("merge_take_right", "取右侧"), "IDI_MISC", lambda: self._take("right"))
+        _btn(tr("merge_mark", "标记已解决"), "IDI_MISC", self._mark_resolved)
+        _btn(tr("merge_undo", "撤销合并"), "IDI_MISC", self._undo)
+        self.addToolBar(self.ribbon)
 
     def _file_open(self):
         from .opendlg import OpenDlg
         dlg = OpenDlg(self)
         if dlg.exec():
-            # 简单处理：把 diff 文件加载进来
             self._load()
 
     def _toggle_locator(self, on: bool):
         if hasattr(self, "_locator"):
             self._locator.setVisible(on)
-
 
     def _load(self):
         if self.three_way:

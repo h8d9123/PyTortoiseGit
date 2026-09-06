@@ -69,6 +69,10 @@ class BaseView(QPlainTextEdit):
             self.colors = colors
         self._rebuild()
 
+    def set_writable(self, writable: bool):
+        """翻译 SetWritable：合并输出视图可编辑。"""
+        self.setReadOnly(not writable)
+
     def get_line_count(self) -> int:
         return len(self.view_data)
 

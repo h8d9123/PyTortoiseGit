@@ -153,6 +153,10 @@ class MergeFrm(QMainWindow):
             self.left_view.set_view_data(left)
             self.right_view.set_view_data(right)
             self.bottom_view.set_view_data(bottom)
+            # 合并输出可编辑（TortoiseMerge BottomView 可直接编辑解决冲突）
+            self.bottom_view.set_writable(True)
+            self.bottom_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.bottom_view.customContextMenuRequested.connect(self._on_bottom_menu)
             self._undo_stack = get_undo()
             self._undo_stack.clear()
             self.line_bar.set_rows([vd.state for vd in left])
@@ -298,9 +302,90 @@ class MergeFrm(QMainWindow):
             line = dlg.get_line_number() - 1
             self.left_view.go_to_diff(line, self.right_view)
 
+    def _on_bottom_menu(self, pos):
+        """合并输出右键：取我方/对方块、标记已解决（对齐 BottomView Use*）。"""
+        if not self.three_way:
+            return
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        act_ours = menu.addAction(tr("merge_take_right", "取我方(ours)"))
+        act_theirs = menu.addAction(tr("merge_take_left", "取对方(theirs)"))
+        act_mark = menu.addAction(tr("merge_mark", "标记已解决"))
+        chosen = menu.exec(self.bottom_view.viewport().mapToGlobal(pos))
+        if chosen is None:
+            return
+        block = self._current_conflict_block()
+        if chosen is act_mark:
+            self._mark_conflict_resolved(block)
+        elif chosen is act_ours:
+            self._resolve_conflict(block, self.right_view)
+        elif chosen is act_theirs:
+            self._resolve_conflict(block, self.left_view)
+        self._update_header()
+
+    def _current_conflict_block(self) -> list:
+        """返回当前光标处冲突块(cursor 起止行)的 [start,end] 行号；非冲突返回 []。"""
+        cur = self.bottom_view.textCursor().blockNumber()
+        blocks = self.bottom_view.document().blockCount()
+        # 向上找 <<<<<<<，向下找 >>>>>>>
+        start = cur
+        while start > 0:
+            blk = self.bottom_view.document().findBlockByNumber(start).text()
+            if blk.startswith("<<<<<<<"):
+                break
+            start -= 1
+        end = cur
+        while end < blocks - 1:
+            blk = self.bottom_view.document().findBlockByNumber(end).text()
+            if blk.startswith(">>>>>>>"):
+                break
+            end += 1
+        if self.bottom_view.document().findBlockByNumber(start).text().startswith("<<<<<<<") and \
+           self.bottom_view.document().findBlockByNumber(end).text().startswith(">>>>>>>"):
+            return [start, end]
+        return []
+
+    def _resolve_conflict(self, block, source):
+        """用 source 视图的对应行替换冲突块。"""
+        if not block:
+            return
+        start, end = block
+        doc = self.bottom_view.document()
+        # 取冲突块内 first 有效行文本：优先从 ours(右) 取，否则 theirs
+        chosen_line = ""
+        for b in range(start, end + 1):
+            txt = doc.findBlockByNumber(b).text().strip()
+            if txt and not txt.startswith(("<<<<<<<", "=======", ">>>>>>>")):
+                chosen_line = txt
+                break
+        # 重建：把 [start,end] 替换为一行 chosen_line
+        cursor = self.bottom_view.textCursor()
+        cursor.setPosition(doc.findBlockByNumber(start).position())
+        cursor.setPosition(doc.findBlockByNumber(end).position() + len(doc.findBlockByNumber(end).text()),
+                           cursor.MoveMode.KeepAnchor)
+        cursor.insertText(chosen_line)
+
+    def _mark_conflict_resolved(self, block):
+        if not block:
+            return
+        start, end = block
+        doc = self.bottom_view.document()
+        cursor = self.bottom_view.textCursor()
+        cursor.setPosition(doc.findBlockByNumber(start).position())
+        cursor.setPosition(doc.findBlockByNumber(end).position() + len(doc.findBlockByNumber(end).text()),
+                           cursor.MoveMode.KeepAnchor)
+        # 取我方块文本（第二个区段）
+        import re
+        text = cursor.selectedText()
+        m = re.search(r'=======\n(.*?)\n>>>>>>>', text, re.S)
+        chosen = m.group(1) if m else ""
+        cursor.insertText(chosen)
+        self._update_header()
+
     def _update_header(self):
         if self.three_way and hasattr(self, "bottom_view"):
-            conflicts = sum(1 for vd in self.bottom_view.view_data if vd.is_conflict)
+            text = self.bottom_view.toPlainText()
+            conflicts = text.count("<<<<<<<")
             self._header.setText(
                 f" {self.path}  ·  ours={self.rev2 or '工作区'}  theirs={self.rev1 or '工作区'}   "
                 f"冲突 {conflicts}")
@@ -315,7 +400,8 @@ class MergeFrm(QMainWindow):
 
     def _save_result(self):
         if self.three_way and hasattr(self, "bottom_view"):
-            merged = self.bottom_view.merged_lines()
+            # 编辑后的合并输出直接取文本
+            merged = self.bottom_view.toPlainText().splitlines()
         else:
             merged = self.right_view.merged_lines()
         if not merged:

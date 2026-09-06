@@ -382,12 +382,16 @@ def make_widget(ctrl: Control, parent=None):
         f = QFrame(parent)
         f.setFrameShape(QFrame.Shape.HLine)
         return f
-    if cls == "Edit":
+    if kind == "EDITTEXT" or cls == "Edit":
         if "ES_MULTILINE" in style:
             return QPlainTextEdit(parent)
         return QLineEdit(parent)
-    if cls in ("ComboBox", "ComboBoxEx32"):
+    if kind == "COMBOBOX" or cls in ("ComboBox", "ComboBoxEx32"):
         return QComboBox(parent)
+    if kind == "CHECKBOX":
+        return QCheckBox(text, parent)
+    if kind == "RADIOBUTTON":
+        return QRadioButton(text, parent)
     if cls == "SysListView32":
         return QTreeWidget(parent)
     if cls == "SysTreeView32":

@@ -31,10 +31,15 @@ import subprocess
 import sys
 from typing import List, Tuple
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QDialog,
+    QFileDialog,
     QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QSplitter,
@@ -107,6 +112,196 @@ class _SettingPage(QWidget):
 
     def set(self, key: str, value: str):
         pass
+
+
+# ---------------------------------------------------------------------------
+# General 页（IDD_SETTINGSMAIN）
+# ---------------------------------------------------------------------------
+
+_APP_NAME = "PyTortoiseGit"
+
+
+def general_settings() -> QSettings:
+    """General 页的应用级配置（跨平台，Windows 下写注册表）。"""
+    return QSettings(_APP_NAME, _APP_NAME)
+
+
+# 语言下拉可选项（文本, 语言键）
+_LANGUAGES = [
+    ("English", "English"),
+    ("简体中文", "zh_CN"),
+    ("繁體中文", "zh_TW"),
+    ("Deutsch", "Deutsch"),
+]
+
+
+class _GeneralPage(_SettingPage):
+    """IDD_SETTINGSMAIN —— General：语言、Git 可执行文件等最常用设置。"""
+
+    TEMPLATE = "IDD_SETTINGSMAIN"
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._add_static_labels()
+
+    # -- 静态标签：RC 中多个标签共用 IDC_STATIC 被去重丢弃，手动补回 -----
+    def _add_static_labels(self):
+        # (x, y, w, h, 字符串键, 默认文本) —— 坐标来自 TortoiseProcENG.rc
+        labels = [
+            (14, 20, 86, 8, "set_lang", "&Language:"),
+            (16, 132, 58, 8, "set_gitexe", "&Git.exe Path:"),
+            (15, 155, 58, 8, "set_extrapath", "&Extra PATH:"),
+        ]
+        for x, y, w, h, key, default in labels:
+            lbl = QLabel(tr(key, default), self)
+            lbl.setGeometry(self._fu.px(x, y, w, h))
+            self._ctl[f"label_{key}"] = lbl
+
+    @property
+    def language_combo(self) -> QComboBox:
+        return self._ctl.get("IDC_LANGUAGECOMBO")
+
+    @property
+    def check_newer_checkbox(self) -> QCheckBox:
+        return self._ctl.get("IDC_CHECKNEWERVERSION")
+
+    @property
+    def git_path_edit(self) -> QLineEdit:
+        return self._ctl.get("IDC_MSYSGIT_PATH")
+
+    @property
+    def extern_path_edit(self) -> QLineEdit:
+        return self._ctl.get("IDC_MSYSGIT_EXTERN_PATH")
+
+    @property
+    def version_label(self) -> QLabel:
+        return self._ctl.get("IDC_MSYSGIT_VER")
+
+    def setup(self):
+        """填充语言下拉并绑定按钮动作。"""
+        combo = self.language_combo
+        if combo is not None:
+            combo.clear()
+            for text, key in _LANGUAGES:
+                combo.addItem(text, key)
+
+        if gb := self._ctl.get("IDC_MSYSGIT_BROWSE"):
+            gb.clicked.connect(self._on_browse)
+        if gc := self._ctl.get("IDC_MSYSGIT_CHECK"):
+            gc.clicked.connect(self._check_git)
+        if se := self._ctl.get("IDC_BUTTON_SHOW_ENV"):
+            se.clicked.connect(self._show_env)
+        if wiz := self._ctl.get("IDC_RUNFIRSTSTARTWIZARD"):
+            wiz.clicked.connect(self._run_firststart)
+        if lib := self._ctl.get("IDC_CREATELIB"):
+            lib.clicked.connect(self._create_library)
+        if upd := self._ctl.get("IDC_CHECKNEWERBUTTON"):
+            upd.clicked.connect(self._check_newer_now)
+
+        if self.git_path_edit is not None:
+            self.git_path_edit.textChanged.connect(self._on_path_changed)
+
+    # -- 动作 -----------------------------------------------------------
+    def _on_browse(self):
+        start = self.git_path_edit.text() if self.git_path_edit else ""
+        if not start:
+            start = shutil.which("git") or os.path.expanduser("~")
+        path = QFileDialog.getExistingDirectory(
+            self, tr("set_browse", "选择 Git 目录"), start)
+        if path and self.git_path_edit is not None:
+            self.git_path_edit.setText(path)
+
+    def _check_git(self):
+        git = (self.git_path_edit.text().strip()
+               if self.git_path_edit else "") or shutil.which("git")
+        if not git:
+            if self.version_label is not None:
+                self.version_label.setText("")
+            return
+        try:
+            out = subprocess.run([git, "--version"], capture_output=True,
+                                 text=True).stdout.strip()
+            if self.version_label is not None:
+                self.version_label.setText(out or tr("set_ver", "Version:"))
+        except Exception:
+            if self.version_label is not None:
+                self.version_label.setText("")
+
+    def _show_env(self):
+        lines = ["%s=%s" % (k, v) for k, v in sorted(os.environ.items())]
+        QMessageBox.information(self, tr("set_env", "环境变量"),
+                                "\n".join(lines) or "（无）")
+
+    def _run_firststart(self):
+        try:
+            from ..dialogs.firststartdlg import FirstStartWizard
+        except Exception:
+            QMessageBox.information(self, tr("set_firststart", "First Start Wizard"),
+                                    tr("firststart_unavailable", "First Start Wizard 不可用。"))
+        else:
+            FirstStartWizard(self).exec_wizard()
+
+    def _create_library(self):
+        # Git 随附库（git-extras 等）在 Python 版中无对应概念，仅提示已就绪。
+        QMessageBox.information(self, tr("set_library", "Create Library"),
+                                tr("set_library_done", "不需要额外创建库。"))
+
+    def _check_newer_now(self):
+        try:
+            from ..__init__ import __version__
+        except Exception:
+            __version__ = "0.0.0"
+        QMessageBox.information(self, tr("set_checknewer", "检查更新"),
+                                tr("set_checknewer_msg",
+                                   "当前版本：{ver}。此功能为占位，尚不支持自动联网检查。").format(ver=__version__))
+
+    def _on_path_changed(self):
+        path = self.git_path_edit.text().strip() if self.git_path_edit else ""
+        # 首次输入时带出可推测的 extra path（镜像 GuessExtraPath 的简化实现）
+        extra = self.extern_path_edit.text().strip() if self.extern_path_edit else ""
+        if path and not extra:
+            guessed = self._guess_extra_path(path)
+            if guessed and self.extern_path_edit is not None:
+                self.extern_path_edit.setText(guessed)
+
+    @staticmethod
+    def _guess_extra_path(path: str) -> str:
+        """若路径指向 bin/cmd 等常见目录，给出其相邻的 user 目录猜测。"""
+        base = os.path.normpath(path)
+        userhome = os.path.expanduser("~")
+        tail = os.path.basename(base).casefold()
+        if tail in ("bin", "cmd", "usr") and not base.casefold().startswith(userhome.casefold()):
+            return os.path.join(os.path.dirname(base), "usr", "bin")
+        return ""
+
+    def load_from_settings(self):
+        s = general_settings()
+        combo = self.language_combo
+        if combo is not None:
+            lang = s.value("language", "zh_CN")
+            idx = combo.findData(lang)
+            combo.setCurrentIndex(idx if idx >= 0 else 0)
+        if cb := self.check_newer_checkbox:
+            cb.setChecked(bool(s.value("checkNewer", True, type=bool)))
+        git = s.value("gitPath", shutil.which("git") or "")
+        if self.git_path_edit is not None:
+            self.git_path_edit.setText(git or "")
+        if self.extern_path_edit is not None:
+            self.extern_path_edit.setText(s.value("extraPath", "") or "")
+        self._check_git()
+
+    def apply_to_settings(self):
+        s = general_settings()
+        combo = self.language_combo
+        if combo is not None:
+            s.setValue("language", combo.currentData() or combo.currentText())
+        if cb := self.check_newer_checkbox:
+            s.setValue("checkNewer", cb.isChecked())
+        if self.git_path_edit is not None:
+            s.setValue("gitPath", self.git_path_edit.text().strip())
+        if self.extern_path_edit is not None:
+            s.setValue("extraPath", self.extern_path_edit.text().strip())
+        s.sync()
 
 
 class _RcPage(_SettingPage):
@@ -224,7 +419,7 @@ class SettingsDlg(QDialog):
         self._items: dict[str, QTreeWidgetItem] = {}
         has_repo = self.repo is not None
 
-        main = self._add_page("main", _RcPage("IDD_SETTINGSMAIN", self), "IDI_GENERAL")
+        main = self._add_page("main", _GeneralPage(self), "IDI_GENERAL")
         self._add_page("look", _RcPage("IDD_SETTINGSLOOKANDFEEL", self), "IDI_MISC", main)
         self._add_page("extmenu", _RcPage("IDD_SETTINGSEXTMENU", self), "IDI_MISC", main)
         if _is_win11():
@@ -392,17 +587,11 @@ class SettingsDlg(QDialog):
         return ""
 
     def _load_general(self):
-        git = shutil.which("git")
         for _, page in self.pages:
-            ver = page._ctl.get("IDC_MSYSGIT_VER") if hasattr(page, "_ctl") else None
-            if ver is not None:
-                if git:
-                    try:
-                        out = subprocess.run([git, "--version"], capture_output=True,
-                                             text=True).stdout.strip()
-                        ver.setText(out)
-                    except Exception:
-                        pass
+            if isinstance(page, _GeneralPage):
+                page.setup()
+                page.load_from_settings()
+                break
 
     def _on_ok(self):
         self._apply()
@@ -413,6 +602,9 @@ class SettingsDlg(QDialog):
             self._set_global("user.name", self.name_edit.text().strip())
         if self.email_edit is not None:
             self._set_global("user.email", self.email_edit.text().strip())
+        for _, page in self.pages:
+            if isinstance(page, _GeneralPage):
+                page.apply_to_settings()
         for _, page in self.pages:
             if isinstance(page, _NetworkPage):
                 host = page.server_edit.text().strip() if page.server_edit else ""

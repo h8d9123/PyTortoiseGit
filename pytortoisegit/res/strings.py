@@ -158,6 +158,20 @@ STRINGS: Dict[str, str] = {
     "status": "状态",
     "confirm": "确认",
 
+    # ---- 设置 - General 页 ----
+    "set_lang": "&语言：",
+    "set_gitexe": "&Git.exe 路径：",
+    "set_extrapath": "&额外 PATH：",
+    "set_ver": "版本：",
+    "set_browse": "选择 Git 目录",
+    "set_env": "环境变量",
+    "set_firststart": "First Start Wizard",
+    "firststart_unavailable": "First Start Wizard 不可用。",
+    "set_library": "Create Library",
+    "set_library_done": "Python 版无需额外创建库。",
+    "set_checknewer": "检查更新",
+    "set_checknewer_msg": "当前版本：{ver}。此功能为占位，尚不支持自动联网检查。",
+
     # ---- TortoiseGitMerge 主窗口 ----
     "tm_title": "TortoiseGitMerge - {}",
     "tm_file": "文件(&F)",

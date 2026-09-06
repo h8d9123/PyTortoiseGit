@@ -155,6 +155,69 @@ class BaseView(QPlainTextEdit):
     def _paint_line_number_margin(self):
         pass
 
+    # ---- 差异块导航（翻译 HasNextDiff/OnNavigateNextdiff）----
+    def first_diff_line(self) -> int:
+        for i, vd in enumerate(self.view_data):
+            if self._is_diff(vd.state):
+                return i
+        return -1
+
+    def next_diff_from(self, line: int) -> int:
+        """从 line 之后找下一差异行；找不到返回 -1。"""
+        for i in range(line + 1, len(self.view_data)):
+            if self._is_diff(self.view_data[i].state):
+                return i
+        return -1
+
+    def prev_diff_from(self, line: int) -> int:
+        for i in range(line - 1, -1, -1):
+            if self._is_diff(self.view_data[i].state):
+                return i
+        return -1
+
+    def go_to_diff(self, line: int, other: "BaseView | None" = None):
+        self.go_to_line(line)
+        if other is not None:
+            other.go_to_line(line)
+
+    # ---- 合并操作（翻译 MarkBlock / SetViewMarked / SetViewState）----
+    def set_marked_block(self, first: int, last: int, marked: bool):
+        for i in range(first, min(last + 1, len(self.view_data))):
+            self.view_data[i].marked = marked
+
+    def set_view_state(self, index: int, state: DiffState):
+        if 0 <= index < len(self.view_data):
+            self.view_data[index].state = state
+
+    def take_block(self, index: int, from_other: "BaseView", marked_other: bool = True):
+        """把 other 的 index 行文本与状态复制到本视图 index（合并取对方）。"""
+        if not (0 <= index < len(self.view_data) and 0 <= index < len(from_other.view_data)):
+            return
+        src = from_other.view_data[index]
+        self.view_data[index].line = src.line
+        self.view_data[index].state = DiffState.ConflictsResolved
+        self.view_data[index].marked = marked_other
+        # 同步另一侧为空占位
+        if 0 <= index < len(from_other.view_data):
+            from_other.view_data[index].marked = marked_other
+        self._rebuild()
+
+    def mark_resolved(self, index: int):
+        if 0 <= index < len(self.view_data):
+            self.view_data[index].state = DiffState.ConflictsResolved
+            self.view_data[index].marked = False
+            self._rebuild()
+
+    def merged_lines(self) -> List[str]:
+        """返回合并后结果行（ConflictsResolved 的行；Normal/Added 保留；Empty 去掉）。"""
+        out = []
+        for vd in self.view_data:
+            if vd.is_empty and vd.state in (DiffState.Empty, DiffState.ConflictEmpty):
+                continue
+            if vd.state == DiffState.ConflictsResolved or not vd.is_empty:
+                out.append(vd.line)
+        return out
+
 
 class LeftView(BaseView):
     """左视图（旧版本/base side）。"""

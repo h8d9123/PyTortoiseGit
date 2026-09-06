@@ -49,6 +49,7 @@ class DiffState(Enum):
     IdenticalMovedTo = 16
     Edited = 17
     Filtered = 18
+    ConflictsResolved = 19
 
 
 class HideState(Enum):

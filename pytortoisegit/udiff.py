@@ -24,6 +24,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -101,10 +102,30 @@ class FilePatch:
     raw: str = ""
 
     @property
+    def git_path(self) -> str:
+        return self.new_path or self.old_path
+
+    @property
     def filename_display(self) -> str:
         if self.is_rename and self.old_path != self.new_path:
             return f"{self.old_path} → {self.new_path}"
-        return self.new_path or self.old_path
+        return self.git_path
+
+    @property
+    def ext(self) -> str:
+        base = os.path.basename(self.git_path.replace("\\", "/"))
+        _, dot, rest = base.rpartition(".")
+        return ("." + rest) if dot and rest else ""
+
+    @property
+    def status_code(self) -> str:
+        if self.is_rename:
+            return "R"
+        if self.is_new:
+            return "A"
+        if self.is_deleted:
+            return "D"
+        return "M"
 
     @property
     def added(self) -> int:

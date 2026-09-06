@@ -84,6 +84,16 @@ def test_line_for():
 def test_filename_display_rename():
     patch = parse_file_patch(SAMPLE_RENAME)
     assert "→" in patch.filename_display
+    assert patch.git_path == "new.py"
+    assert patch.ext == ".py"
+    assert patch.status_code == "R"
+
+
+def test_new_file_status_and_ext():
+    patch = parse_file_patch(SAMPLE_NEWFILE)
+    assert patch.status_code == "A"
+    assert patch.ext == ".txt"
+    assert patch.git_path == "new.txt"
 
 
 def test_empty_diff():

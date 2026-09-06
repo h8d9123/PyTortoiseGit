@@ -38,10 +38,14 @@ from .progress import ProgressDialog
 
 
 class ExportDlg(QDialog):
-    def __init__(self, repo: Repository, parent=None):
+    def __init__(self, repo: Repository, parent=None, commit: str | None = None):
         super().__init__(parent, Qt.WindowType.Window)
         self.repo = repo
         self._build_ui()
+        if commit:
+            self.rd_version.setChecked(True)
+            self.version_combo.setEditable(True)
+            self.version_combo.setCurrentText(commit)
 
     def _build_ui(self):
         spec = rc_mod.load_spec("IDD_EXPORT")

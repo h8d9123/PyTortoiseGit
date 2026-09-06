@@ -27,12 +27,16 @@
 
 from __future__ import annotations
 
+import os
 from typing import List, Optional, Sequence
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QFileInfo, Qt
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QFileIconProvider,
+    QHeaderView,
     QLabel,
     QMenu,
     QSplitter,
@@ -45,7 +49,15 @@ from ..git.repo import Repository
 from ..git.rev import GitRev
 from ..res.strings import format_string, tr
 from ..asyncfw import run_async
+from .loglists import ChangedFile, filediff_action_color, status_text
 from .widgets import DiffView
+
+# CFileDiffDlg：File / Extension / Action / Lines added / Lines removed
+DIFF_COL_FILE = 0
+DIFF_COL_EXT = 1
+DIFF_COL_ACTION = 2
+DIFF_COL_ADD = 3
+DIFF_COL_DEL = 4
 
 
 class DiffDlg(QDialog):
@@ -75,13 +87,26 @@ class DiffDlg(QDialog):
 
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.file_tree = QTreeWidget(splitter)
-        self.file_tree.setColumnCount(4)
-        self.file_tree.setHeaderLabels([tr("file"), tr("status"),
-                                        tr("log_file_changes", "增"), tr("删")])
-        self.file_tree.setColumnWidth(0, 360)
-        self.file_tree.setColumnWidth(1, 70)
-        self.file_tree.setColumnWidth(2, 40)
-        self.file_tree.setColumnWidth(3, 40)
+        self.file_tree.setColumnCount(5)
+        self.file_tree.setHeaderLabels([
+            tr("filediff_file", "文件"),
+            tr("filediff_ext", "扩展名"),
+            tr("filediff_action", "动作"),
+            tr("filediff_add", "增加"),
+            tr("filediff_del", "删除"),
+        ])
+        self.file_tree.setRootIsDecorated(False)
+        self.file_tree.setIndentation(0)
+        self.file_tree.setUniformRowHeights(True)
+        self.file_tree.header().setSectionResizeMode(DIFF_COL_FILE, QHeaderView.ResizeMode.Stretch)
+        self.file_tree.setColumnWidth(DIFF_COL_EXT, 64)
+        self.file_tree.setColumnWidth(DIFF_COL_ACTION, 72)
+        self.file_tree.setColumnWidth(DIFF_COL_ADD, 48)
+        self.file_tree.setColumnWidth(DIFF_COL_DEL, 48)
+        align_r = int(Qt.AlignmentFlag.AlignRight)
+        self.file_tree.headerItem().setTextAlignment(DIFF_COL_ADD, align_r)
+        self.file_tree.headerItem().setTextAlignment(DIFF_COL_DEL, align_r)
+        self._file_icons = QFileIconProvider()
         self.file_tree.itemClicked.connect(self._on_file_clicked)
         self.file_tree.itemDoubleClicked.connect(self._on_file_double_clicked)
         self.file_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -128,18 +153,29 @@ class DiffDlg(QDialog):
             f" {len(patches)} 个文件，+{total} 行改动"
             f"  {self.rev1 or 'HEAD'} … {self.rev2 or '工作区'}")
         self.file_tree.clear()
+        align_r = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         for p in patches:
-            status = "已修改"
-            if p.is_new:
-                status = "新增"
-            elif p.is_deleted:
-                status = "删除"
-            elif p.is_rename:
-                status = "重命名"
-            item = QTreeWidgetItem([p.filename_display, status,
-                                    str(p.added) if p.added else "",
-                                    str(p.removed) if p.removed else ""])
+            row = ChangedFile(
+                p.git_path, p.status_code,
+                added="-" if p.is_binary else str(p.added),
+                deleted="-" if p.is_binary else str(p.removed),
+                old_path=p.old_path if p.is_rename else "",
+            )
+            item = QTreeWidgetItem([
+                row.display_name(),
+                p.ext,
+                status_text(p.status_code),
+                row.added,
+                row.deleted,
+            ])
             item.setData(0, Qt.ItemDataRole.UserRole, p)
+            item.setIcon(0, self._file_icons.icon(QFileInfo(p.git_path)))
+            item.setTextAlignment(DIFF_COL_ADD, align_r)
+            item.setTextAlignment(DIFF_COL_DEL, align_r)
+            rgb = filediff_action_color(p.status_code)
+            brush = QBrush(QColor(*rgb))
+            for c in range(item.columnCount()):
+                item.setForeground(c, brush)
             self.file_tree.addTopLevelItem(item)
         self.setWindowTitle(f"{self.repo.name} — diff")
         if patches:
@@ -160,19 +196,17 @@ class DiffDlg(QDialog):
         self.view.display_patch(patch.raw, title=f"═══ {patch.filename_display} ═══")
 
     def _on_file_double_clicked(self, item, _col):
-        """双击文件：在系统编辑器中打开文件。"""
+        """双击：对齐 CFileDiffDlg::DoDiff，打开并排比较。"""
         p = item.data(0, Qt.ItemDataRole.UserRole)
-        if p is None:
-            return
-        full = self._full_path(p.filename_display)
-        import os
-        if full and os.path.isfile(full):
-            try:
-                os.startfile(full)  # noqa: S606
-            except OSError:
-                pass
+        if p is not None:
+            self._open_compare(p)
 
-    # ---- 右键菜单 ----
+    def _open_compare(self, p):
+        from ..merge.mergefrm import MergeFrm
+        frm = MergeFrm(self.repo, p.git_path, self.rev1, self.rev2, parent=self)
+        frm.show()
+
+    # ---- 右键菜单（对齐 CFileDiffDlg::OnContextMenu）----
     def _on_menu(self, pos):
         item = self.file_tree.itemAt(pos)
         if item is None:
@@ -180,32 +214,31 @@ class DiffDlg(QDialog):
         p = item.data(0, Qt.ItemDataRole.UserRole)
         if p is None:
             return
-        path = p.filename_display
+        path = p.git_path
         menu = QMenu(self)
-        act_open = menu.addAction(tr("menu_open", "在编辑器打开"))
-        act_copy = menu.addAction(tr("menu_copy_path", "复制路径"))
+        act_cmp = menu.addAction(tr("log_compare_two", "比较两个修订"))
+        act_gnu = menu.addAction(tr("log_gnudiff", "显示统一差异"))
         menu.addSeparator()
-        act_diff = menu.addAction(tr("menu_diff_file", "显示该文件 diff"))
-        act_blame = menu.addAction(tr("menu_blame", "在此文件上运行 Blame"))
-        act_ext = menu.addAction(tr("menu_ext_tool", "外部 diff 工具打开"))
+        act_log = menu.addAction(tr("log_show_log", "显示日志"))
+        act_blame = menu.addAction(tr("log_blame", "Blame"))
+        menu.addSeparator()
+        act_copy = menu.addAction(tr("log_copy_rel", "相对路径"))
         chosen = menu.exec(self.file_tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return
-        full = self._full_path(path)
         from ..utils.clipboard import ClipboardHelper
         if chosen is act_copy:
             ClipboardHelper().copy_text(path)
-        elif chosen is act_open:
-            if full and os.path.isfile(full):
-                import subprocess
-                os.startfile(full)  # noqa: S606
-        elif chosen is act_diff:
+        elif chosen is act_cmp:
+            self._open_compare(p)
+        elif chosen is act_gnu:
             self._show_patch(p)
+        elif chosen is act_log:
+            from .logdlg import LogDlg
+            LogDlg(self.repo, pathspec=path, rev=self.rev2, parent=self).exec()
         elif chosen is act_blame:
             from .blamedlg import BlameDlg
-            BlameDlg(self.repo, path, rev=self.rev2, parent=self).exec()
-        elif chosen is act_ext:
-            self._open_external(path)
+            BlameDlg(self.repo, path, rev=self.rev2 or self.rev1, parent=self).exec()
 
     def _full_path(self, path: str) -> str:
         import os

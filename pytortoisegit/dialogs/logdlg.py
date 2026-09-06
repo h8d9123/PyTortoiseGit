@@ -2,7 +2,7 @@
 
 严格按 IDD_LOGMESSAGE（422x265, "Log Messages"）模板排版：
 顶行（分支/From-To 日期/Search/跳转）、IDC_LOGLIST 提交列表、
-中部 IDC_MSGVIEW（diff）、下部 IDC_LOGMSG（提交信息）、
+中部 IDC_MSGVIEW（提交信息）、下部 IDC_LOGMSG（文件列表）、
 底行（Whole Project / All Branches / Filter + 按钮行）。
 """
 
@@ -13,29 +13,22 @@
 # the terms of the GNU General Public License as published by the Free Software
 # Foundation; either version 2 of the License, or (at your option) any later
 # version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
-# details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc., 51
-# Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-#
-# This program is derived from and mirrors the TortoiseGit project.
 
 from __future__ import annotations
 
+import os
 from typing import List, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QFileInfo, Qt, QUrl
+from PySide6.QtGui import QBrush, QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDateEdit,
     QDialog,
+    QFileDialog,
+    QFileIconProvider,
     QHeaderView,
     QLabel,
     QLineEdit,
@@ -56,15 +49,19 @@ from ..asyncfw import run_async
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
 from .diffdlg import DiffDlg
+from .loggraph import LogListDelegate, graph_width
+from .loglists import (
+    FILE_COL_ADD, FILE_COL_DEL, FILE_COL_EXT, FILE_COL_PATH, FILE_COL_SIZE,
+    FILE_COL_STATUS, LOG_COL_ACTIONS, LOG_COL_AUTHOR, LOG_COL_DATE, LOG_COL_EMAIL,
+    LOG_COL_GRAPH, LOG_COL_HASH, LOG_COL_MESSAGE, ChangedFile, file_column_labels,
+    file_default_hidden, log_column_labels, log_default_hidden, parse_show_files,
+    status_color, status_text,
+)
 from .resize import AnchorLayout
 
 
 class LogDlg(QDialog):
     """日志查看主对话框。"""
-
-    COLS = [tr("log_graph", "图"), tr("log_message", "提交信息"),
-            tr("log_author", "作者"), tr("log_date", "日期"),
-            tr("log_revision", "修订")]
 
     def __init__(self, repo: Repository, pathspec: str | None = None,
                  rev: str | None = None, parent=None):
@@ -91,7 +88,6 @@ class LogDlg(QDialog):
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
 
-        # 顶行
         self.branch_label = QLabel(tr("log_branch_label", "Branch:"), self)
         self.branch_value = QLabel(self, text="")
         self.branch_value.setText(self.repo.current_branch())
@@ -114,50 +110,66 @@ class LogDlg(QDialog):
         self.jump_up_btn.setFixedHeight(23)
         self.jump_down_btn.setFixedHeight(23)
 
-        # 中部：提交列表 / diff / 提交信息
+        labels = log_column_labels()
         self.tree = QTreeWidget(self)
-        self.tree.setColumnCount(len(self.COLS))
-        self.tree.setHeaderLabels(self.COLS)
+        self.tree.setColumnCount(len(labels))
+        self.tree.setHeaderLabels(labels)
         self.tree.setUniformRowHeights(True)
         self.tree.setRootIsDecorated(False)
-        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tree.setIndentation(0)
-        self.tree.setColumnWidth(0, 90)   # 图列
-        self.tree.setColumnWidth(1, 220)  # 提交信息
+        self.tree.setColumnWidth(LOG_COL_GRAPH, 90)
+        self.tree.setColumnWidth(LOG_COL_ACTIONS, 2 + 16 * 5 + 6)
+        self.tree.setColumnWidth(LOG_COL_MESSAGE, 280)
+        self.tree.setItemDelegate(LogListDelegate(self._commit_from_index, self.tree))
+        for col in log_default_hidden():
+            self.tree.setColumnHidden(col, True)
         self.tree.itemClicked.connect(self._on_commit_selected)
         self.tree.itemDoubleClicked.connect(self._on_double_clicked)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._on_menu)
+        self.tree.header().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.header().customContextMenuRequested.connect(self._on_log_header_menu)
+
         self.author_pic = QLabel("", self)
         self.author_pic.setObjectName("IDC_PIC_AUTHOR")
-        # 受影响的文件列表（镜像 m_ChangedFileListCtrl）：双击打开 diff，右键菜单
+
         self.file_list = QTreeWidget(self)
-        self.file_list.setColumnCount(3)
-        self.file_list.setHeaderLabels([tr("log_file_path", "Path"),
-                                        tr("log_file_status", "状态"),
-                                        tr("log_file_changes", "增/删")])
-        self.file_list.setRootIsDecorated(False)
-        self.file_list.setIndentation(0)
-        self.file_list.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.file_list.itemClicked.connect(self._on_file_clicked)
+        self.file_list.setColumnCount(len(file_column_labels()))
+        self.file_list.setHeaderLabels(file_column_labels())
+        self.file_list.setRootIsDecorated(True)
+        self.file_list.setIndentation(12)
+        self.file_list.setUniformRowHeights(True)
+        self.file_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.file_list.header().setSectionResizeMode(FILE_COL_PATH, QHeaderView.ResizeMode.Stretch)
+        self.file_list.setColumnWidth(FILE_COL_EXT, 64)
+        self.file_list.setColumnWidth(FILE_COL_STATUS, 72)
+        self.file_list.setColumnWidth(FILE_COL_ADD, 48)
+        self.file_list.setColumnWidth(FILE_COL_DEL, 48)
+        for col in (FILE_COL_ADD, FILE_COL_DEL, FILE_COL_SIZE):
+            self.file_list.headerItem().setTextAlignment(col, int(Qt.AlignmentFlag.AlignRight))
+        for col in file_default_hidden():
+            self.file_list.setColumnHidden(col, True)
+        self._file_icons = QFileIconProvider()
         self.file_list.itemDoubleClicked.connect(self._on_file_double_clicked)
         self.file_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.file_list.customContextMenuRequested.connect(self._on_file_menu)
-        # 中部 MSGVIEW 区：受影响文件列表（点击文件 -> 弹出并排比较窗口）
-        self.middle_splitter = QSplitter(Qt.Orientation.Vertical, self)
-        self.middle_splitter.addWidget(self.file_list)
-        self.middle_splitter.setObjectName("IDC_MSGVIEW")
-        # 底部 LOGMSG 区：提交信息
+        self.file_list.header().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.file_list.header().customContextMenuRequested.connect(self._on_file_header_menu)
+
+        # 原版：IDC_MSGVIEW = 提交信息，IDC_LOGMSG = 受影响文件列表
         self.msg_box = QPlainTextEdit(self)
         self.msg_box.setReadOnly(True)
         self.msg_box.setPlaceholderText(tr("log_msg_hint", "提交信息…"))
+        self.middle_splitter = QSplitter(Qt.Orientation.Vertical, self)
+        self.middle_splitter.addWidget(self.msg_box)
+        self.middle_splitter.setObjectName("IDC_MSGVIEW")
         self.bottom_splitter = QSplitter(Qt.Orientation.Vertical, self)
-        self.bottom_splitter.addWidget(self.msg_box)
+        self.bottom_splitter.addWidget(self.file_list)
         self.bottom_splitter.setObjectName("IDC_LOGMSG")
         self.log_info = QLineEdit(self)
         self.log_info.setReadOnly(True)
 
-        # 底行
         self.chk_whole = QCheckBox(tr("log_whole", "Show &Whole Project"), self)
         self.chk_whole.toggled.connect(self._on_scope_toggled)
         self.chk_allbranch = QCheckBox(tr("log_allbranch", "&All Branches"), self)
@@ -181,7 +193,6 @@ class LogDlg(QDialog):
         self.btn_ok.clicked.connect(self.reject)
         self.btn_cancel = QPushButton(tr("cancel"), self)
         self.btn_cancel.clicked.connect(self.reject)
-        # 兼容内部：条数限制
         self.limit_spin = QSpinBox(self)
         self.limit_spin.setRange(10, 5000)
         self.limit_spin.setValue(500)
@@ -221,7 +232,6 @@ class LogDlg(QDialog):
                 continue
             rc_mod.place_widget(self, fu, ctrl, wgt)
             self._ctl[ctrl.ctrl_id] = wgt
-        # 分支文字放网页到 Branch 标签右侧
         self.branch_value.setParent(self)
         self.branch_value.setObjectName("IDC_BRANCHVAL")
         geom = self.branch_label.geometry()
@@ -253,6 +263,26 @@ class LogDlg(QDialog):
         if hasattr(self, "_anchors"):
             self._anchors.apply(self.width(), self.height())
 
+    def _header_menu(self, tree: QTreeWidget, pos):
+        menu = QMenu(self)
+        header = tree.header()
+        for i in range(tree.columnCount()):
+            act = menu.addAction(tree.headerItem().text(i))
+            act.setCheckable(True)
+            act.setChecked(not tree.isColumnHidden(i))
+            act.setData(i)
+        chosen = menu.exec(header.mapToGlobal(pos))
+        if chosen is None:
+            return
+        col = int(chosen.data())
+        tree.setColumnHidden(col, not tree.isColumnHidden(col))
+
+    def _on_log_header_menu(self, pos):
+        self._header_menu(self.tree, pos)
+
+    def _on_file_header_menu(self, pos):
+        self._header_menu(self.file_list, pos)
+
     # ---- 数据 ----
     def _populate(self):
         self.tree.clear()
@@ -266,24 +296,34 @@ class LogDlg(QDialog):
         search = self.search_edit.text() or None
         self.log.load(limit=self.limit_spin.value(),
                       search=search,
-                      pathspec=self.pathspec,
-                      ordering=self._ordering)
+                      pathspec="" if self.chk_whole.isChecked() else self.pathspec,
+                      ordering=self._ordering,
+                      all_branches=self.chk_allbranch.isChecked())
         return []
 
     def _on_loaded(self, _payload):
         self.tree.clear()
         for commit in self.log:
+            refs = f" [{commit.refs_str}]" if commit.refs_str else ""
             item = QTreeWidgetItem([
-                commit.row_symbol if commit.row_symbol else "o",
-                commit.subject,
-                f"{commit.author_name} <{commit.author_email}>",
+                "",
+                "",
+                commit.subject + refs,
+                commit.author_name,
                 commit.date_span(),
-                commit.short_hash,
+                commit.hash,
+                commit.author_email,
+                commit.committer_name,
+                commit.committer_email,
+                commit.date_span(),
             ])
-            item.setToolTip(0, commit.row_text)
-            item.setToolTip(1, commit.body or commit.subject)
+            item.setToolTip(LOG_COL_ACTIONS, self._action_tip(commit.actions))
+            item.setToolTip(LOG_COL_MESSAGE, commit.body or commit.subject)
             item.setData(0, Qt.ItemDataRole.UserRole, commit.hash)
             self.tree.addTopLevelItem(item)
+        max_lanes = max((len(c.lanes) for c in self.log), default=1)
+        row_h = self.tree.sizeHintForRow(0) or 20
+        self.tree.setColumnWidth(LOG_COL_GRAPH, graph_width(max_lanes, row_h))
         self._status.setText(
             f" {self.log.count()} {tr('log_commits', '个提交')} · "
             f"{self.repo.current_branch()}")
@@ -295,9 +335,7 @@ class LogDlg(QDialog):
     def _on_error(self, message, _tb):
         self._status.setText(message)
 
-    # ---- 交互 ----
     def _on_scope_toggled(self, *_a):
-        self.pathspec = "" if self.chk_whole.isChecked() else self.pathspec
         self._populate()
 
     def _on_commit_selected(self, item, _col):
@@ -313,6 +351,32 @@ class LogDlg(QDialog):
         h = item.data(0, Qt.ItemDataRole.UserRole)
         return self.log.get(h) if isinstance(h, str) else None
 
+    def _commit_from_index(self, index) -> Optional[GitRev]:
+        item = self.tree.itemFromIndex(index)
+        return self._commit_of(item) if item is not None else None
+
+    def _action_tip(self, actions: str) -> str:
+        names = {
+            "M": tr("log_st_modified", "已修改"),
+            "A": tr("log_st_added", "已添加"),
+            "D": tr("log_st_deleted", "已删除"),
+            "R": tr("log_st_renamed", "已重命名"),
+            "C": tr("log_st_copied", "已复制"),
+            "U": tr("log_st_unmerged", "未合并"),
+        }
+        lines = [names[c] for c in "MADRC" if c in (actions or "")]
+        if not lines:
+            return ""
+        return tr("log_actions", "动作") + ":\n" + "\n".join(lines)
+
+    def _selected_commits(self) -> List[GitRev]:
+        out = []
+        for item in self.tree.selectedItems():
+            c = self._commit_of(item)
+            if c is not None:
+                out.append(c)
+        return out
+
     def _show_commit(self, commit: GitRev):
         author = f"{commit.author_name} [{commit.author_email}]" if commit.author_email else commit.author_name
         self.msg_box.setPlainText(
@@ -324,94 +388,189 @@ class LogDlg(QDialog):
                   on_done=self._on_files_loaded, parent=self)
 
     def _load_files_bg(self, rev_hash: str) -> list:
-        """取该提交的受影响文件列表（name-status）。"""
+        commit = self.log.get(rev_hash)
+        if commit is not None and commit.is_merge and commit.parents:
+            groups = []
+            for i, parent in enumerate(commit.parents):
+                out = self.repo.runner.run(
+                    "diff", "--no-color", "--name-status", "--numstat",
+                    parent, rev_hash, "--").stdout or ""
+                files = parse_show_files(out)
+                title = tr("log_diff_parent", "与父提交 {} 的差异: {}").format(
+                    i + 1, parent[:8])
+                groups.append((title, files))
+            return groups
         out = self.repo.runner.run(
-            "show", "--no-color", "--format=", "--name-status", "-r",
-            rev_hash, "--").stdout or ""
-        rows = []
-        for line in out.splitlines():
-            if not line.strip():
-                continue
-            if "\t" in line:
-                st, _, path = line.partition("\t")
-                rows.append((path.strip(), st.strip()))
-        return rows
+            "show", "--no-color", "--format=", "--name-status", "--numstat",
+            "-r", rev_hash, "--").stdout or ""
+        # 非合并：原版不启用分组（PrepareGroups 仅 max>0 时分组）
+        return [(None, parse_show_files(out))]
 
-    def _on_files_loaded(self, rows):
-        self.file_list.clear()
-        for path, st in rows:
-            it = QTreeWidgetItem([path, st, ""])
-            it.setData(0, Qt.ItemDataRole.UserRole, path)
+    def _file_icon(self, path: str):
+        return self._file_icons.icon(QFileInfo(path))
+
+    def _add_file_item(self, parent: Optional[QTreeWidgetItem], row: ChangedFile):
+        it = QTreeWidgetItem([
+            row.display_name(),
+            row.filename,
+            row.ext,
+            status_text(row.status),
+            row.added,
+            row.deleted,
+            "",
+            "",
+        ])
+        it.setData(0, Qt.ItemDataRole.UserRole, row.path)
+        it.setIcon(0, self._file_icon(row.path))
+        align_r = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        it.setTextAlignment(FILE_COL_ADD, align_r)
+        it.setTextAlignment(FILE_COL_DEL, align_r)
+        it.setTextAlignment(FILE_COL_SIZE, align_r)
+        rgb = status_color(row.status)
+        if rgb:
+            brush = QBrush(QColor(*rgb))
+            for c in range(it.columnCount()):
+                it.setForeground(c, brush)
+        if parent is None:
             self.file_list.addTopLevelItem(it)
+        else:
+            parent.addChild(it)
+
+    def _on_files_loaded(self, groups):
+        self.file_list.clear()
+        for title, rows in groups:
+            parent = None
+            if title:
+                parent = QTreeWidgetItem([title])
+                parent.setFirstColumnSpanned(True)
+                font = parent.font(0)
+                font.setBold(True)
+                parent.setFont(0, font)
+                self.file_list.addTopLevelItem(parent)
+            for row in rows:
+                self._add_file_item(parent, row)
+            if parent is not None:
+                parent.setExpanded(True)
 
     def _current_commit(self):
         tree_item = self.tree.currentItem()
         return self._commit_of(tree_item) if tree_item is not None else None
 
+    def _file_path(self, item) -> str:
+        return item.data(0, Qt.ItemDataRole.UserRole) or ""
 
-    def _on_file_clicked(self, item, _col):
-        """单击文件行：打开并排比较窗口（对齐 TortoiseGitMerge）。"""
-        path = item.data(0, Qt.ItemDataRole.UserRole)
-        commit = self._current_commit()
-        if not path or commit is None:
-            return
+    def _open_file_diff(self, path: str, commit: GitRev, with_wc: bool = False):
         from ..merge.mergefrm import MergeFrm
-        base = commit.hash + "^" if not commit.is_root else None
-        dlg = MergeFrm(self.repo, path, base or None, commit.hash, parent=self)
+        if with_wc:
+            dlg = MergeFrm(self.repo, path, commit.hash, None, parent=self)
+        else:
+            base = commit.hash + "^" if not commit.is_root else None
+            dlg = MergeFrm(self.repo, path, base or None, commit.hash, parent=self)
         dlg.show()
 
     def _on_file_double_clicked(self, item, _col):
-        """双击文件打开 diff 窗口。"""
-        path = item.data(0, Qt.ItemDataRole.UserRole)
+        path = self._file_path(item)
         commit = self._current_commit()
-        if not path or commit is None:
-            return
-        diff_parent = commit.hash + "^" if not commit.is_root else None
-        DiffDlg(self.repo, diff_parent or commit.hash, commit.hash,
-                paths=[path], parent=self).exec()
+        if path and commit is not None:
+            self._open_file_diff(path, commit)
+
+    def _copy_text(self, text: str):
+        from ..utils.clipboard import ClipboardHelper
+        ClipboardHelper().copy_text(text)
 
     def _on_file_menu(self, pos):
         item = self.file_list.itemAt(pos)
         if item is None:
             return
-        path = item.data(0, Qt.ItemDataRole.UserRole)
+        path = self._file_path(item)
         commit = self._current_commit()
         if not path or commit is None:
             return
         menu = QMenu(self)
-        act_diff = menu.addAction(tr("log_diff", "与此提交比较…"))
-        act_copy = menu.addAction(tr("menu_copy_path", "复制路径"))
+        act_base = menu.addAction(tr("log_compare_base", "与基版本比较"))
+        act_gnu = menu.addAction(tr("log_gnudiff", "显示统一差异"))
+        act_wc = menu.addAction(tr("log_compare_wc", "与工作副本比较"))
         menu.addSeparator()
-        act_blame = menu.addAction(tr("log_blame", "在该文件上运行 Blame"))
+        act_log = menu.addAction(tr("log_show_log", "显示日志"))
+        act_blame = menu.addAction(tr("log_blame", "Blame"))
+        act_revert = menu.addAction(tr("log_revert_to_rev", "还原到此版本"))
+        menu.addSeparator()
+        act_save = menu.addAction(tr("log_save_as", "另存为…"))
+        act_view = menu.addAction(tr("log_view_rev", "查看修订"))
+        act_open = menu.addAction(tr("log_open", "打开"))
+        act_openwith = menu.addAction(tr("log_open_with", "打开方式…"))
+        act_explore = menu.addAction(tr("log_explore", "在资源管理器中打开"))
+        clip = menu.addMenu(tr("log_copy_clip", "复制到剪贴板"))
+        act_full = clip.addAction(tr("log_copy_full", "完整路径"))
+        act_rel = clip.addAction(tr("log_copy_rel", "相对路径"))
+        act_name = clip.addAction(tr("log_copy_name", "文件名"))
         chosen = menu.exec(self.file_list.viewport().mapToGlobal(pos))
         if chosen is None:
             return
-        from ..utils.clipboard import ClipboardHelper
-        if chosen is act_diff:
-            diff_parent = commit.hash + "^" if not commit.is_root else None
-            DiffDlg(self.repo, diff_parent or commit.hash, commit.hash,
+        full = self.repo.full_path(path)
+        if chosen is act_base:
+            self._open_file_diff(path, commit)
+        elif chosen is act_gnu:
+            base = commit.hash + "^" if not commit.is_root else None
+            DiffDlg(self.repo, base or commit.hash, commit.hash,
                     paths=[path], parent=self).exec()
-        elif chosen is act_copy:
-            ClipboardHelper().copy_text(path)
+        elif chosen is act_wc:
+            self._open_file_diff(path, commit, with_wc=True)
+        elif chosen is act_log:
+            LogDlg(self.repo, pathspec=path, rev=commit.hash, parent=self).exec()
         elif chosen is act_blame:
             from .blamedlg import BlameDlg
             BlameDlg(self.repo, path, rev=commit.hash, parent=self).exec()
+        elif chosen is act_revert:
+            self._do_simple(["checkout", commit.hash, "--", path])
+        elif chosen is act_save:
+            dest, _ = QFileDialog.getSaveFileName(self, tr("log_save_as", "另存为…"),
+                                                  os.path.basename(path))
+            if dest:
+                data = self.repo.runner.run("show", f"{commit.hash}:{path}").stdout or ""
+                with open(dest, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(data)
+        elif chosen is act_view:
+            DiffDlg(self.repo, commit.hash + "^" if not commit.is_root else commit.hash,
+                    commit.hash, paths=[path], parent=self).exec()
+        elif chosen is act_open:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(full))
+        elif chosen is act_openwith:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(full)))
+        elif chosen is act_explore:
+            folder = full if os.path.isdir(full) else os.path.dirname(full)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+        elif chosen is act_full:
+            self._copy_text(full)
+        elif chosen is act_rel:
+            self._copy_text(path)
+        elif chosen is act_name:
+            self._copy_text(os.path.basename(path))
 
     def _on_double_clicked(self, item, _col):
         commit = self._commit_of(item)
         if commit is not None:
-            DiffDlg(self.repo,
-                    commit.hash + "^" if not commit.is_root else commit.hash,
-                    commit.hash, paths=self.pathspec or None,
-                    parent=self).exec()
+            self._compare_previous(commit)
+
+    def _compare_wc(self, commit: GitRev):
+        DiffDlg(self.repo, commit.hash, paths=self.pathspec or None, parent=self).exec()
+
+    def _compare_previous(self, commit: GitRev):
+        DiffDlg(self.repo,
+                commit.hash + "^" if not commit.is_root else commit.hash,
+                commit.hash, paths=self.pathspec or None, parent=self).exec()
+
+    def _compare_two(self, a: GitRev, b: GitRev):
+        DiffDlg(self.repo, a.hash, b.hash, paths=self.pathspec or None, parent=self).exec()
 
     def _apply_filter(self, *_a):
         text = self.filter_edit.text().strip().lower()
         for i in range(self.tree.topLevelItemCount()):
             it = self.tree.topLevelItem(i)
-            it.setHidden(bool(text) and text not in it.text(1).lower()
-                         and text not in it.text(2).lower()
-                         and text not in it.text(3).lower())
+            hay = " ".join(it.text(c) for c in (
+                LOG_COL_MESSAGE, LOG_COL_AUTHOR, LOG_COL_DATE, LOG_COL_HASH,
+                LOG_COL_EMAIL)).lower()
+            it.setHidden(bool(text) and text not in hay)
 
     def _on_stats(self):
         from .statgraphdlg import StatGraphDlg
@@ -425,67 +584,130 @@ class LogDlg(QDialog):
             self._populate()
 
     def _on_view_menu(self):
-        item = self.tree.currentItem()
-        commit = self._commit_of(item) if item else None
         menu = QMenu(self)
-        act_diff = menu.addAction(tr("log_diff", "与此提交比较…"))
-        act_copy = menu.addAction(tr("log_copyhash", "复制完整哈希"))
-        act_copy_short = menu.addAction(tr("log_copyshort", "复制短哈希"))
-        chosen = menu.exec(self.btn_view.mapToGlobal(
-            self.btn_view.rect().bottomLeft()))
-        if chosen is None:
-            return
-        if commit is None:
-            return
-        if chosen is act_diff:
-            DiffDlg(self.repo, commit.hash,
-                    paths=self.pathspec or None, parent=self).exec()
-        elif chosen is act_copy:
-            from ..utils.clipboard import ClipboardHelper
-            ClipboardHelper().copy_text(commit.hash)
-        elif chosen is act_copy_short:
-            from ..utils.clipboard import ClipboardHelper
-            ClipboardHelper().copy_text(commit.short_hash)
+        self._fill_log_menu(menu, self._selected_commits())
+        menu.exec(self.btn_view.mapToGlobal(self.btn_view.rect().bottomLeft()))
 
     def _on_help(self):
         QMessageBox.information(
             self, tr("help"),
             tr("log_help",
                "搜索语法：author:xxx / grep:yyy，回车刷新。\n"
-               "双击提交可打开 diff 窗口。"))
+               "双击提交可与上一版本比较。"))
 
-    # ---- 右键菜单 ----
     def _on_menu(self, pos):
         item = self.tree.itemAt(pos)
         if item is None:
             return
-        commit = self._commit_of(item)
-        if commit is None:
-            return
+        if item not in self.tree.selectedItems():
+            self.tree.setCurrentItem(item)
         menu = QMenu(self)
-        act_checkout = menu.addAction(tr("log_checkout", "签出此提交…"))
-        act_branch = menu.addAction(tr("log_newbranch", "在此创建分支…"))
-        act_revert = menu.addAction(tr("log_revert", "还原此提交…"))
-        act_pick = menu.addAction(tr("log_cherry_pick", "遴选 (cherry-pick)…"))
-        act_diff = menu.addAction(tr("log_diff", "与此提交比较…"))
-        menu.addSeparator()
-        act_copy = menu.addAction(tr("log_copyhash", "复制完整哈希"))
-        chosen = menu.exec(self.tree.viewport().mapToGlobal(pos))
-        if chosen is None:
+        self._fill_log_menu(menu, self._selected_commits())
+        menu.exec(self.tree.viewport().mapToGlobal(pos))
+
+    def _fill_log_menu(self, menu: QMenu, commits: List[GitRev]):
+        if not commits:
             return
-        if chosen is act_checkout:
-            self._do_simple(["checkout", commit.hash])
-        elif chosen is act_revert:
-            self._do_simple(["revert", "--no-edit", commit.hash])
-        elif chosen is act_pick:
-            self._do_simple(["cherry-pick", commit.hash])
-        elif chosen is act_branch:
-            self._ask_branch(commit.hash)
-        elif chosen is act_copy:
-            from ..utils.clipboard import ClipboardHelper
-            ClipboardHelper().copy_text(commit.hash)
-        elif chosen is act_diff:
-            DiffDlg(self.repo, commit.hash, parent=self).exec()
+        one = len(commits) == 1
+        first = commits[0]
+        if one:
+            act_wc = menu.addAction(tr("log_compare_wc", "与工作副本比较"))
+            act_wc.triggered.connect(lambda: self._compare_wc(first))
+            act_prev = menu.addAction(tr("log_compare_prev", "与上一版本比较"))
+            act_prev.triggered.connect(lambda: self._compare_previous(first))
+            act_gnu = menu.addAction(tr("log_gnudiff", "显示统一差异"))
+            act_gnu.triggered.connect(lambda: self._compare_previous(first))
+            menu.addSeparator()
+            act_browse = menu.addAction(tr("log_browse", "浏览版本库"))
+            act_browse.triggered.connect(lambda: self._browse(first))
+            act_merge = menu.addAction(
+                tr("log_merge_to", "合并到「{}」").format(self.repo.current_branch()))
+            act_merge.triggered.connect(lambda: self._merge(first))
+            act_reset = menu.addAction(tr("log_reset", "重置「{}」到此…").format(
+                self.repo.current_branch()))
+            act_reset.triggered.connect(lambda: self._reset(first))
+            act_switch = menu.addAction(tr("log_switch", "切换/签出…"))
+            act_switch.triggered.connect(lambda: self._switch(first))
+            act_branch = menu.addAction(tr("log_newbranch", "在此创建分支…"))
+            act_branch.triggered.connect(lambda: self._ask_branch(first.hash))
+            act_tag = menu.addAction(tr("log_newtag", "在此创建标签…"))
+            act_tag.triggered.connect(lambda: self._ask_tag(first.hash))
+            act_export = menu.addAction(tr("log_export", "导出…"))
+            act_export.triggered.connect(lambda: self._export(first))
+            act_revert = menu.addAction(tr("log_revert", "还原此提交引入的更改"))
+            act_revert.triggered.connect(
+                lambda: self._do_simple(["revert", "--no-edit", first.hash]))
+            act_pick = menu.addAction(tr("log_cherry_pick", "Cherry Pick…"))
+            act_pick.triggered.connect(
+                lambda: self._do_simple(["cherry-pick", first.hash]))
+            act_patch = menu.addAction(tr("log_create_patch", "创建补丁…"))
+            act_patch.triggered.connect(lambda: self._format_patch(first))
+        elif len(commits) == 2:
+            act_two = menu.addAction(tr("log_compare_two", "比较两个修订"))
+            act_two.triggered.connect(lambda: self._compare_two(commits[0], commits[1]))
+            act_chg = menu.addAction(tr("log_compare_changes", "比较两个提交的变更集"))
+            act_chg.triggered.connect(lambda: self._compare_two(commits[0], commits[1]))
+            menu.addSeparator()
+            act_pick = menu.addAction(tr("log_cherry_pick", "Cherry Pick…"))
+            act_pick.triggered.connect(lambda: self._do_simple(
+                ["cherry-pick", commits[-1].hash, "^" + commits[0].hash]))
+        else:
+            act_pick = menu.addAction(tr("log_cherry_pick", "Cherry Pick…"))
+            act_pick.triggered.connect(lambda: self._do_simple(
+                ["cherry-pick"] + [c.hash for c in reversed(commits)]))
+        menu.addSeparator()
+        clip = menu.addMenu(tr("log_copy_clip", "复制到剪贴板"))
+        clip.addAction(tr("log_copyhash", "完整哈希"),
+                       lambda: self._copy_text("\n".join(c.hash for c in commits)))
+        clip.addAction(tr("log_copyshort", "短哈希"),
+                       lambda: self._copy_text("\n".join(c.short_hash for c in commits)))
+        clip.addAction(tr("log_copy_authors", "作者"),
+                       lambda: self._copy_text("\n".join(c.author_name for c in commits)))
+        clip.addAction(tr("log_copy_emails", "电子邮件"),
+                       lambda: self._copy_text("\n".join(c.author_email for c in commits)))
+        clip.addAction(tr("log_copy_subjects", "主题"),
+                       lambda: self._copy_text("\n".join(c.subject for c in commits)))
+        clip.addAction(tr("log_copy_messages", "完整信息"),
+                       lambda: self._copy_text("\n\n".join(
+                           (c.subject + "\n" + c.body).strip() for c in commits)))
+        if one:
+            clip.addAction(tr("log_copy_refs", "分支/标签"),
+                           lambda: self._copy_text(first.refs_str))
+            menu.addAction(tr("log_show_branches", "显示此提交所在的引用"),
+                           lambda: self._show_refs(first))
+        menu.addAction(tr("log_find", "查找…"), self.filter_edit.setFocus)
+
+    def _browse(self, commit: GitRev):
+        from .repobrowserdlg import RepositoryBrowserDlg
+        RepositoryBrowserDlg(self.repo, rev=commit.hash, parent=self).exec()
+
+    def _merge(self, commit: GitRev):
+        from .mergedlg import MergeDlg
+        MergeDlg(self.repo, branch=commit.hash, parent=self).exec()
+        self._populate()
+
+    def _reset(self, commit: GitRev):
+        from .resetdlg import ResetDlg
+        ResetDlg(self.repo, parent=self, commit=commit.hash).exec()
+        self._populate()
+
+    def _switch(self, commit: GitRev):
+        from .gitswitchdlg import GitSwitchDlg
+        GitSwitchDlg(self.repo, parent=self, commit=commit.hash).exec()
+        self._populate()
+
+    def _export(self, commit: GitRev):
+        from .exportdlg import ExportDlg
+        ExportDlg(self.repo, parent=self, commit=commit.hash).exec()
+
+    def _format_patch(self, commit: GitRev):
+        from .formatpatchdlg import FormatPatchDlg
+        FormatPatchDlg(self.repo, parent=self).exec()
+        _ = commit
+
+    def _show_refs(self, commit: GitRev):
+        from .commitisonrefsdlg import CommitIsOnRefsDlg
+        CommitIsOnRefsDlg(self.repo, commit=commit.hash, parent=self).exec()
 
     def _do_simple(self, args: list):
         from .progress import ProgressDialog
@@ -510,7 +732,14 @@ class LogDlg(QDialog):
     def _ask_branch(self, commit_hash: str):
         from .createbranchdlg import CreateBranchDlg
         dlg = CreateBranchDlg(self.repo, start=commit_hash, parent=self)
-        dlg.exec()
+        if dlg.exec():
+            self._populate()
+
+    def _ask_tag(self, commit_hash: str):
+        from .createbranchdlg import CreateTagDlg
+        dlg = CreateTagDlg(self.repo, start=commit_hash, parent=self)
+        if dlg.exec():
+            self._populate()
 
     def button_open_diff(self):
         item = self.tree.currentItem()
@@ -518,7 +747,7 @@ class LogDlg(QDialog):
             return
         commit = self._commit_of(item)
         if commit is not None:
-            DiffDlg(self.repo, commit.hash, parent=self).exec()
+            self._compare_wc(commit)
 
 
 _LOG_ANCHORS = {

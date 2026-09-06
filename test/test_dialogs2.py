@@ -70,9 +70,10 @@ def test_changed_dialog(qapp, repo):
 
 
 def test_diff_dialog(qapp, repo):
-    from pytortoisegit.dialogs.diffdlg import DiffDlg
+    from pytortoisegit.dialogs.diffdlg import DIFF_COL_DEL, DiffDlg
     dlg = _smoke(qapp, lambda: DiffDlg(repo, "HEAD~1", "HEAD"))
     assert dlg.file_tree.topLevelItemCount() >= 1
+    assert dlg.file_tree.columnCount() == DIFF_COL_DEL + 1
 
 
 def test_browse_refs_dialog(qapp, repo):

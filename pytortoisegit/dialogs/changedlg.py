@@ -28,11 +28,12 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from PySide6.QtCore import QSignalBlocker, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QFileInfo, QSignalBlocker, Qt
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
+    QFileIconProvider,
     QLabel,
     QMenu,
     QMessageBox,
@@ -108,7 +109,10 @@ class ChangedDlg(QDialog):
         self.status_tree.setColumnWidth(3, 70)
         self.status_tree.setColumnWidth(4, 76)
         self.status_tree.setColumnWidth(5, 120)
-        self.status_tree.setIndentation(0)
+        self.status_tree.setRootIsDecorated(True)
+        self.status_tree.setIndentation(12)
+        self.status_tree.setUniformRowHeights(True)
+        self._file_icons = QFileIconProvider()
         self.status_tree.itemDoubleClicked.connect(self._on_file_double_clicked)
         self.status_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.status_tree.customContextMenuRequested.connect(self._on_menu)
@@ -294,28 +298,82 @@ class ChangedDlg(QDialog):
             w.setEnabled(True)
         self.m_bool_show["busy"] = False
 
-    # ---- 列表填充 ----
+    # ---- 列表填充（对齐 CGitStatusListCtrl::PrepareGroups）----
     def _populate(self):
         self.status_tree.clear()
+        buckets = {
+            "modified": [],
+            "unversioned": [],
+            "ignored": [],
+            "localignore": [],
+        }
         for r in self.rows:
             if not self._row_visible(r):
                 continue
-            ext = _extension_of(r.path)
-            mod = r.mtime.strftime("%Y-%m-%d %H:%M") if r.mtime else ""
-            item = QTreeWidgetItem([
-                r.display_path, ext, r.action,
-                str(r.lines_added) if r.lines_added else "",
-                str(r.lines_removed) if r.lines_removed else "",
-                mod,
-            ])
-            color = QColor(r.color)
-            item.setForeground(0, color)
-            item.setForeground(2, color)
-            item.setData(0, Qt.ItemDataRole.UserRole + 1, r)
-            self.status_tree.addTopLevelItem(item)
-        first = self.status_tree.topLevelItem(0)
-        if first:
-            self.status_tree.setCurrentItem(first)
+            if r.state == "untracked":
+                buckets["unversioned"].append(r)
+            elif r.state == "ignored":
+                buckets["ignored"].append(r)
+            elif r.assume_valid or r.skip_worktree:
+                buckets["localignore"].append(r)
+            else:
+                buckets["modified"].append(r)
+        labels = (
+            ("modified", tr("log_file_group", "已修改的文件")),
+            ("unversioned", tr("status_group_unversioned", "未版本控制的文件")),
+            ("ignored", tr("status_group_ignored", "已忽略的文件")),
+            ("localignore", tr("status_group_localignore", "忽略本地更改的文件")),
+        )
+        # 有未跟踪/忽略等才分组（与 PrepareGroups 的 bHasGroups 一致）
+        has_groups = bool(buckets["unversioned"] or buckets["ignored"]
+                          or buckets["localignore"])
+        first_item = None
+        for key, title in labels:
+            rows = buckets[key]
+            if not rows:
+                continue
+            parent = None
+            if has_groups:
+                parent = QTreeWidgetItem([title])
+                parent.setFirstColumnSpanned(True)
+                font = parent.font(0)
+                font.setBold(True)
+                parent.setFont(0, font)
+                self.status_tree.addTopLevelItem(parent)
+            for r in rows:
+                item = self._make_file_item(r)
+                if parent is None:
+                    self.status_tree.addTopLevelItem(item)
+                else:
+                    parent.addChild(item)
+                if first_item is None:
+                    first_item = item
+            if parent is not None:
+                parent.setExpanded(True)
+        if first_item is not None:
+            self.status_tree.setCurrentItem(first_item)
+
+    def _make_file_item(self, r: StatusRow) -> QTreeWidgetItem:
+        ext = _extension_of(r.path)
+        mod = r.mtime.strftime("%Y-%m-%d %H:%M") if r.mtime else ""
+        item = QTreeWidgetItem([
+            r.display_path, ext, r.action,
+            str(r.lines_added) if r.lines_added else "",
+            str(r.lines_removed) if r.lines_removed else "",
+            mod,
+        ])
+        info = QFileInfo(self.repo.full_path(r.path))
+        icon = self._file_icons.icon(info)
+        if icon.isNull():
+            kind = (QFileIconProvider.IconType.Folder if info.isDir()
+                    else QFileIconProvider.IconType.File)
+            icon = self._file_icons.icon(kind)
+        item.setIcon(0, icon)
+        brush = QBrush(QColor(r.color))
+        for c in range(item.columnCount()):
+            item.setForeground(c, brush)
+        item.setData(0, Qt.ItemDataRole.UserRole + 1, r)
+        return item
 
     def _row_visible(self, r: StatusRow) -> bool:
         flags = self.m_bool_show

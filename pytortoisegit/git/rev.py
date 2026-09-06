@@ -57,6 +57,8 @@ class GitRev:
     author_date: str = ""
     message: str = ""
     refs: List[str] = field(default_factory=list)
+    actions: str = ""  # 该提交文件变更字母：M/A/D/R/C
+    lanes: List = field(default_factory=list)  # List[LaneType]
 
     # 图布局信息
     lane: int = 0
@@ -152,11 +154,14 @@ class GitRevLoglist:
     # ---- 加载 ----
     def load(self, limit: int = 500, search: str | None = None,
              pathspec: str | None = None,
-             ordering: str = "default") -> None:
+             ordering: str = "default",
+             all_branches: bool = False) -> None:
         """加载提交。search 非空时按 grep 过滤（作者/信息），pathspec 限定路径。
         ordering: default/topo-order/date-order/author-date-order。
         """
         args: List[str] = []
+        if all_branches:
+            args.append("--all")
         if limit and limit > 0:
             args += ["-n", str(limit)]
         if search:
@@ -171,7 +176,7 @@ class GitRevLoglist:
         fmt = "--format=" + LOG_FORMAT
         order = ordering if ordering in ("topo-order", "date-order",
                                          "author-date-order") else "topo-order"
-        cmd = ["log", fmt, f"--{order}", "--date=iso", *args]
+        cmd = ["log", fmt, f"--{order}", "--date=iso", "--name-status", *args]
         if pathspec:
             cmd += ["--", pathspec]
         out = self.repo.runner.run_checked(*cmd)
@@ -185,6 +190,8 @@ class GitRevLoglist:
             self.commits.append(comm)
             self._by_hash[comm.hash] = comm
         self._compute_lanes()
+        from .lanes import assign_lanes
+        assign_lanes(self.commits)
 
     def load_refs(self) -> None:
         """用 for-each-ref 填充 refs 映射。"""
@@ -348,8 +355,32 @@ def _parse_record(rec: str) -> GitRev:
     except (ValueError, TypeError):
         rev.committer_timestamp = 0
     rev.author_date = fields[8].strip()
-    rev.message = "\x1e".join(fields[9:]).strip()
+    rev.message, rev.actions = _split_message_and_actions(
+        "\x1e".join(fields[9:]).strip())
     return rev
+
+
+_NAME_STATUS_RE = re.compile(r"^[A-Z]{1,2}\d*\t")
+
+
+def _split_message_and_actions(text: str) -> Tuple[str, str]:
+    """从 --name-status 附加行里抽出动作字母，避免污染提交说明。"""
+    lines = text.split("\n")
+    cut = len(lines)
+    acts: set[str] = set()
+    i = len(lines) - 1
+    while i >= 0:
+        ln = lines[i]
+        if not ln.strip():
+            i -= 1
+            continue
+        if _NAME_STATUS_RE.match(ln):
+            acts.add(ln[0])
+            cut = i
+            i -= 1
+            continue
+        break
+    return "\n".join(lines[:cut]).rstrip(), "".join(c for c in "MADRC" if c in acts)
 
 
 def load_all_refs(repo: Repository) -> Dict[str, RefInfo]:

@@ -51,11 +51,28 @@ def _run_dialog(qapp, make, wait_ms=1500):
 
 
 def _row_texts(status_tree):
+    from PySide6.QtCore import Qt
     out = []
+
+    def walk(it):
+        if it.data(0, Qt.ItemDataRole.UserRole + 1) is not None:
+            out.append([it.text(c) for c in range(it.columnCount() - 1)])
+        for i in range(it.childCount()):
+            walk(it.child(i))
+
+    for i in range(status_tree.topLevelItemCount()):
+        walk(status_tree.topLevelItem(i))
+    return out
+
+
+def _group_titles(status_tree):
+    from PySide6.QtCore import Qt
+    titles = []
     for i in range(status_tree.topLevelItemCount()):
         it = status_tree.topLevelItem(i)
-        out.append([it.text(c) for c in range(it.columnCount() - 1)])
-    return out
+        if it.data(0, Qt.ItemDataRole.UserRole + 1) is None:
+            titles.append(it.text(0))
+    return titles
 
 
 def test_changed_dialog_columns_and_rows(qapp, repo):
@@ -71,6 +88,15 @@ def test_changed_dialog_columns_and_rows(qapp, repo):
     assert "del.txt" in paths
     assert "new.txt" in paths
     assert "staged.txt" in paths
+    groups = _group_titles(dlg.status_tree)
+    assert any("修改" in g or "Modified" in g for g in groups)
+    assert any("未版本" in g or "Not Versioned" in g or "版本控制" in g for g in groups)
+    first_file = None
+    top = dlg.status_tree.topLevelItem(0)
+    if top.childCount():
+        first_file = top.child(0)
+    assert first_file is not None
+    assert not first_file.icon(0).isNull()
 
 
 def test_changed_dialog_actions_and_ext(qapp, repo):

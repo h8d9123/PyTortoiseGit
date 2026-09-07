@@ -380,9 +380,13 @@ class MainMenuDlg(QMainWindow):
         index = self.content_list.indexAt(pos)
         if not index.isValid():
             return
-        if not self._is_dir_index(index):
-            return
         path = self._path_of_index(index)
+        if not os.path.exists(path):
+            return
+        if not self._is_dir_index(index):
+            self._build_file_menu(path, self.content_list).exec(
+                self.content_list.viewport().mapToGlobal(pos))
+            return
         if self._inside_repo(path):
             menu = self._build_classic_menu(path, self.content_list)
         else:
@@ -394,6 +398,41 @@ class MainMenuDlg(QMainWindow):
             act_set.triggered.connect(
                 lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         menu.exec(self.content_list.viewport().mapToGlobal(pos))
+
+    def _build_file_menu(self, path: str, parent=None) -> "QMenu":
+        """文件右键菜单：系统打开 + TortoiseGit 命令（仿 TortoiseGit 经典菜单）。"""
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(parent or self.content_list)
+        act_open = menu.addAction(tr("file_menu_open", "打开"))
+        act_open.triggered.connect(lambda _=False, p=path: self._open_with_system(p))
+        act_show = menu.addAction(tr("file_menu_show_in", "显示位置"))
+        act_show.triggered.connect(lambda _=False, p=path: self._show_in_explorer(p))
+        if self._inside_repo(path):
+            menu.addSeparator()
+            tg = menu.addMenu(tr("file_menu_tg", "TortoiseGit"))
+            act_diff = tg.addAction(
+                tr("file_menu_diff", "与 HEAD 比较（Diff）…"))
+            act_diff.triggered.connect(
+                lambda _=False, p=path: self._dispatch("diff", extra={"path": p}))
+            act_blame = tg.addAction(tr("file_menu_blame", "追溯（Blame）…"))
+            act_blame.triggered.connect(
+                lambda _=False, p=path: self._dispatch("blame", extra={"path": p}))
+            act_log = tg.addAction(tr("file_menu_log", "显示日志（Log）…"))
+            act_log.triggered.connect(
+                lambda _=False, p=path: self._dispatch("log", extra={"path": p}))
+            act_rem = tg.addAction(tr("file_menu_remove", "删除（Remove）…"))
+            act_rem.triggered.connect(
+                lambda _=False, p=path: self._dispatch("remove", extra={"path": p}))
+        return menu
+
+    def _open_with_system(self, path: str):
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.abspath(path)))
+
+    def _show_in_explorer(self, path: str):
+        import subprocess
+        subprocess.Popen(["explorer", "/select,", os.path.abspath(path)])
 
     # ---- QSettings 持久化 ----
     @staticmethod

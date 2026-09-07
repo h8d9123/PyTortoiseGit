@@ -370,6 +370,13 @@ STRINGS: Dict[str, str] = {
     "menu_nav_up_tip": "上一级",
     "menu_nav_refresh": "⟳",
     "menu_nav_refresh_tip": "刷新",
+    "file_menu_open": "打开",
+    "file_menu_show_in": "显示位置",
+    "file_menu_tg": "TortoiseGit",
+    "file_menu_diff": "与 HEAD 比较（Diff）…",
+    "file_menu_blame": "追溯（Blame）…",
+    "file_menu_log": "显示日志（Log）…",
+    "file_menu_remove": "删除（Remove）…",
     "content_hint": "单击左侧目录/仓库查看子文件夹；双击进入或打开",
 }
 

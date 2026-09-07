@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from PySide6.QtWidgets import QDialog
 
 from ..dialogs.logdlg import LogDlg
@@ -12,7 +14,15 @@ from .dispatcher import CommandContext, register
 def _log(ctx: CommandContext):
     repo = repo_from_cl(ctx.cl)
     startrev = ctx.cl.value("startrev") if ctx.cl else None
-    dlg = LogDlg(repo, rev=startrev or None, parent=None)
+    pathspec = None
+    if ctx.cl is not None and repo is not None:
+        rel = []
+        for p in ctx.cl.all_values("path"):
+            if p and os.path.abspath(p) != os.path.abspath(repo.root):
+                rel.append(os.path.relpath(p, repo.root).replace("\\", "/"))
+        if rel:
+            pathspec = rel[0]
+    dlg = LogDlg(repo, pathspec=pathspec, rev=startrev or None, parent=None)
     dlg.exec()
     return "ok" if dlg.result() == QDialog.DialogCode.Accepted else "cancel"
 

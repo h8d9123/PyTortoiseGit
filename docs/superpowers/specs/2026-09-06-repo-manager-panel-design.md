@@ -367,6 +367,10 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
   **工作树内任意位置**（`find_repo_root(path)` 非空，含仓库根与仓库内子目录）
   显示完整经典 TortoiseGit 菜单（`_build_classic_menu`，Commit/Log/Pull/Push/Sync/
   Revert/Clean Up + Settings）；仓库之外的目录显示 Clone… + Settings。
+- 文件右键（`_build_file_menu`）：系统「打开」（`QDesktopServices.openUrl`）
+  与「显示位置」（explorer /select）；若文件位于工作树内，另附 **TortoiseGit ▸**
+  子菜单：与 HEAD 比较（Diff…）、追溯（Blame…）、显示日志（Log…，log 已支持
+  pathspec 文件过滤）、删除（Remove…）。仓库外文件仅有系统项。
 - 底部「打开」按钮（`btn_open`）执行与双击相同动作。
 - 导航行（Windows 资源管理器风格）：后退 `btn_back`(←)、前进
   `btn_forward`(→)、向上 `btn_up`(↑)、刷新 `btn_refresh`(⟳)。
@@ -385,6 +389,13 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 ```
 "menu_open_content": "打&开",
 "content_hint": "单击左侧目录/仓库查看子文件夹；双击进入或打开",
+"file_menu_open": "打开",
+"file_menu_show_in": "显示位置",
+"file_menu_tg": "TortoiseGit",
+"file_menu_diff": "与 HEAD 比较（Diff）…",
+"file_menu_blame": "追溯（Blame）…",
+"file_menu_log": "显示日志（Log）…",
+"file_menu_remove": "删除（Remove）…",
 ```
 
 ### 测试要点（追加）
@@ -395,5 +406,8 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
   （plain/innerrepo/b.txt），innerrepo 识别为仓库根。
 - `test_mainmenu_content_double_click_repo_enters`：双击仓库内容节点 → 进入
   浏览（`_current_dir` 变为仓库路径，`repo` 不打开）。
+- `test_mainmenu_file_menu_includes_tg_commands` / `test_mainmenu_file_menu_outside_repo_only_system`：
+  文件右键菜单——工作树内文件含打开/显示位置 + TortoiseGit 子菜单
+  （Diff/Blame/Log/Remove）；仓库外文件仅系统项。
 
 > 时序：模型异步填充，测试用 `QTest.qWait` 轮询 `rowCount>0` 后再断言。

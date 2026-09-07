@@ -923,6 +923,54 @@ def test_mainmenu_content_context_menu_classic_for_worktree(
     dlg.reject()
 
 
+def test_mainmenu_file_menu_includes_tg_commands(
+        qapp, isolated_settings, tmp_path_factory):
+    """文件右键菜单：打开/显示位置 + TortoiseGit 子菜单（工作树内）。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    parent = tmp_path_factory.mktemp("file_ctx")
+    repo = parent / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    (repo / "a.txt").write_text("a\n", encoding="utf-8")
+    sub = repo / "sub"
+    sub.mkdir()
+    (sub / "b.txt").write_text("b\n", encoding="utf-8")
+    dlg = MainMenuDlg()
+    # 工作树内文件 → 打开/显示位置 + TortoiseGit 命令
+    menu = dlg._build_file_menu(str(repo / "a.txt"), dlg.content_list)
+    labels = [a.text() for a in menu.actions()]
+    assert "打开" in labels
+    assert "显示位置" in labels
+    tg = next(a for a in menu.actions() if a.text() == "TortoiseGit")
+    submenu = tg.menu()
+    assert "与 HEAD 比较（Diff）…" in [a.text() for a in submenu.actions()]
+    assert "追溯（Blame）…" in [a.text() for a in submenu.actions()]
+    assert "显示日志（Log）…" in [a.text() for a in submenu.actions()]
+    assert "删除（Remove）…" in [a.text() for a in submenu.actions()]
+    # 工作树内子目录中的文件
+    menu2 = dlg._build_file_menu(str(sub / "b.txt"), dlg.content_list)
+    assert "TortoiseGit" in [a.text() for a in menu2.actions()]
+    dlg.reject()
+
+
+def test_mainmenu_file_menu_outside_repo_only_system(
+        qapp, isolated_settings, tmp_path_factory):
+    """仓库外文件右键：仅有打开/显示位置，无 TortoiseGit 子菜单。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    parent = tmp_path_factory.mktemp("file_plain")
+    f = parent / "x.txt"
+    f.write_text("x\n", encoding="utf-8")
+    dlg = MainMenuDlg()
+    menu = dlg._build_file_menu(str(f), dlg.content_list)
+    labels = [a.text() for a in menu.actions()]
+    assert "打开" in labels
+    assert "显示位置" in labels
+    assert "TortoiseGit" not in labels
+    dlg.reject()
+
+
 def test_packaging_specs_compile():
     import ast
     from pathlib import Path

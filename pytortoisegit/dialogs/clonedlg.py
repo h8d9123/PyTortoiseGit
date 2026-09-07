@@ -51,11 +51,13 @@ from .resize import AnchorLayout
 
 
 class CloneDlg(QDialog):
-    def __init__(self, url: str = "", parent=None):
+    def __init__(self, url: str = "", parent=None, default_dir: str = ""):
         super().__init__(parent, Qt.WindowType.Window)
         self._url = url
         self._build_ui()
-        if url:
+        if default_dir:
+            self.dir_edit.setText(default_dir)
+        elif url:
             self._suggest_directory(url)
 
     # ---- UI（IDD_CLONE 模板）----

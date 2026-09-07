@@ -362,6 +362,10 @@ class MainMenuDlg(QMainWindow):
             act = menu.addAction(tr(key, label))
             act.triggered.connect(
                 lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
+        menu.addSeparator()
+        act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+        act_set.triggered.connect(
+            lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         return menu
 
     def _on_repo_context_menu(self, pos):
@@ -486,7 +490,7 @@ class MainMenuDlg(QMainWindow):
                 self.open_repo(path)
 
     def _build_folder_repo_menu(self, path: str) -> "QMenu":
-        """目录树中仓库节点的右键菜单：添加 + 经典 TortoiseGit 命令。"""
+        """目录树中仓库节点的右键菜单：添加 + 经典 TortoiseGit 命令（含设置）。"""
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self.folder_tree)
         act_add = menu.addAction(tr("menu_add_to_repo_list", "添加到仓库管理"))
@@ -497,15 +501,47 @@ class MainMenuDlg(QMainWindow):
             act = menu.addAction(tr(key, label))
             act.triggered.connect(
                 lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
+        menu.addSeparator()
+        act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+        act_set.triggered.connect(
+            lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
+        return menu
+
+    def _build_folder_nonrepo_menu(self, path: str) -> "QMenu":
+        """目录树中非仓库目录/分区的右键菜单：Git Clone… + Settings。"""
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self.folder_tree)
+        act_clone = menu.addAction(tr("repo_menu_clone", "Git Clone…"))
+        act_clone.triggered.connect(
+            lambda _=False, p=path: self._run_clone_in(p))
+        menu.addSeparator()
+        act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+        act_set.triggered.connect(
+            lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         return menu
 
     def _on_folder_context_menu(self, pos):
         item = self.folder_tree.itemAt(pos)
-        if item is None or item.data(0, ROLE_KIND) != "repo":
+        if item is None or item.data(0, ROLE_KIND) in (None, "placeholder"):
             return
         path = item.data(0, ROLE_PATH)
-        self._build_folder_repo_menu(path).exec(
-            self.folder_tree.viewport().mapToGlobal(pos))
+        if item.data(0, ROLE_KIND) == "repo":
+            self._build_folder_repo_menu(path).exec(
+                self.folder_tree.viewport().mapToGlobal(pos))
+        else:
+            self._build_folder_nonrepo_menu(path).exec(
+                self.folder_tree.viewport().mapToGlobal(pos))
+
+    def _run_clone_in(self, path: str):
+        """以指定目录为默认目标打开 Git Clone 对话框（不阻塞窗口）。"""
+        from PySide6.QtCore import QTimer
+        from ..commands.dispatcher import CommandContext
+        cl = CommandLine(verb="clone")
+        cl.options["url"] = [""]
+        cl.options["dir"] = [os.path.abspath(path)]
+        ctx = CommandContext(qapp=None, cl=cl)
+        self.status.setText(format_string(tr("menu_running", "正在执行：{name}"), name="clone"))
+        QTimer.singleShot(0, lambda: self._run(ctx, "clone"))
 
     # ---- 仓库 ----
     def open_repo(self, path: str):

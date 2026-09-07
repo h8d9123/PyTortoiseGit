@@ -9,7 +9,8 @@ from .dispatcher import CommandContext, register
 @register("clone")
 def clone(ctx: CommandContext):
     url = ctx.cl.value("url", "") if ctx.cl else ""
-    dlg = CloneDlg(url, parent=None)
+    default_dir = ctx.cl.value("dir", "") if ctx.cl else ""
+    dlg = CloneDlg(url, parent=None, default_dir=default_dir)
     dlg.exec()
     return "ok"
 

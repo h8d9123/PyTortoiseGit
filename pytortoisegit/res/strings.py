@@ -357,6 +357,8 @@ STRINGS: Dict[str, str] = {
     "folder_hint": "双击仓库目录打开；右键仓库目录可添加并执行操作",
     "menu_add_to_repo_list": "添加到仓库管理",
     "menu_left_panel": "左侧面板",
+    "repo_menu_clone": "Git Clone…",
+    "repo_menu_settings": "Settings",
     "menu_submodule": "子模块",
     "menu_submodule_hint": "双击子模块打开其窗口",
 }

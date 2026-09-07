@@ -282,3 +282,45 @@ manager_tabs
   后 `repo.root == 仓库路径`。
 - 添加到仓库管理：`_build_folder_repo_menu(path).actions()[0].trigger()`
   后 `path in _repo_list` 且 `repo_tree.topLevelItemCount() == 1`。
+
+## 11. 目录树右键菜单（2026-09-07 追加）
+
+按「是否 git 仓库」区分右键菜单：
+
+### 非仓库目录（`ROLE_KIND` ∈ {dir, drive}）
+
+- **Git Clone…**：打开 `CloneDlg`，默认目标目录 = 该目录。`clone.py` 的
+  `CommandLine` 支持 `dir` 选项传入默认目录；`CloneDlg` 新增 `default_dir` 参数，
+  构造时优先回填 `dir_edit`。
+- **Settings**：`_dispatch("settings", extra={"path": 该目录})` —— settings 命令
+  通过 `repo_from_cl_optional` 尽可能打开仓库配置；非仓库时为全局设置。
+
+驱动 `_build_folder_nonrepo_menu(path)`。
+
+### 仓库目录（`ROLE_KIND` == "repo"，参考 TortoiseGit）
+
+`_build_folder_repo_menu(path)`：
+- **添加到仓库管理**
+- 分隔线 + 经典 TortoiseGit 命令（`_CLASSIC_MENU`）
+- 分隔线 + **Settings**（`_dispatch("settings", extra={"path": path})`）
+
+仓库管理 tab 的仓库节点右键（`_build_classic_menu`）同样追加 **Settings**，
+与目录树仓库节点保持一致。
+
+### 执行方式
+
+clone/settings 是模态对话框命令，通过 `QTimer.singleShot(0, ...)` 异步调用
+`_run(ctx, name)` → `dispatch`，避免阻塞 GUI 事件循环。
+
+### 新增文案键
+
+```
+"repo_menu_clone": "Git Clone…",
+"repo_menu_settings": "Settings",
+```
+
+### 测试要点（追加）
+
+- `CloneDlg(default_dir=...)` 回填 `dir_edit`。
+- `_build_folder_nonrepo_menu` 含 `Git Clone…` 与 `Settings`。
+- `_build_folder_repo_menu` 首项为「添加到仓库管理」且含 `Settings`。

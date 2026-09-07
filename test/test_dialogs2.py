@@ -145,6 +145,12 @@ def test_clone_dialog(qapp):
     assert dlg.dir_edit.text() != ""  # 自动补全目录名
 
 
+def test_clone_dialog_default_dir(qapp, tmp_path):
+    from pytortoisegit.dialogs.clonedlg import CloneDlg
+    dlg = _smoke(qapp, lambda: CloneDlg(default_dir=str(tmp_path)))
+    assert dlg.dir_edit.text() == str(tmp_path)
+
+
 def test_reflog_dialog(qapp, repo):
     from pytortoisegit.dialogs.reflogdlg import ReflogDlg
     dlg = _smoke(qapp, lambda: ReflogDlg(repo))
@@ -673,6 +679,47 @@ def test_mainmenu_folder_tree_add_to_repo_list(
     actions[0].trigger()
     assert str(inner) in dlg._repo_list
     assert dlg.repo_tree.topLevelItemCount() == 1
+    dlg.reject()
+
+
+def test_mainmenu_folder_nonrepo_menu_has_clone_and_settings(
+        qapp, isolated_settings, tmp_path_factory):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QTreeWidgetItem
+    parent = tmp_path_factory.mktemp("froot3")
+    dlg = MainMenuDlg()
+    item = QTreeWidgetItem()
+    item.setData(0, Qt.ItemDataRole.UserRole, str(parent))
+    item.setData(0, Qt.ItemDataRole.UserRole + 1, "dir")
+    menu = dlg._build_folder_nonrepo_menu(str(parent))
+    labels = [a.text() for a in menu.actions()]
+    assert "Git Clone…" in labels
+    assert "Settings" in labels
+    dlg.reject()
+
+
+def test_mainmenu_folder_repo_menu_includes_settings(
+        qapp, isolated_settings, tmp_path_factory):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QTreeWidgetItem
+    parent = tmp_path_factory.mktemp("froot4")
+    inner = parent / "innerrepo"
+    inner.mkdir()
+    runner = GitRunner(cwd=str(inner))
+    runner.init(str(inner), initial_branch="main")
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    (inner / "a.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "init").returncode == 0
+    dlg = MainMenuDlg()
+    menu = dlg._build_folder_repo_menu(str(inner))
+    labels = [a.text() for a in menu.actions()]
+    assert labels[0] == "添加到仓库管理"
+    assert "Settings" in labels
     dlg.reject()
 
 

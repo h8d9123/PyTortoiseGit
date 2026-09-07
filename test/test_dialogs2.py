@@ -151,6 +151,13 @@ def test_clone_dialog_default_dir(qapp, tmp_path):
     assert dlg.dir_edit.text() == str(tmp_path)
 
 
+def test_clone_dialog_default_dir_with_url_appends_repo_name(qapp, tmp_path):
+    from pytortoisegit.dialogs.clonedlg import CloneDlg
+    dlg = _smoke(qapp, lambda: CloneDlg(
+        "https://github.com/user/repo.git", default_dir=str(tmp_path)))
+    assert dlg.dir_edit.text() == str(tmp_path / "repo")
+
+
 def test_reflog_dialog(qapp, repo):
     from pytortoisegit.dialogs.reflogdlg import ReflogDlg
     dlg = _smoke(qapp, lambda: ReflogDlg(repo))

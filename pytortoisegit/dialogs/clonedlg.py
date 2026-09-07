@@ -55,7 +55,12 @@ class CloneDlg(QDialog):
         super().__init__(parent, Qt.WindowType.Window)
         self._url = url
         self._build_ui()
-        if default_dir:
+        if default_dir and url:
+            # 右键指定文件夹 clone：目标 = 该文件夹/<URL 仓库名>
+            name = self._url_repo_name(url)
+            self.dir_edit.setText(
+                os.path.join(default_dir, name) if name else default_dir)
+        elif default_dir:
             self.dir_edit.setText(default_dir)
         elif url:
             self._suggest_directory(url)
@@ -268,10 +273,15 @@ class CloneDlg(QDialog):
         if path:
             self.putty_edit.setText(path)
 
-    def _suggest_directory(self, url: str):
+    def _url_repo_name(self, url: str) -> str:
+        """从 URL 提取仓库名（去掉 .git 后缀），解析失败返回空串。"""
         m = re.search(r"[:/]([^/:]+?)(\.git)?$", url.strip())
-        if m and m.group(1):
-            self.dir_edit.setText(os.path.join(os.getcwd(), m.group(1)))
+        return m.group(1) if m and m.group(1) else ""
+
+    def _suggest_directory(self, url: str):
+        name = self._url_repo_name(url)
+        if name:
+            self.dir_edit.setText(os.path.join(os.getcwd(), name))
 
     # ---- 执行 ----
     def _on_accept(self):

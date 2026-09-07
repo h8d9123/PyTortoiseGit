@@ -54,16 +54,15 @@ class CloneDlg(QDialog):
     def __init__(self, url: str = "", parent=None, default_dir: str = ""):
         super().__init__(parent, Qt.WindowType.Window)
         self._url = url
+        self._default_dir = default_dir or ""
+        self._base_dir = self._default_dir
+        self._dir_custom = False
         self._build_ui()
-        if default_dir and url:
-            # 右键指定文件夹 clone：目标 = 该文件夹/<URL 仓库名>
-            name = self._url_repo_name(url)
-            self.dir_edit.setText(
-                os.path.join(default_dir, name) if name else default_dir)
-        elif default_dir:
-            self.dir_edit.setText(default_dir)
-        elif url:
+        if url:
             self._suggest_directory(url)
+        elif default_dir and not self.dir_edit.text().strip():
+            self.dir_edit.setText(default_dir)
+        self._base_dir = self._default_dir or os.getcwd()
 
     # ---- UI（IDD_CLONE 模板）----
     def _build_ui(self):
@@ -211,6 +210,7 @@ class CloneDlg(QDialog):
                 self._anchors.add(wgt, a[0], a[1] if len(a) > 1 else None)
 
         self.url_combo.setEditText(self._url or "")
+        self.url_combo.lineEdit().editingFinished.connect(self._on_url_edited)
         self.url_combo.lineEdit().returnPressed.connect(self._on_accept)
         self.chk_svn_toggled(False)
 
@@ -230,8 +230,10 @@ class CloneDlg(QDialog):
 
     # ---- 交互 ----
     def _on_url_selected(self, *_a):
-        if self._url:
-            self._suggest_directory(self.url_combo.currentText())
+        """选中下拉 URL 后，自动补全目录 = 基准目录/仓库名。"""
+        url = self.url_combo.currentText().strip()
+        if url and not self._dir_custom:
+            self._suggest_directory(url)
 
     def _clipboard_clone_url(self) -> str:
         """从剪贴板提取 clone URL（支持 'git clone <url>' 前缀）。"""
@@ -257,13 +259,14 @@ class CloneDlg(QDialog):
             url = (res.stdout or "").strip()
             if url:
                 self.url_combo.setEditText(url)
-                self._suggest_directory(url)
+                self._on_url_edited()
 
     def _browse_dir(self):
         path = QFileDialog.getExistingDirectory(
             self, tr("clone_dir", "目录"), self.dir_edit.text() or os.getcwd())
         if path:
             self.dir_edit.setText(path)
+            self._dir_custom = True
 
     def _browse_putty(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -279,9 +282,23 @@ class CloneDlg(QDialog):
         return m.group(1) if m and m.group(1) else ""
 
     def _suggest_directory(self, url: str):
+        """在基准目录下自动追加 URL 仓库名：base/<仓库名>。"""
         name = self._url_repo_name(url)
         if name:
-            self.dir_edit.setText(os.path.join(os.getcwd(), name))
+            self.dir_edit.setText(
+                os.path.join(self._base_dir, name))
+
+    def _on_url_edited(self):
+        """URL 手动编辑完成后，自动补全目录 = 基准目录/仓库名。"""
+        url = self.url_combo.currentText().strip()
+        if url and not self._dir_custom:
+            self._suggest_directory(url)
+
+    def _on_url_selected(self, *_a):
+        """选中下拉 URL 后，自动补全目录 = 基准目录/仓库名。"""
+        url = self.url_combo.currentText().strip()
+        if url and not self._dir_custom:
+            self._suggest_directory(url)
 
     # ---- 执行 ----
     def _on_accept(self):

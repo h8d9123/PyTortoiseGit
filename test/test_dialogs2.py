@@ -158,6 +158,27 @@ def test_clone_dialog_default_dir_with_url_appends_repo_name(qapp, tmp_path):
     assert dlg.dir_edit.text() == str(tmp_path / "repo")
 
 
+def test_clone_dialog_default_dir_editing_url_appends_repo_name(qapp, tmp_path):
+    from pytortoisegit.dialogs.clonedlg import CloneDlg
+    dlg = _smoke(qapp, lambda: CloneDlg(default_dir=str(tmp_path)))
+    assert dlg.dir_edit.text() == str(tmp_path)
+    # 模拟用户输入 URL 后失去焦点/回车
+    dlg.url_combo.setEditText("https://github.com/user/myrepo.git")
+    dlg.url_combo.lineEdit().editingFinished.emit()
+    assert dlg.dir_edit.text() == str(tmp_path / "myrepo")
+
+
+def test_clone_dialog_manual_dir_not_overridden(qapp, tmp_path):
+    from pytortoisegit.dialogs.clonedlg import CloneDlg
+    dlg = _smoke(qapp, lambda: CloneDlg(default_dir=str(tmp_path)))
+    target = str(tmp_path / "custom")
+    dlg.dir_edit.setText(target)
+    dlg._dir_custom = True  # 等价于用户 Browse 选定目录
+    dlg.url_combo.setEditText("https://github.com/user/myrepo.git")
+    dlg.url_combo.lineEdit().editingFinished.emit()
+    assert dlg.dir_edit.text() == target
+
+
 def test_reflog_dialog(qapp, repo):
     from pytortoisegit.dialogs.reflogdlg import ReflogDlg
     dlg = _smoke(qapp, lambda: ReflogDlg(repo))

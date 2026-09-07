@@ -596,6 +596,19 @@ def test_mainmenu_go_up(qapp, tmp_path_factory):
     dlg._go_up()
     assert dlg.path_row.text().replace("\\", "/").lower() == \
         str(parent).replace("\\", "/").lower()
+
+    def norm(p):
+        return os.path.normcase(os.path.normpath(p))
+
+    # 后退：parent -> child
+    dlg._go_back()
+    assert norm(dlg._current_dir()) == norm(str(child))
+    # 前进：child -> parent
+    dlg._go_forward()
+    assert norm(dlg._current_dir()) == norm(str(parent))
+    # 刷新：仍在 parent
+    dlg._refresh_content()
+    assert norm(dlg._current_dir()) == norm(str(parent))
     dlg.reject()
 
 

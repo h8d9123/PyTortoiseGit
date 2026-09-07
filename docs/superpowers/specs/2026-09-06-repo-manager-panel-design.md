@@ -364,9 +364,15 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 - 右侧右键（`_on_content_context_menu`）：仅目录——仓库 → 经典 TortoiseGit
   菜单（`_build_classic_menu`）；非仓库目录 → Clone… + Settings。
 - 底部「打开」按钮（`btn_open`）执行与双击相同动作。
-- 导航：内容列表上方有「上一级」按钮（`btn_up`）→ `_go_up()`：取当前根目录的
-  父目录，更新 `path_row` 并刷新内容；无上级目录则无操作。`_current_dir()` 返回
-  当前浏览目录。
+- 导航行（Windows 资源管理器风格）：后退 `btn_back`(←)、前进
+  `btn_forward`(→)、向上 `btn_up`(↑)、刷新 `btn_refresh`(⟳)。
+  - `_navigate(path)`：进入目录并把当前压入后退栈、清空前栈（后退可回退）。
+  - `_go_back` / `_go_forward`：在后退/前进栈间移动。
+  - `_go_up`：进入父目录（纳历史）；也通过 `_navigate`。
+  - `_refresh_content`：重扫当前目录（不改变历史）。
+  - `_current_dir()` 返回当前浏览目录。
+  - 左侧单击 / 右侧双击进入目录均走 `_navigate`，支持后退/前进。
+  - `_update_nav_buttons()` 按栈状态启停后退/前进按钮。
 
 > 注：`QFileSystemModel` 为异步后台填充，切换路径后需短时等待其扫描完成。
 

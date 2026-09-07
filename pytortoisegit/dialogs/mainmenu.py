@@ -94,6 +94,9 @@ class MainMenuDlg(QMainWindow):
         self.repo: Repository | None = None
         self.commands: List[str] = []
         self._repo_list: list[str] = []
+        self._nav_stack: list[str] = []   # 后退历史
+        self._nav_forward: list[str] = []  # 前进历史
+        self._nav_current: str = ""
         self._build_menu()
         self._build_toolbar()
         self._build_central()
@@ -223,9 +226,22 @@ class MainMenuDlg(QMainWindow):
         self._welcome.setWordWrap(True)
         right_lay.addWidget(self._welcome)
         nav = QHBoxLayout()
-        self.btn_up = QPushButton(tr("menu_up_dir", "上一级"), right)
+        self.btn_back = QPushButton(tr("menu_nav_back", "←"), right)
+        self.btn_back.setToolTip(tr("menu_nav_back_tip", "后退"))
+        self.btn_back.clicked.connect(self._go_back)
+        nav.addWidget(self.btn_back)
+        self.btn_forward = QPushButton(tr("menu_nav_forward", "→"), right)
+        self.btn_forward.setToolTip(tr("menu_nav_forward_tip", "前进"))
+        self.btn_forward.clicked.connect(self._go_forward)
+        nav.addWidget(self.btn_forward)
+        self.btn_up = QPushButton(tr("menu_nav_up", "↑"), right)
+        self.btn_up.setToolTip(tr("menu_nav_up_tip", "上一级"))
         self.btn_up.clicked.connect(self._go_up)
         nav.addWidget(self.btn_up)
+        self.btn_refresh = QPushButton(tr("menu_nav_refresh", "⟳"), right)
+        self.btn_refresh.setToolTip(tr("menu_nav_refresh_tip", "刷新"))
+        self.btn_refresh.clicked.connect(self._refresh_content)
+        nav.addWidget(self.btn_refresh)
         nav.addStretch(1)
         right_lay.addLayout(nav)
         self.fs_model = QFileSystemModel(right)
@@ -270,10 +286,45 @@ class MainMenuDlg(QMainWindow):
 
     # ---- 右侧内容浏览（资源管理器中间窗格，基于 QFileSystemModel）----
     def _show_content(self, path: str):
-        """让右侧显示给定目录的内容（含子文件夹与文件）。"""
+        """让右侧显示给定目录的内容（含子文件夹与文件），并同步路径栏。"""
         abspath = os.path.abspath(path)
-        driver = self.fs_model.setRootPath(abspath)
+        self.fs_model.setRootPath(abspath)
         self.content_list.setRootIndex(self.fs_model.index(abspath))
+        self._nav_current = abspath
+        self.path_row.setText(abspath)
+        self._update_nav_buttons()
+
+    def _navigate(self, path: str):
+        """进入目录并记录导航历史（后退可回退）。"""
+        abspath = os.path.abspath(path)
+        if self._nav_current:
+            self._nav_stack.append(self._nav_current)
+        self._nav_forward.clear()
+        self._show_content(abspath)
+
+    def _refresh_content(self):
+        """刷新当前目录内容（不改变历史）。"""
+        cur = self._current_dir()
+        if cur:
+            self._show_content(cur)
+
+    def _go_back(self):
+        if not self._nav_stack:
+            return
+        cur = self._nav_current
+        self._nav_forward.append(cur)
+        self._show_content(self._nav_stack.pop())
+
+    def _go_forward(self):
+        if not self._nav_forward:
+            return
+        cur = self._nav_current
+        self._nav_stack.append(cur)
+        self._show_content(self._nav_forward.pop())
+
+    def _update_nav_buttons(self):
+        self.btn_back.setEnabled(bool(self._nav_stack))
+        self.btn_forward.setEnabled(bool(self._nav_forward))
 
     def _path_of_index(self, index) -> str:
         return self.fs_model.filePath(index)
@@ -282,15 +333,13 @@ class MainMenuDlg(QMainWindow):
         """单击仓库节点：右侧显示仓库根内子文件夹与文件。"""
         path = item.data(0, ROLE_PATH)
         if path:
-            self.path_row.setText(path)
-            self._show_content(path)
+            self._navigate(path)
 
     def _on_folder_clicked(self, item, _col):
         """单击目录树节点：右侧显示该目录内子文件夹与文件。"""
         path = item.data(0, ROLE_PATH)
         if path and os.path.isdir(path):
-            self.path_row.setText(path)
-            self._show_content(path)
+            self._navigate(path)
 
     def _current_dir(self) -> str:
         """当前内容浏览所在的目录（根索引对应路径）。"""
@@ -300,12 +349,11 @@ class MainMenuDlg(QMainWindow):
         return ""
 
     def _go_up(self):
-        """返回上级目录。"""
+        """返回上级目录（纳入导航历史）。"""
         cur = self._current_dir()
         parent = os.path.dirname(cur) if cur else ""
         if parent and os.path.isdir(parent):
-            self.path_row.setText(parent)
-            self._show_content(parent)
+            self._navigate(parent)
 
     def _is_dir_index(self, index) -> bool:
         try:
@@ -322,8 +370,7 @@ class MainMenuDlg(QMainWindow):
             if self._is_repo_root(path):
                 self.open_repo(path)
             else:
-                self.path_row.setText(path)
-                self._show_content(path)
+                self._navigate(path)
 
     def _open_content_selected(self):
         """“打开”按钮：与双击一致。"""

@@ -362,7 +362,14 @@ STRINGS: Dict[str, str] = {
     "menu_submodule": "子模块",
     "menu_submodule_hint": "双击子模块打开其窗口",
     "menu_open_content": "打&开",
-    "menu_up_dir": "上一级",
+    "menu_nav_back": "←",
+    "menu_nav_back_tip": "后退",
+    "menu_nav_forward": "→",
+    "menu_nav_forward_tip": "前进",
+    "menu_nav_up": "↑",
+    "menu_nav_up_tip": "上一级",
+    "menu_nav_refresh": "⟳",
+    "menu_nav_refresh_tip": "刷新",
     "content_hint": "单击左侧目录/仓库查看子文件夹；双击进入或打开",
 }
 

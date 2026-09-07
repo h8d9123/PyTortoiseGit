@@ -342,27 +342,30 @@ def _refresh_folder_item(self, item):
 （`_build_folder_nonrepo_menu`）均接收可选 `item` 参数，传入后追加「刷新」；
 未传入（测试或纯命令场景）则不追加。
 
-## 13. 右侧内容浏览面板（2026-09-07 追加）
+## 13. 右侧内容浏览面板（2026-09-07 追加，后改用 QFileSystemModel）
 
 右侧「命令列表」替换为「内容浏览」区（资源管理器中间窗格风格），命令入口
 移至工具栏（QToolButton 一行：Commit/Log/Diff/Clone/Sync/Pull/Push/Fetch/
 Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 
-`content_list` = QTreeWidget（单列，无展开装饰）。
+`content_list` = `QTreeView` + `QFileSystemModel`（`fs_model`），仅显示名称列，
+`setRootIsDecorated(False)`/`setItemsExpandable(False)` 关闭展开装饰。
 
 行为：
 - 单击左侧仓库管理树节点 → `_on_repo_clicked`：`path_row` 设为该仓库根，
-  `_show_content(path)` 列出仓库根内子文件夹。
-- 单击左侧目录树节点 → `_on_folder_clicked`：`_show_content(path)` 列出该目录
-  子文件夹。
-- `_show_content(path)`：按名称排序列出**子目录（在前）与文件（在后）**，仓库根用
-  `IDI_GITFOLDER` 图标标记，普通目录用文件夹图标、文件用文件图标
-  （`_add_content_item` + `_file_icon` + `_gitfolder_icon`）。
-- 右侧双击：仓库 → `open_repo`；目录 → 进入（`path_row` 更新并刷新内容）；
-  文件 → 无操作。
-- 右侧右键：仓库 → 经典 TortoiseGit 菜单（`_build_classic_menu`）；
-  非仓库目录 → Clone… + Settings。
+  `_show_content(path)` 列出仓库根内内容。
+- 单击左侧目录树节点 → `_on_folder_clicked`：`_show_content(path)`。
+- `_show_content(path)`：`fs_model.setRootPath(abspath)` 后 `setRootIndex`，
+  由模型自动列出子文件夹与文件（图标、排序由模型管理）。
+- 图标：自定义 `_GitIconProvider(QFileIconProvider)`，仓库根目录显示
+  `IDI_GITFOLDER`，其余交给系统默认图标。
+- 右侧双击（`_on_content_double_clicked`）：仓库 → `open_repo`；
+  目录 → 进入（`path_row` 更新并刷新内容）；文件 → 无操作。
+- 右侧右键（`_on_content_context_menu`）：仅目录——仓库 → 经典 TortoiseGit
+  菜单（`_build_classic_menu`）；非仓库目录 → Clone… + Settings。
 - 底部「打开」按钮（`btn_open`）执行与双击相同动作。
+
+> 注：`QFileSystemModel` 为异步后台填充，切换路径后需短时等待其扫描完成。
 
 ### 新增文案键
 
@@ -375,7 +378,9 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 
 - `test_mainmenu_dialog`：`content_list` 存在，工具栏含关键命令
   （Commit/Log/Diff/Clone/Sync/Push/Pull/设置）。
-- `test_mainmenu_content_shows_subfolders`：`_show_content` 列出子目录，
-  `plain`→dir、`innerrepo`→repo 角色正确。
+- `test_mainmenu_content_shows_subfolders`：`_show_content` 后 `rowCount==3`
+  （plain/innerrepo/b.txt），innerrepo 识别为仓库根。
 - `test_mainmenu_content_open_repo`：双击仓库内容节点 → `self.repo.root`
   正确打开。
+
+> 时序：模型异步填充，测试用 `QTest.qWait` 轮询 `rowCount>0` 后再断言。

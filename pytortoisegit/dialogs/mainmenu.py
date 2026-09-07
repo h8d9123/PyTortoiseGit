@@ -19,6 +19,8 @@ from typing import List
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QFileIconProvider,
+    QFileSystemModel,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -27,6 +29,7 @@ from PySide6.QtWidgets import (
     QStyle,
     QTabWidget,
     QToolButton,
+    QTreeView,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -219,11 +222,18 @@ class MainMenuDlg(QMainWindow):
             right)
         self._welcome.setWordWrap(True)
         right_lay.addWidget(self._welcome)
-        self.content_list = QTreeWidget(right)
-        self.content_list.setColumnCount(1)
-        self.content_list.setHeaderHidden(True)
+        self.fs_model = QFileSystemModel(right)
+        self.fs_model.setIconProvider(_GitIconProvider(self))
+        self.content_list = QTreeView(right)
+        self.content_list.setModel(self.fs_model)
         self.content_list.setRootIsDecorated(False)
-        self.content_list.itemDoubleClicked.connect(self._on_content_double_clicked)
+        self.content_list.setItemsExpandable(False)
+        self.content_list.setHeaderHidden(True)
+        # 只需要名称列
+        for c in range(self.fs_model.columnCount()):
+            if c != 0:
+                self.content_list.setColumnHidden(c, True)
+        self.content_list.doubleClicked.connect(self._on_content_double_clicked)
         self.content_list.setContextMenuPolicy(
             Qt.ContextMenuPolicy.CustomContextMenu)
         self.content_list.customContextMenuRequested.connect(
@@ -252,99 +262,63 @@ class MainMenuDlg(QMainWindow):
         self.status = QLabel("")
         self.statusBar().addWidget(self.status)
 
-    # ---- 右侧内容浏览（资源管理器中间窗格）----
+    # ---- 右侧内容浏览（资源管理器中间窗格，基于 QFileSystemModel）----
     def _show_content(self, path: str):
-        """列出路径下子项（文件夹在前、文件在后），仓库根以图标标记。"""
-        self.content_list.clear()
-        try:
-            entries = os.scandir(path)
-        except OSError:
-            return
-        dirs = []
-        files = []
-        for e in entries:
-            try:
-                if e.is_dir():
-                    dirs.append(e.name)
-                else:
-                    files.append(e.name)
-            except OSError:
-                continue
-        for name in sorted(dirs, key=str.casefold):
-            self._add_content_item(path, name, is_dir=True)
-        for name in sorted(files, key=str.casefold):
-            self._add_content_item(path, name, is_dir=False)
+        """让右侧显示给定目录的内容（含子文件夹与文件）。"""
+        abspath = os.path.abspath(path)
+        driver = self.fs_model.setRootPath(abspath)
+        self.content_list.setRootIndex(self.fs_model.index(abspath))
 
-    def _add_content_item(self, path: str, name: str, is_dir: bool):
-        sub = os.path.join(path, name)
-        if is_dir:
-            kind = "repo" if self._is_repo_root(sub) else "dir"
-            item = QTreeWidgetItem([name])
-            item.setIcon(0, self._dir_icon() if kind == "dir"
-                         else self._gitfolder_icon())
-        else:
-            kind = "file"
-            item = QTreeWidgetItem([name])
-            item.setIcon(0, self._file_icon())
-        item.setData(0, ROLE_PATH, sub)
-        item.setData(0, ROLE_KIND, kind)
-        self.content_list.addTopLevelItem(item)
-
-    def _file_icon(self):
-        return self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
-
-    def _gitfolder_icon(self):
-        try:
-            from ..res import icons
-            ic = icons.icon("IDI_GITFOLDER")
-            if ic and not ic.isNull():
-                return ic
-        except Exception:
-            pass
-        return self._dir_icon()
+    def _path_of_index(self, index) -> str:
+        return self.fs_model.filePath(index)
 
     def _on_repo_clicked(self, item, _col):
-        """单击仓库节点：右侧显示仓库根内子文件夹。"""
+        """单击仓库节点：右侧显示仓库根内子文件夹与文件。"""
         path = item.data(0, ROLE_PATH)
         if path:
             self.path_row.setText(path)
             self._show_content(path)
 
     def _on_folder_clicked(self, item, _col):
-        """单击目录树节点：右侧显示该目录内子文件夹。"""
+        """单击目录树节点：右侧显示该目录内子文件夹与文件。"""
         path = item.data(0, ROLE_PATH)
         if path and os.path.isdir(path):
             self.path_row.setText(path)
             self._show_content(path)
 
-    def _on_content_double_clicked(self, item, _col):
+    def _is_dir_index(self, index) -> bool:
+        try:
+            return self.fs_model.isDir(index)
+        except Exception:
+            return False
+
+    def _on_content_double_clicked(self, index, _col=0):
         """右侧双击：仓库→打开；目录→进入；文件→不做。"""
-        path = item.data(0, ROLE_PATH)
+        path = self._path_of_index(index)
         if not path:
             return
-        kind = item.data(0, ROLE_KIND)
-        if kind == "repo":
-            self.open_repo(path)
-        elif kind in ("dir", "drive"):
-            self.path_row.setText(path)
-            self._show_content(path)
+        if self._is_dir_index(index):
+            if self._is_repo_root(path):
+                self.open_repo(path)
+            else:
+                self.path_row.setText(path)
+                self._show_content(path)
 
     def _open_content_selected(self):
-        """“打开”按钮：仓库→打开；目录→进入。"""
-        item = self.content_list.currentItem()
-        if item is not None and item.data(0, ROLE_PATH):
-            self._on_content_double_clicked(item, 0)
+        """“打开”按钮：与双击一致。"""
+        index = self.content_list.currentIndex()
+        if index.isValid():
+            self._on_content_double_clicked(index, 0)
 
     def _on_content_context_menu(self, pos):
         from PySide6.QtWidgets import QMenu
-        item = self.content_list.itemAt(pos)
-        if item is None:
+        index = self.content_list.indexAt(pos)
+        if not index.isValid():
             return
-        kind = item.data(0, ROLE_KIND)
-        if kind not in ("repo", "dir", "drive"):
+        if not self._is_dir_index(index):
             return
-        path = item.data(0, ROLE_PATH)
-        if kind == "repo":
+        path = self._path_of_index(index)
+        if self._is_repo_root(path):
             menu = self._build_classic_menu(path, self.content_list)
         else:
             menu = QMenu(self.content_list)
@@ -737,3 +711,24 @@ class MainMenuDlg(QMainWindow):
 
 def _noop(*_a, **_k):
     return None
+
+
+class _GitIconProvider(QFileIconProvider):
+    """QFileSystemModel 图标提供者：把 git 仓库根目录标为 Git 图标。"""
+
+    def __init__(self, owner):
+        super().__init__()
+        self._owner = owner
+
+    def icon(self, info):  # noqa: A003 - 覆写基类成员名
+        if info.isDir():
+            p = info.absoluteFilePath()
+            if p and find_repo_root(p) == os.path.abspath(p):
+                try:
+                    from ..res import icons
+                    ic = icons.icon("IDI_GITFOLDER")
+                    if ic and not ic.isNull():
+                        return ic
+                except Exception:
+                    pass
+        return super().icon(info)

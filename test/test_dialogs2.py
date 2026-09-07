@@ -503,7 +503,6 @@ def test_mainmenu_dialog(qapp):
 def test_mainmenu_content_shows_subfolders(qapp, tmp_path_factory):
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
     from pytortoisegit.git.git import GitRunner
-    from PySide6.QtCore import Qt
     root = tmp_path_factory.mktemp("content")
     plain = root / "plain"
     plain.mkdir()
@@ -519,26 +518,31 @@ def test_mainmenu_content_shows_subfolders(qapp, tmp_path_factory):
     (root / "b.txt").write_text("b\n", encoding="utf-8")
     dlg = MainMenuDlg()
     dlg._show_content(str(root))
-    # 目录在前、文件在后，共 3 项
-    assert dlg.content_list.topLevelItemCount() == 3
-    kinds = {}
-    order = []
-    for i in range(dlg.content_list.topLevelItemCount()):
-        it = dlg.content_list.topLevelItem(i)
-        kinds[it.text(0)] = it.data(0, Qt.ItemDataRole.UserRole + 1)
-        order.append(it.text(0))
-    assert kinds["plain"] == "dir"
-    assert kinds["innerrepo"] == "repo"
-    assert kinds["b.txt"] == "file"
-    # 文件夹排在文件前
-    assert order.index("plain") < order.index("b.txt")
+    model = dlg.fs_model
+    root_index = model.index(str(root))
+    # QFileSystemModel 异步填充：轮询等待目录加载完成
+    from PySide6.QtTest import QTest
+    for _ in range(50):
+        if model.rowCount(root_index) == 3:
+            break
+        QTest.qWait(100)
+    # 内含目录 plain、innerrepo 与文件 b.txt，共 3 项
+    assert model.rowCount(root_index) == 3
+    names = [model.fileName(model.index(i, 0, root_index))
+             for i in range(model.rowCount(root_index))]
+    for expected in ("plain", "innerrepo", "b.txt"):
+        assert expected in names
+    # innerrepo 被识别为仓库根；plain/b.txt 不是
+    repo_idx = model.index(f"{root}{__import__('os').sep}innerrepo")
+    plain_idx = model.index(f"{root}{__import__('os').sep}plain")
+    assert dlg._is_repo_root(model.filePath(repo_idx))
+    assert not dlg._is_repo_root(model.filePath(plain_idx))
     dlg.reject()
 
 
 def test_mainmenu_content_open_repo(qapp, isolated_settings, tmp_path_factory):
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
     from pytortoisegit.git.git import GitRunner
-    from PySide6.QtCore import Qt
     root = tmp_path_factory.mktemp("content2")
     inner = root / "r"
     inner.mkdir()
@@ -551,9 +555,23 @@ def test_mainmenu_content_open_repo(qapp, isolated_settings, tmp_path_factory):
     assert runner.run("commit", "-m", "init").returncode == 0
     dlg = MainMenuDlg()
     dlg._show_content(str(root))
-    item = dlg.content_list.topLevelItem(0)
-    assert item.data(0, Qt.ItemDataRole.UserRole + 1) == "repo"
-    dlg._on_content_double_clicked(item, 0)
+    model = dlg.fs_model
+    root_index = model.index(str(root))
+    # 等待模型异步填充
+    from PySide6.QtTest import QTest
+    for _ in range(50):
+        if model.rowCount(root_index):
+            break
+        QTest.qWait(100)
+    # 找到仓库 r 的子项并双击进入
+    idx = None
+    for i in range(model.rowCount(root_index)):
+        cand = model.index(i, 0, root_index)
+        if model.fileName(cand) == "r":
+            idx = cand
+            break
+    assert idx is not None
+    dlg._on_content_double_clicked(idx, 0)
     assert dlg.repo is not None and dlg.repo.root == str(inner)
     dlg.reject()
 

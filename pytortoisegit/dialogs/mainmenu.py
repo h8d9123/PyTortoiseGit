@@ -489,7 +489,20 @@ class MainMenuDlg(QMainWindow):
             if path:
                 self.open_repo(path)
 
-    def _build_folder_repo_menu(self, path: str) -> "QMenu":
+    def _refresh_folder_item(self, item: QTreeWidgetItem):
+        """重新扫描某目录节点（或分区/仓库节点）的直接子目录。"""
+        if item is None:
+            return
+        for i in reversed(range(item.childCount())):
+            item.removeChild(item.child(i))
+        item.setData(0, ROLE_LOADED, False)
+        if item.isExpanded():
+            self._load_dir_item(item)
+            item.setData(0, ROLE_LOADED, True)
+        else:
+            self._add_placeholder(item)
+
+    def _build_folder_repo_menu(self, path: str, item=None) -> "QMenu":
         """目录树中仓库节点的右键菜单：添加 + 经典 TortoiseGit 命令（含设置）。"""
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self.folder_tree)
@@ -505,10 +518,15 @@ class MainMenuDlg(QMainWindow):
         act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
         act_set.triggered.connect(
             lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
+        if item is not None:
+            menu.addSeparator()
+            act_refresh = menu.addAction(tr("refresh"))
+            act_refresh.triggered.connect(
+                lambda _=False, it=item: self._refresh_folder_item(it))
         return menu
 
-    def _build_folder_nonrepo_menu(self, path: str) -> "QMenu":
-        """目录树中非仓库目录/分区的右键菜单：Git Clone… + Settings。"""
+    def _build_folder_nonrepo_menu(self, path: str, item=None) -> "QMenu":
+        """目录树中非仓库目录/分区的右键菜单：Git Clone… + Settings + 刷新。"""
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self.folder_tree)
         act_clone = menu.addAction(tr("repo_menu_clone", "Git Clone…"))
@@ -518,6 +536,10 @@ class MainMenuDlg(QMainWindow):
         act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
         act_set.triggered.connect(
             lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
+        menu.addSeparator()
+        act_refresh = menu.addAction(tr("refresh"))
+        act_refresh.triggered.connect(
+            lambda _=False, it=item: self._refresh_folder_item(it))
         return menu
 
     def _on_folder_context_menu(self, pos):
@@ -526,10 +548,10 @@ class MainMenuDlg(QMainWindow):
             return
         path = item.data(0, ROLE_PATH)
         if item.data(0, ROLE_KIND) == "repo":
-            self._build_folder_repo_menu(path).exec(
+            self._build_folder_repo_menu(path, item).exec(
                 self.folder_tree.viewport().mapToGlobal(pos))
         else:
-            self._build_folder_nonrepo_menu(path).exec(
+            self._build_folder_nonrepo_menu(path, item).exec(
                 self.folder_tree.viewport().mapToGlobal(pos))
 
     def _run_clone_in(self, path: str):

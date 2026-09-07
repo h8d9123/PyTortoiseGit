@@ -696,6 +696,30 @@ def test_mainmenu_folder_nonrepo_menu_has_clone_and_settings(
     labels = [a.text() for a in menu.actions()]
     assert "Git Clone…" in labels
     assert "Settings" in labels
+    assert "刷新" in labels
+    dlg.reject()
+
+
+def test_mainmenu_folder_refresh_rescans_children(
+        qapp, isolated_settings, tmp_path, monkeypatch):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QTreeWidgetItem
+    parent = tmp_path / "refresh_root"
+    parent.mkdir()
+    dlg = MainMenuDlg()
+    item = QTreeWidgetItem()
+    item.setData(0, Qt.ItemDataRole.UserRole, str(parent))
+    item.setData(0, Qt.ItemDataRole.UserRole + 1, "dir")
+    dlg.folder_tree.addTopLevelItem(item)
+    # 首次加载，仅有一个子目录 sub1
+    (parent / "sub1").mkdir()
+    item.setExpanded(True)  # 触发懒加载
+    assert item.childCount() == 1
+    # 新建 sub2 后刷新，应出现两个子目录
+    (parent / "sub2").mkdir()
+    dlg._refresh_folder_item(item)
+    assert item.childCount() == 2
     dlg.reject()
 
 
@@ -720,6 +744,13 @@ def test_mainmenu_folder_repo_menu_includes_settings(
     labels = [a.text() for a in menu.actions()]
     assert labels[0] == "添加到仓库管理"
     assert "Settings" in labels
+    # 传入 item 后提供「刷新」
+    from PySide6.QtWidgets import QTreeWidgetItem as _Item
+    repo_item = _Item()
+    repo_item.setData(0, Qt.ItemDataRole.UserRole, str(inner))
+    menu2 = dlg._build_folder_repo_menu(str(inner), repo_item)
+    labels2 = [a.text() for a in menu2.actions()]
+    assert "刷新" in labels2
     dlg.reject()
 
 

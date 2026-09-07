@@ -324,3 +324,20 @@ clone/settings 是模态对话框命令，通过 `QTimer.singleShot(0, ...)` 异
 - `CloneDlg(default_dir=...)` 回填 `dir_edit`。
 - `_build_folder_nonrepo_menu` 含 `Git Clone…` 与 `Settings`。
 - `_build_folder_repo_menu` 首项为「添加到仓库管理」且含 `Settings`。
+- 「刷新」：右键目录/分区/仓库节点均提供「刷新」（`_refresh_folder_item`），
+  重新扫描直接子目录；展开节点立即重载，折叠节点重置占位子项延迟重载。
+
+## 12. 目录树右键「刷新」（2026-09-07 追加）
+
+目录/分区/仓库节点的右键菜单末尾均新增「刷新」，调用 `_refresh_folder_item(item)`：
+
+```python
+def _refresh_folder_item(self, item):
+    # 清空子项 → 重置 ROLE_LOADED
+    # 已展开：立即 _load_dir_item 重建
+    # 未展开：重置占位子项（placeholder），下次展开时懒加载
+```
+
+仓库节点菜单（`_build_folder_repo_menu`）与目录节点菜单
+（`_build_folder_nonrepo_menu`）均接收可选 `item` 参数，传入后追加「刷新」；
+未传入（测试或纯命令场景）则不追加。

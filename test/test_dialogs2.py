@@ -576,6 +576,29 @@ def test_mainmenu_content_open_repo(qapp, isolated_settings, tmp_path_factory):
     dlg.reject()
 
 
+def test_mainmenu_go_up(qapp, tmp_path_factory):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from PySide6.QtTest import QTest
+    parent = tmp_path_factory.mktemp("goup")
+    child = parent / "child"
+    child.mkdir()
+    dlg = MainMenuDlg()
+    dlg._show_content(str(child))
+    from PySide6.QtCore import Qt
+    # 保证模型索引就绪
+    idx = dlg.fs_model.index(str(child))
+    for _ in range(50):
+        if dlg.fs_model.rowCount(idx) >= 0:
+            break
+        QTest.qWait(100)
+    assert dlg._current_dir().replace("\\", "/").lower() == \
+        str(child).replace("\\", "/").lower()
+    dlg._go_up()
+    assert dlg.path_row.text().replace("\\", "/").lower() == \
+        str(parent).replace("\\", "/").lower()
+    dlg.reject()
+
+
 @pytest.fixture()
 def isolated_settings(tmp_path, monkeypatch):
     """把 general_settings 隔离到临时 INI 文件，避免污染真实注册表。"""

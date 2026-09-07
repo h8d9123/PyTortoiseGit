@@ -364,6 +364,9 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 - 右侧右键（`_on_content_context_menu`）：仅目录——仓库 → 经典 TortoiseGit
   菜单（`_build_classic_menu`）；非仓库目录 → Clone… + Settings。
 - 底部「打开」按钮（`btn_open`）执行与双击相同动作。
+- 导航：内容列表上方有「上一级」按钮（`btn_up`）→ `_go_up()`：取当前根目录的
+  父目录，更新 `path_row` 并刷新内容；无上级目录则无操作。`_current_dir()` 返回
+  当前浏览目录。
 
 > 注：`QFileSystemModel` 为异步后台填充，切换路径后需短时等待其扫描完成。
 

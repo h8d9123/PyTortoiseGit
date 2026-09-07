@@ -222,6 +222,12 @@ class MainMenuDlg(QMainWindow):
             right)
         self._welcome.setWordWrap(True)
         right_lay.addWidget(self._welcome)
+        nav = QHBoxLayout()
+        self.btn_up = QPushButton(tr("menu_up_dir", "上一级"), right)
+        self.btn_up.clicked.connect(self._go_up)
+        nav.addWidget(self.btn_up)
+        nav.addStretch(1)
+        right_lay.addLayout(nav)
         self.fs_model = QFileSystemModel(right)
         self.fs_model.setIconProvider(_GitIconProvider(self))
         self.content_list = QTreeView(right)
@@ -285,6 +291,21 @@ class MainMenuDlg(QMainWindow):
         if path and os.path.isdir(path):
             self.path_row.setText(path)
             self._show_content(path)
+
+    def _current_dir(self) -> str:
+        """当前内容浏览所在的目录（根索引对应路径）。"""
+        index = self.content_list.rootIndex()
+        if index.isValid():
+            return self.fs_model.filePath(index)
+        return ""
+
+    def _go_up(self):
+        """返回上级目录。"""
+        cur = self._current_dir()
+        parent = os.path.dirname(cur) if cur else ""
+        if parent and os.path.isdir(parent):
+            self.path_row.setText(parent)
+            self._show_content(parent)
 
     def _is_dir_index(self, index) -> bool:
         try:

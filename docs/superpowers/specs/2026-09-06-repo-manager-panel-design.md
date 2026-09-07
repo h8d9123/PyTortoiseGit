@@ -341,3 +341,41 @@ def _refresh_folder_item(self, item):
 仓库节点菜单（`_build_folder_repo_menu`）与目录节点菜单
 （`_build_folder_nonrepo_menu`）均接收可选 `item` 参数，传入后追加「刷新」；
 未传入（测试或纯命令场景）则不追加。
+
+## 13. 右侧内容浏览面板（2026-09-07 追加）
+
+右侧「命令列表」替换为「内容浏览」区（资源管理器中间窗格风格），命令入口
+移至工具栏（QToolButton 一行：Commit/Log/Diff/Clone/Sync/Pull/Push/Fetch/
+Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
+
+`content_list` = QTreeWidget（单列，无展开装饰）。
+
+行为：
+- 单击左侧仓库管理树节点 → `_on_repo_clicked`：`path_row` 设为该仓库根，
+  `_show_content(path)` 列出仓库根内子文件夹。
+- 单击左侧目录树节点 → `_on_folder_clicked`：`_show_content(path)` 列出该目录
+  子文件夹。
+- `_show_content(path)`：按名称排序列出**子目录（在前）与文件（在后）**，仓库根用
+  `IDI_GITFOLDER` 图标标记，普通目录用文件夹图标、文件用文件图标
+  （`_add_content_item` + `_file_icon` + `_gitfolder_icon`）。
+- 右侧双击：仓库 → `open_repo`；目录 → 进入（`path_row` 更新并刷新内容）；
+  文件 → 无操作。
+- 右侧右键：仓库 → 经典 TortoiseGit 菜单（`_build_classic_menu`）；
+  非仓库目录 → Clone… + Settings。
+- 底部「打开」按钮（`btn_open`）执行与双击相同动作。
+
+### 新增文案键
+
+```
+"menu_open_content": "打&开",
+"content_hint": "单击左侧目录/仓库查看子文件夹；双击进入或打开",
+```
+
+### 测试要点（追加）
+
+- `test_mainmenu_dialog`：`content_list` 存在，工具栏含关键命令
+  （Commit/Log/Diff/Clone/Sync/Push/Pull/设置）。
+- `test_mainmenu_content_shows_subfolders`：`_show_content` 列出子目录，
+  `plain`→dir、`innerrepo`→repo 角色正确。
+- `test_mainmenu_content_open_repo`：双击仓库内容节点 → `self.repo.root`
+  正确打开。

@@ -21,8 +21,6 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMainWindow,
     QPushButton,
     QSplitter,
@@ -96,7 +94,6 @@ class MainMenuDlg(QMainWindow):
         self._build_menu()
         self._build_toolbar()
         self._build_central()
-        self._populate_commands()
         self._build_statusbar()
         # 从 QSettings 加载已添加仓库并刷新树
         self._repo_list = self._load_repo_list()
@@ -155,7 +152,7 @@ class MainMenuDlg(QMainWindow):
             self.toolbar.addWidget(btn)
             self.toolbar.addSeparator()
 
-    # ---- 主区：左侧标签页（仓库管理 + 目录树）+ 右侧命令列表 ----
+    # ---- 主区：左侧标签页（仓库管理 + 目录树）+ 右侧内容浏览 ----
     def _build_central(self):
         split = QSplitter(Qt.Orientation.Horizontal, self)
         # 标签页 1：仓库管理
@@ -173,6 +170,7 @@ class MainMenuDlg(QMainWindow):
         ])
         self.repo_tree.setRootIsDecorated(True)
         self.repo_tree.setIndentation(16)
+        self.repo_tree.itemClicked.connect(self._on_repo_clicked)
         self.repo_tree.itemDoubleClicked.connect(self._on_repo_double_clicked)
         self.repo_tree.itemExpanded.connect(self._on_item_expanded)
         self.repo_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -191,6 +189,7 @@ class MainMenuDlg(QMainWindow):
         self.folder_tree.setColumnCount(1)
         self.folder_tree.setHeaderHidden(True)
         self.folder_tree.setRootIsDecorated(True)
+        self.folder_tree.itemClicked.connect(self._on_folder_clicked)
         self.folder_tree.itemExpanded.connect(self._on_folder_expanded)
         self.folder_tree.itemDoubleClicked.connect(self._on_folder_double_clicked)
         self.folder_tree.setContextMenuPolicy(
@@ -216,23 +215,30 @@ class MainMenuDlg(QMainWindow):
         self.path_row.connect_editingFinished(self._on_path_changed)
         right_lay.addWidget(self.path_row)
         self._welcome = QLabel(
-            tr("menu_welcome", "双击命令或选择后点击执行；左侧为仓库管理与目录浏览。"),
+            tr("content_hint", "单击左侧目录/仓库查看子文件夹；双击进入或打开。"),
             right)
         self._welcome.setWordWrap(True)
         right_lay.addWidget(self._welcome)
-        self.command_list = QListWidget(right)
-        right_lay.addWidget(self.command_list, 1)
-        self.command_list.itemDoubleClicked.connect(lambda *_: self._execute_selected())
+        self.content_list = QTreeWidget(right)
+        self.content_list.setColumnCount(1)
+        self.content_list.setHeaderHidden(True)
+        self.content_list.setRootIsDecorated(False)
+        self.content_list.itemDoubleClicked.connect(self._on_content_double_clicked)
+        self.content_list.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.content_list.customContextMenuRequested.connect(
+            self._on_content_context_menu)
+        right_lay.addWidget(self.content_list, 1)
         last = QHBoxLayout()
-        self.btn_exec = QPushButton(tr("menu_exec", "执&行"), right)
-        self.btn_exec.clicked.connect(self._execute_selected)
+        self.btn_open = QPushButton(tr("menu_open_content", "打&开"), right)
+        self.btn_open.clicked.connect(self._open_content_selected)
         self.btn_about = QPushButton(tr("about_title", "关于"), right)
         self.btn_about.clicked.connect(self._on_about)
         self.btn_close = QPushButton(tr("close", "关&闭"), right)
         self.btn_close.clicked.connect(self.close)
         last.addStretch(1)
+        last.addWidget(self.btn_open)
         last.addWidget(self.btn_about)
-        last.addWidget(self.btn_exec)
         last.addWidget(self.btn_close)
         right_lay.addLayout(last)
         split.addWidget(right)
@@ -246,26 +252,109 @@ class MainMenuDlg(QMainWindow):
         self.status = QLabel("")
         self.statusBar().addWidget(self.status)
 
-    # ---- 数据 ----
-    def _populate_commands(self):
-        from ..commands.dispatcher import available_commands, _ensure_imports
-        _ensure_imports()
-        self.commands = available_commands()
-        self.command_list.clear()
-        for name in self.commands:
-            item = QListWidgetItem(self._display_of(name))
-            item.setData(Qt.ItemDataRole.UserRole, name)
-            self.command_list.addItem(item)
+    # ---- 右侧内容浏览（资源管理器中间窗格）----
+    def _show_content(self, path: str):
+        """列出路径下子项（文件夹在前、文件在后），仓库根以图标标记。"""
+        self.content_list.clear()
+        try:
+            entries = os.scandir(path)
+        except OSError:
+            return
+        dirs = []
+        files = []
+        for e in entries:
+            try:
+                if e.is_dir():
+                    dirs.append(e.name)
+                else:
+                    files.append(e.name)
+            except OSError:
+                continue
+        for name in sorted(dirs, key=str.casefold):
+            self._add_content_item(path, name, is_dir=True)
+        for name in sorted(files, key=str.casefold):
+            self._add_content_item(path, name, is_dir=False)
 
-    @staticmethod
-    def _display_of(name: str) -> str:
-        return name
+    def _add_content_item(self, path: str, name: str, is_dir: bool):
+        sub = os.path.join(path, name)
+        if is_dir:
+            kind = "repo" if self._is_repo_root(sub) else "dir"
+            item = QTreeWidgetItem([name])
+            item.setIcon(0, self._dir_icon() if kind == "dir"
+                         else self._gitfolder_icon())
+        else:
+            kind = "file"
+            item = QTreeWidgetItem([name])
+            item.setIcon(0, self._file_icon())
+        item.setData(0, ROLE_PATH, sub)
+        item.setData(0, ROLE_KIND, kind)
+        self.content_list.addTopLevelItem(item)
 
-    def _selected_command(self) -> str | None:
-        item = self.command_list.currentItem()
+    def _file_icon(self):
+        return self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+
+    def _gitfolder_icon(self):
+        try:
+            from ..res import icons
+            ic = icons.icon("IDI_GITFOLDER")
+            if ic and not ic.isNull():
+                return ic
+        except Exception:
+            pass
+        return self._dir_icon()
+
+    def _on_repo_clicked(self, item, _col):
+        """单击仓库节点：右侧显示仓库根内子文件夹。"""
+        path = item.data(0, ROLE_PATH)
+        if path:
+            self.path_row.setText(path)
+            self._show_content(path)
+
+    def _on_folder_clicked(self, item, _col):
+        """单击目录树节点：右侧显示该目录内子文件夹。"""
+        path = item.data(0, ROLE_PATH)
+        if path and os.path.isdir(path):
+            self.path_row.setText(path)
+            self._show_content(path)
+
+    def _on_content_double_clicked(self, item, _col):
+        """右侧双击：仓库→打开；目录→进入；文件→不做。"""
+        path = item.data(0, ROLE_PATH)
+        if not path:
+            return
+        kind = item.data(0, ROLE_KIND)
+        if kind == "repo":
+            self.open_repo(path)
+        elif kind in ("dir", "drive"):
+            self.path_row.setText(path)
+            self._show_content(path)
+
+    def _open_content_selected(self):
+        """“打开”按钮：仓库→打开；目录→进入。"""
+        item = self.content_list.currentItem()
+        if item is not None and item.data(0, ROLE_PATH):
+            self._on_content_double_clicked(item, 0)
+
+    def _on_content_context_menu(self, pos):
+        from PySide6.QtWidgets import QMenu
+        item = self.content_list.itemAt(pos)
         if item is None:
-            return None
-        return item.data(Qt.ItemDataRole.UserRole)
+            return
+        kind = item.data(0, ROLE_KIND)
+        if kind not in ("repo", "dir", "drive"):
+            return
+        path = item.data(0, ROLE_PATH)
+        if kind == "repo":
+            menu = self._build_classic_menu(path, self.content_list)
+        else:
+            menu = QMenu(self.content_list)
+            act_clone = menu.addAction(tr("repo_menu_clone", "Git Clone…"))
+            act_clone.triggered.connect(
+                lambda _=False, p=path: self._run_clone_in(p))
+            act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+            act_set.triggered.connect(
+                lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
+        menu.exec(self.content_list.viewport().mapToGlobal(pos))
 
     # ---- QSettings 持久化 ----
     @staticmethod
@@ -608,13 +697,6 @@ class MainMenuDlg(QMainWindow):
         self.status.setText(
             format_string(tr("menu_running", "正在执行：{name}"), name=name))
         QTimer.singleShot(0, lambda: self._run(ctx, name))
-
-    def _execute_selected(self):
-        name = self._selected_command()
-        if name is None:
-            self.status.setText(tr("menu_select_first", "请先选择一个命令。"))
-            return
-        self._dispatch(name)
 
     def _run_async_command(self, name: str, extra=None):
         self._dispatch(name, extra=extra)

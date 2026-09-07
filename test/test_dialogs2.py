@@ -490,31 +490,71 @@ def test_command_registry_has_c5_commands():
 def test_mainmenu_dialog(qapp):
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
     dlg = _smoke(qapp, lambda: MainMenuDlg())
-    assert dlg.command_list.count() >= 20
-    # 关键命令应在菜单里
-    names = [dlg.command_list.item(i).text()
-             for i in range(dlg.command_list.count())]
-    for expected in ("commit", "diff", "log", "blame", "clone", "sync",
-                     "push", "pull", "settings", "add"):
-        assert expected in names
+    # 右侧为内容浏览区（资源管理器中间窗格）
+    assert dlg.content_list is not None
+    # 工具栏保留关键 Git 命令入口
+    from PySide6.QtWidgets import QToolButton
+    labels = [b.text() for b in dlg.toolbar.findChildren(QToolButton)]
+    for expected in ("Commit", "Log", "Diff", "Clone", "Sync",
+                     "Push", "Pull", "设置"):
+        assert expected in labels
 
 
-def test_mainmenu_executes_diff(qapp, repo):
+def test_mainmenu_content_shows_subfolders(qapp, tmp_path_factory):
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
-    from pytortoisegit.commands.dispatcher import dispatch, CommandContext
-    dlg = MainMenuDlg(repo_path=str(repo.root))
-    dlg.show()
-    from PySide6.QtWidgets import QListWidgetItem
+    from pytortoisegit.git.git import GitRunner
     from PySide6.QtCore import Qt
-    # 选中 diff 命令并触发
-    for i in range(dlg.command_list.count()):
-        if dlg.command_list.item(i).data(Qt.ItemDataRole.UserRole) == "diff":
-            dlg.command_list.setCurrentRow(i)
-            break
-    dlg.path_row.setText(str(repo.root))
-    # 仅验证选中与路径，不真正执行（exec 会阻塞）
-    assert dlg._selected_command() == "diff"
-    assert dlg.path_row.text() == str(repo.root)
+    root = tmp_path_factory.mktemp("content")
+    plain = root / "plain"
+    plain.mkdir()
+    inner = root / "innerrepo"
+    inner.mkdir()
+    runner = GitRunner(cwd=str(inner))
+    runner.init(str(inner), initial_branch="main")
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    (inner / "a.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "init").returncode == 0
+    (root / "b.txt").write_text("b\n", encoding="utf-8")
+    dlg = MainMenuDlg()
+    dlg._show_content(str(root))
+    # 目录在前、文件在后，共 3 项
+    assert dlg.content_list.topLevelItemCount() == 3
+    kinds = {}
+    order = []
+    for i in range(dlg.content_list.topLevelItemCount()):
+        it = dlg.content_list.topLevelItem(i)
+        kinds[it.text(0)] = it.data(0, Qt.ItemDataRole.UserRole + 1)
+        order.append(it.text(0))
+    assert kinds["plain"] == "dir"
+    assert kinds["innerrepo"] == "repo"
+    assert kinds["b.txt"] == "file"
+    # 文件夹排在文件前
+    assert order.index("plain") < order.index("b.txt")
+    dlg.reject()
+
+
+def test_mainmenu_content_open_repo(qapp, isolated_settings, tmp_path_factory):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    from PySide6.QtCore import Qt
+    root = tmp_path_factory.mktemp("content2")
+    inner = root / "r"
+    inner.mkdir()
+    runner = GitRunner(cwd=str(inner))
+    runner.init(str(inner), initial_branch="main")
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    (inner / "a.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "init").returncode == 0
+    dlg = MainMenuDlg()
+    dlg._show_content(str(root))
+    item = dlg.content_list.topLevelItem(0)
+    assert item.data(0, Qt.ItemDataRole.UserRole + 1) == "repo"
+    dlg._on_content_double_clicked(item, 0)
+    assert dlg.repo is not None and dlg.repo.root == str(inner)
     dlg.reject()
 
 

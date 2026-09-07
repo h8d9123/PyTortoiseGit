@@ -359,8 +359,9 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
   由模型自动列出子文件夹与文件（图标、排序由模型管理）。
 - 图标：自定义 `_GitIconProvider(QFileIconProvider)`，仓库根目录显示
   `IDI_GITFOLDER`，其余交给系统默认图标。
-- 右侧双击（`_on_content_double_clicked`）：仓库 → `open_repo`；
-  目录 → 进入（`path_row` 更新并刷新内容）；文件 → 无操作。
+- 右侧双击（`_on_content_double_clicked`）：任意目录（含仓库根）→ 进入浏览；
+  文件 → 无操作。仓库不因双击直接打开，仓库操作通过右键菜单
+  （`_build_classic_menu`）与工具栏命令执行。
 - 右侧右键（`_on_content_context_menu`）：仅目录——仓库 → 经典 TortoiseGit
   菜单（`_build_classic_menu`）；非仓库目录 → Clone… + Settings。
 - 底部「打开」按钮（`btn_open`）执行与双击相同动作。
@@ -389,7 +390,7 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
   （Commit/Log/Diff/Clone/Sync/Push/Pull/设置）。
 - `test_mainmenu_content_shows_subfolders`：`_show_content` 后 `rowCount==3`
   （plain/innerrepo/b.txt），innerrepo 识别为仓库根。
-- `test_mainmenu_content_open_repo`：双击仓库内容节点 → `self.repo.root`
-  正确打开。
+- `test_mainmenu_content_double_click_repo_enters`：双击仓库内容节点 → 进入
+  浏览（`_current_dir` 变为仓库路径，`repo` 不打开）。
 
 > 时序：模型异步填充，测试用 `QTest.qWait` 轮询 `rowCount>0` 后再断言。

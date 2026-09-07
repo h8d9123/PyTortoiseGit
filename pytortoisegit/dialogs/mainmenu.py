@@ -362,15 +362,12 @@ class MainMenuDlg(QMainWindow):
             return False
 
     def _on_content_double_clicked(self, index, _col=0):
-        """右侧双击：仓库→打开；目录→进入；文件→不做。"""
+        """右侧双击目录（含仓库根）→进入浏览；文件→不做。"""
         path = self._path_of_index(index)
         if not path:
             return
         if self._is_dir_index(index):
-            if self._is_repo_root(path):
-                self.open_repo(path)
-            else:
-                self._navigate(path)
+            self._navigate(path)
 
     def _open_content_selected(self):
         """“打开”按钮：与双击一致。"""

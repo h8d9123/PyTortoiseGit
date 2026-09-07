@@ -540,10 +540,10 @@ def test_mainmenu_content_shows_subfolders(qapp, tmp_path_factory):
     dlg.reject()
 
 
-def test_mainmenu_content_open_repo(qapp, isolated_settings, tmp_path_factory):
+def test_mainmenu_content_double_click_repo_enters(qapp, isolated_settings, tmp_path_factory):
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
     from pytortoisegit.git.git import GitRunner
-    root = tmp_path_factory.mktemp("content2")
+    root = tmp_path_factory.mktemp("content_enter_repo")
     inner = root / "r"
     inner.mkdir()
     runner = GitRunner(cwd=str(inner))
@@ -563,7 +563,7 @@ def test_mainmenu_content_open_repo(qapp, isolated_settings, tmp_path_factory):
         if model.rowCount(root_index):
             break
         QTest.qWait(100)
-    # 找到仓库 r 的子项并双击进入
+    # 找到仓库 r 的子项，双击进入浏览（不改动 repo 打开）
     idx = None
     for i in range(model.rowCount(root_index)):
         cand = model.index(i, 0, root_index)
@@ -572,7 +572,9 @@ def test_mainmenu_content_open_repo(qapp, isolated_settings, tmp_path_factory):
             break
     assert idx is not None
     dlg._on_content_double_clicked(idx, 0)
-    assert dlg.repo is not None and dlg.repo.root == str(inner)
+    assert dlg._current_dir().replace("\\", "/").lower() == \
+        str(inner).replace("\\", "/").lower()
+    assert dlg.repo is None
     dlg.reject()
 
 

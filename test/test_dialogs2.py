@@ -878,6 +878,51 @@ def test_mainmenu_folder_repo_menu_includes_settings(
     dlg.reject()
 
 
+def test_mainmenu_inside_repo_judgment(qapp, isolated_settings, tmp_path_factory):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    parent = tmp_path_factory.mktemp("insiderepo")
+    repo = parent / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    sub = repo / "sub"
+    sub.mkdir()
+    dlg = MainMenuDlg()
+    assert dlg._inside_repo(str(repo)) is True       # 仓库根
+    assert dlg._inside_repo(str(sub)) is True        # 仓库内子目录
+    assert dlg._inside_repo(str(parent)) is False    # 仓库外
+    dlg.reject()
+
+
+def test_mainmenu_content_context_menu_classic_for_worktree(
+        qapp, isolated_settings, tmp_path_factory):
+    """右侧内容区：工作树内目录右键显示完整经典菜单，仓库外显示 Clone+Settings。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    parent = tmp_path_factory.mktemp("content_ctx")
+    repo = parent / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    sub = repo / "sub"
+    sub.mkdir()
+    plain = parent / "plain"
+    plain.mkdir()
+    dlg = MainMenuDlg()
+    # 工作树内目录 → 经典菜单（含 Commit、Settings）
+    menu = dlg._build_classic_menu(str(sub), dlg.content_list)
+    labels = [a.text() for a in menu.actions()]
+    assert "Commit…" in labels
+    assert "Settings" in labels
+    # 仓库外目录 → Clone+Settings（build_folder_nonrepo_menu）
+    menu2 = dlg._build_folder_nonrepo_menu(str(plain))
+    labels2 = [a.text() for a in menu2.actions()]
+    assert "Git Clone…" in labels2
+    assert "Settings" in labels2
+    dlg.reject()
+
+
 def test_packaging_specs_compile():
     import ast
     from pathlib import Path

@@ -362,8 +362,11 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 - 右侧双击（`_on_content_double_clicked`）：任意目录（含仓库根）→ 进入浏览；
   文件 → 无操作。仓库不因双击直接打开，仓库操作通过右键菜单
   （`_build_classic_menu`）与工具栏命令执行。
-- 右侧右键（`_on_content_context_menu`）：仅目录——仓库 → 经典 TortoiseGit
-  菜单（`_build_classic_menu`）；非仓库目录 → Clone… + Settings。
+- 右侧右键（`_on_content_context_menu`）/ 目录树右键
+  （`_on_folder_context_menu`）：用 `_inside_repo(path)` 判定——
+  **工作树内任意位置**（`find_repo_root(path)` 非空，含仓库根与仓库内子目录）
+  显示完整经典 TortoiseGit 菜单（`_build_classic_menu`，Commit/Log/Pull/Push/Sync/
+  Revert/Clean Up + Settings）；仓库之外的目录显示 Clone… + Settings。
 - 底部「打开」按钮（`btn_open`）执行与双击相同动作。
 - 导航行（Windows 资源管理器风格）：后退 `btn_back`(←)、前进
   `btn_forward`(→)、向上 `btn_up`(↑)、刷新 `btn_refresh`(⟳)。

@@ -383,7 +383,7 @@ class MainMenuDlg(QMainWindow):
         if not self._is_dir_index(index):
             return
         path = self._path_of_index(index)
-        if self._is_repo_root(path):
+        if self._inside_repo(path):
             menu = self._build_classic_menu(path, self.content_list)
         else:
             menu = QMenu(self.content_list)
@@ -595,6 +595,14 @@ class MainMenuDlg(QMainWindow):
         except Exception:
             return False
 
+    @staticmethod
+    def _inside_repo(path: str) -> bool:
+        """路径是否位于某仓库工作树内（含根）。"""
+        try:
+            return find_repo_root(path) is not None
+        except Exception:
+            return False
+
     def _apply_repo_icon(self, item: QTreeWidgetItem):
         try:
             from ..res import icons
@@ -675,7 +683,7 @@ class MainMenuDlg(QMainWindow):
         if item is None or item.data(0, ROLE_KIND) in (None, "placeholder"):
             return
         path = item.data(0, ROLE_PATH)
-        if item.data(0, ROLE_KIND) == "repo":
+        if self._inside_repo(path):
             self._build_folder_repo_menu(path, item).exec(
                 self.folder_tree.viewport().mapToGlobal(pos))
         else:

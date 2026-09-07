@@ -1,4 +1,4 @@
-"""mainmenu.py —— 主窗口：菜单栏 + Git 操作工具栏 + 左侧仓库管理树。
+"""mainmenu.py —— 主窗口：菜单栏 + Git 操作工具栏 + 左侧标签面板（仓库管理/目录树）。
 
 GUI 入口（`python -m pytortoisegit` 无参数时打开此窗口），
 或 `/command:menu` 显式打开。
@@ -6,13 +6,14 @@ GUI 入口（`python -m pytortoisegit` 无参数时打开此窗口），
 布局（从顶部到底部）：
   1. 菜单栏（文件 / 视图 / 帮助）
   2. 工具栏：QToolButton 一排 Git 操作按钮（图标用 TortoiseGit icon）
-  3. 主区：左侧仓库管理树(QTreeWidget) + 右侧命令列表 / 欢迎页
+  3. 主区：左侧标签面板（仓库管理树 + 目录树）+ 右侧命令列表 / 欢迎页
   4. 底部：仓库路径 + 按钮 + 状态栏
 """
 
 from __future__ import annotations
 
 import os
+import string
 from typing import List
 
 from PySide6.QtCore import Qt
@@ -25,6 +26,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QSplitter,
+    QStyle,
+    QTabWidget,
     QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -33,6 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..cmdline import CommandLine
+from ..git.admin import find_repo_root
 from ..git.repo import Repository
 from ..res.strings import format_string, tr
 from .widgets import RepoPickerRow
@@ -40,13 +44,25 @@ from .widgets import RepoPickerRow
 _KEY_REPOS = "Browser/Repos"
 # 树节点数据角色
 ROLE_PATH = Qt.ItemDataRole.UserRole        # 仓库/子模块 绝对路径
-ROLE_KIND = Qt.ItemDataRole.UserRole + 1    # "repo" / "submodule"
+ROLE_KIND = Qt.ItemDataRole.UserRole + 1    # "repo" / "submodule" / "drive" /
+                                            #  "dir" / "placeholder"
 ROLE_PARENT = Qt.ItemDataRole.UserRole + 2  # 子模块的父仓库根
-ROLE_LOADED = Qt.ItemDataRole.UserRole + 3  # 仓库节点是否已加载子模块
+ROLE_LOADED = Qt.ItemDataRole.UserRole + 3  # 节点是否已加载下级内容
+
+# 经典 TortoiseGit 右键菜单：(命令名, 文案键, 默认文案)
+_CLASSIC_MENU = [
+    ("commit", "repo_menu_commit", "Commit…"),
+    ("log", "repo_menu_log", "Show log"),
+    ("pull", "repo_menu_pull", "Pull…"),
+    ("push", "repo_menu_push", "Push…"),
+    ("sync", "repo_menu_sync", "Sync"),
+    ("revert", "repo_menu_revert", "Revert…"),
+    ("cleanup", "repo_menu_cleanup", "Clean Up…"),
+]
 
 
 class MainMenuDlg(QMainWindow):
-    """主窗口：菜单栏 + 工具栏 + 仓库管理树 + 命令面板。"""
+    """主窗口：菜单栏 + 工具栏 + 标签面板（仓库管理 / 目录树）+ 命令面板。"""
 
     # 工具栏按钮：(命令名, 资源图标 IDI, 标签)
     TOOLBAR = [
@@ -103,10 +119,10 @@ class MainMenuDlg(QMainWindow):
         m_file.addAction(act_exit)
         # 视图
         m_view = bar.addMenu(tr("menu_view", "视图(&V)"))
-        act_repo = QAction(tr("menu_repo_manager", "仓库管理面板"), self)
+        act_repo = QAction(tr("menu_left_panel", "左侧面板"), self)
         act_repo.setCheckable(True)
         act_repo.setChecked(True)
-        act_repo.toggled.connect(lambda on: self.repo_manager_panel.setVisible(on))
+        act_repo.toggled.connect(lambda on: self.manager_tabs.setVisible(on))
         m_view.addAction(act_repo)
         act_tool = QAction(tr("menu_toolbar", "工具栏"), self)
         act_tool.setCheckable(True)
@@ -139,9 +155,10 @@ class MainMenuDlg(QMainWindow):
             self.toolbar.addWidget(btn)
             self.toolbar.addSeparator()
 
-    # ---- 主区：左侧仓库管理树 + 右侧命令列表 ----
+    # ---- 主区：左侧标签页（仓库管理 + 目录树）+ 右侧命令列表 ----
     def _build_central(self):
         split = QSplitter(Qt.Orientation.Horizontal, self)
+        # 标签页 1：仓库管理
         self.repo_manager_panel = QWidget(self)
         panel_lay = QVBoxLayout(self.repo_manager_panel)
         panel_lay.setContentsMargins(4, 4, 4, 4)
@@ -164,7 +181,33 @@ class MainMenuDlg(QMainWindow):
         panel_lay.addWidget(QLabel(
             tr("repo_manager_hint", "双击仓库切换；展开可查看子模块"),
             self.repo_manager_panel))
-        split.addWidget(self.repo_manager_panel)
+        # 标签页 2：目录树
+        self.folder_tree_panel = QWidget(self)
+        folder_lay = QVBoxLayout(self.folder_tree_panel)
+        folder_lay.setContentsMargins(4, 4, 4, 4)
+        folder_lay.addWidget(
+            QLabel(tr("browser_tab_folder", "目录树"), self.folder_tree_panel))
+        self.folder_tree = QTreeWidget(self.folder_tree_panel)
+        self.folder_tree.setColumnCount(1)
+        self.folder_tree.setHeaderHidden(True)
+        self.folder_tree.setRootIsDecorated(True)
+        self.folder_tree.itemExpanded.connect(self._on_folder_expanded)
+        self.folder_tree.itemDoubleClicked.connect(self._on_folder_double_clicked)
+        self.folder_tree.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.folder_tree.customContextMenuRequested.connect(
+            self._on_folder_context_menu)
+        folder_lay.addWidget(self.folder_tree)
+        folder_lay.addWidget(QLabel(
+            tr("folder_hint", "双击仓库目录打开；右键仓库目录可添加并执行操作"),
+            self.folder_tree_panel))
+        # 合并为左面板标签组
+        self.manager_tabs = QTabWidget(self)
+        self.manager_tabs.addTab(
+            self.repo_manager_panel, tr("browser_tab_repo", "仓库管理"))
+        self.manager_tabs.addTab(
+            self.folder_tree_panel, tr("browser_tab_folder", "目录树"))
+        split.addWidget(self.manager_tabs)
 
         right = QWidget(self)
         right_lay = QVBoxLayout(right)
@@ -173,7 +216,7 @@ class MainMenuDlg(QMainWindow):
         self.path_row.connect_editingFinished(self._on_path_changed)
         right_lay.addWidget(self.path_row)
         self._welcome = QLabel(
-            tr("menu_welcome", "双击命令或选择后点击执行；左侧为仓库管理树。"),
+            tr("menu_welcome", "双击命令或选择后点击执行；左侧为仓库管理与目录浏览。"),
             right)
         self._welcome.setWordWrap(True)
         right_lay.addWidget(self._welcome)
@@ -197,6 +240,7 @@ class MainMenuDlg(QMainWindow):
         split.setStretchFactor(1, 3)
         split.setSizes([350, 570])
         self.setCentralWidget(split)
+        self._populate_folder_tree()
 
     def _build_statusbar(self):
         self.status = QLabel("")
@@ -310,33 +354,32 @@ class MainMenuDlg(QMainWindow):
             if path:
                 self.open_repo(path)
 
+    def _build_classic_menu(self, path: str, parent=None) -> "QMenu":
+        """经典 TortoiseGit 右键菜单（作用于给定仓库路径）。"""
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(parent or self.repo_tree)
+        for cmd, key, label in _CLASSIC_MENU:
+            act = menu.addAction(tr(key, label))
+            act.triggered.connect(
+                lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
+        return menu
+
     def _on_repo_context_menu(self, pos):
         item = self.repo_tree.itemAt(pos)
         if item is None:
             return
-        from PySide6.QtWidgets import QMenu
-        menu = QMenu(self.repo_tree)
         if item.data(0, ROLE_KIND) == "repo":
             # 仓库节点：经典 TortoiseGit 菜单 + 移除
             path = item.data(0, ROLE_PATH)
-            for cmd, label in [
-                ("commit", tr("repo_menu_commit", "Commit…")),
-                ("log", tr("repo_menu_log", "Show log")),
-                ("pull", tr("repo_menu_pull", "Pull…")),
-                ("push", tr("repo_menu_push", "Push…")),
-                ("sync", tr("repo_menu_sync", "Sync")),
-                ("revert", tr("repo_menu_revert", "Revert…")),
-                ("cleanup", tr("repo_menu_cleanup", "Clean Up…")),
-            ]:
-                act = menu.addAction(label)
-                act.triggered.connect(
-                    lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
+            menu = self._build_classic_menu(path, self.repo_tree)
             menu.addSeparator()
             act_rem = menu.addAction(tr("repo_menu_remove", "从列表移除"))
             act_rem.triggered.connect(
                 lambda _=False, it=item: self._remove_repo_from_list(it))
         else:
             # 子模块节点：打开子模块
+            from PySide6.QtWidgets import QMenu
+            menu = QMenu(self.repo_tree)
             sub_path = item.data(0, ROLE_PATH)
             act = menu.addAction(tr("repo_menu_open_sub", "打开子模块"))
             act.triggered.connect(
@@ -354,6 +397,115 @@ class MainMenuDlg(QMainWindow):
         ]
         self._save_repo_list()
         self._refresh_repo_tree()
+
+    # ---- 目录树（左侧第二标签）----
+    @staticmethod
+    def _list_drives() -> list[str]:
+        if os.name == "nt":
+            return [f"{c}:\\" for c in string.ascii_uppercase
+                    if os.path.isdir(f"{c}:\\")]
+        return ["/"]
+
+    def _populate_folder_tree(self):
+        self.folder_tree.clear()
+        for drive in self._list_drives():
+            it = QTreeWidgetItem([drive])
+            it.setData(0, ROLE_PATH, drive)
+            it.setData(0, ROLE_KIND, "drive")
+            it.setIcon(0, self._drive_icon())
+            self._add_placeholder(it)
+            self.folder_tree.addTopLevelItem(it)
+
+    @staticmethod
+    def _add_placeholder(item: QTreeWidgetItem):
+        holder = QTreeWidgetItem([""])
+        holder.setData(0, ROLE_KIND, "placeholder")
+        item.addChild(holder)
+
+    def _on_folder_expanded(self, item):
+        """目录节点展开时懒加载子目录。"""
+        if item.data(0, ROLE_LOADED):
+            return
+        for i in reversed(range(item.childCount())):
+            child = item.child(i)
+            if child.data(0, ROLE_KIND) == "placeholder":
+                item.removeChild(child)
+        self._load_dir_item(item)
+        item.setData(0, ROLE_LOADED, True)
+
+    def _load_dir_item(self, item):
+        """列出某目录的直接子目录并建节点，标记其中的仓库根。"""
+        path = item.data(0, ROLE_PATH)
+        try:
+            names = sorted(os.listdir(path), key=str.casefold)
+        except OSError:
+            return
+        for name in names:
+            sub = os.path.join(path, name)
+            if not os.path.isdir(sub):
+                continue
+            child = QTreeWidgetItem([name])
+            child.setData(0, ROLE_PATH, sub)
+            if self._is_repo_root(sub):
+                child.setData(0, ROLE_KIND, "repo")
+                self._apply_repo_icon(child)
+            else:
+                child.setData(0, ROLE_KIND, "dir")
+                child.setIcon(0, self._dir_icon())
+            self._add_placeholder(child)
+            item.addChild(child)
+
+    @staticmethod
+    def _is_repo_root(path: str) -> bool:
+        """目录本身是否为仓库工作树根。"""
+        try:
+            return find_repo_root(path) == os.path.abspath(path)
+        except Exception:
+            return False
+
+    def _apply_repo_icon(self, item: QTreeWidgetItem):
+        try:
+            from ..res import icons
+            ic = icons.icon("IDI_GITFOLDER")
+            if ic and not ic.isNull():
+                item.setIcon(0, ic)
+        except Exception:
+            item.setIcon(0, self._dir_icon())
+
+    def _dir_icon(self):
+        return self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon)
+
+    def _drive_icon(self):
+        return self.style().standardIcon(QStyle.StandardPixmap.SP_DriveHDIcon)
+
+    def _on_folder_double_clicked(self, item, _col):
+        """双击仓库目录则在主窗口打开；其余目录走默认展开。"""
+        if item.data(0, ROLE_KIND) == "repo":
+            path = item.data(0, ROLE_PATH)
+            if path:
+                self.open_repo(path)
+
+    def _build_folder_repo_menu(self, path: str) -> "QMenu":
+        """目录树中仓库节点的右键菜单：添加 + 经典 TortoiseGit 命令。"""
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self.folder_tree)
+        act_add = menu.addAction(tr("menu_add_to_repo_list", "添加到仓库管理"))
+        act_add.triggered.connect(
+            lambda _=False, p=path: self._ensure_in_repo_list(p))
+        menu.addSeparator()
+        for cmd, key, label in _CLASSIC_MENU:
+            act = menu.addAction(tr(key, label))
+            act.triggered.connect(
+                lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
+        return menu
+
+    def _on_folder_context_menu(self, pos):
+        item = self.folder_tree.itemAt(pos)
+        if item is None or item.data(0, ROLE_KIND) != "repo":
+            return
+        path = item.data(0, ROLE_PATH)
+        self._build_folder_repo_menu(path).exec(
+            self.folder_tree.viewport().mapToGlobal(pos))
 
     # ---- 仓库 ----
     def open_repo(self, path: str):
@@ -381,7 +533,8 @@ class MainMenuDlg(QMainWindow):
 
     # ---- 命令执行 ----
     def _dispatch(self, name: str, extra=None):
-        if not (self.repo or self.path_row.text().strip()):
+        extra_path = bool(extra and extra.get("path"))
+        if not (self.repo or self.path_row.text().strip() or extra_path):
             self.status.setText(tr("menu_select_first", "请先选择仓库路径。"))
             return
         from PySide6.QtCore import QTimer

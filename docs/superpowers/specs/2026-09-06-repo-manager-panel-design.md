@@ -216,3 +216,69 @@ def _remove_repo_from_list(self, item):
 4. `test/test_dialogs2.py` 新增上述测试
 5. 全量 `pytest test/` 回归
 6. 提交（`feat: 主窗口左侧仓库管理面板`）
+
+---
+
+## 10. 目录树标签页（2026-09-07 追加）
+
+用户追加需求：**目录树需要，在另一个 tab 页**。恢复原「浏览文件夹」能力，
+与仓库管理并存于左面板标签组。
+
+### 布局
+
+左面板由普通 `QWidget` 改为 `QTabWidget(manager_tabs)`：
+
+```
+manager_tabs
+├─ Tab 0「仓库管理」repo_manager_panel（原有内容不变）
+└─ Tab 1「目录树」folder_tree_panel
+   ├─ QLabel("目录树")
+   ├─ QTreeWidget folder_tree（单列、隐藏表头、SP_DirIcon/SP_DriveHDIcon）
+   └─ QLabel("双击仓库目录打开；右键仓库目录可添加并执行操作")
+```
+
+视图菜单 `act_repo` 标题改为 `menu_left_panel`（"左侧面板"），控制
+`self.manager_tabs.setVisible(on)`。
+
+### 目录树行为
+
+- **根节点**：磁盘分区（Windows 下探测 `A:\`~`Z:\` 存在的分区），非 Windows 为 `/`。
+- **懒加载**：目录节点预挂一个 `placeholder` 子项，`itemExpanded` 时移除并调用
+  `_load_dir_item` 列出直接子目录，`ROLE_LOADED` 标记避免重复加载。
+- **仓库标记**：子目录用 `find_repo_root(sub) == os.path.abspath(sub)` 判定是否为
+  **仓库工作树根**；是则 `ROLE_KIND="repo"` 并应用 `IDI_GITFOLDER` 图标，否则
+  `ROLE_KIND="dir"` + `SP_DirIcon`。
+- **双击**：仓库目录 → `open_repo(path)`；其余目录交给默认展开。
+- **右键**：仓库目录 → 「添加到仓库管理」（`_ensure_in_repo_list`）+ 经典
+  TortoiseGit 命令菜单（复用 `_CLASSIC_MENU`，与仓库管理 tab 共享）；非仓库目录无菜单。
+- 加载失败（无权限等）静默跳过。
+
+### 数据角色（沿用仓库管理树）
+
+`ROLE_PATH`=绝对路径、`ROLE_KIND`∈{repo, dir, drive, placeholder}、
+`ROLE_LOADED`=是否已加载下级。
+
+### 新增文案键（`res/strings.py`）
+
+```
+"browser_tab_repo": "仓库管理",
+"browser_tab_folder": "目录树",
+"folder_hint": "双击仓库目录打开；右键仓库目录可添加并执行操作",
+"menu_add_to_repo_list": "添加到仓库管理",
+"menu_left_panel": "左侧面板",
+```
+
+### 命令分发的路径支持
+
+`_dispatch` 原守卫要求「已打开仓库或路径行非空」。目录树右键针对**未打开**的仓库，
+故守卫放宽为：`self.repo / path_row 非空 / extra 含 "path"` 任一成立即可执行；
+`extra["path"]` 仍覆盖 `cl.options["path"]`。
+
+### 测试要点（追加）
+
+- 冒烟：`manager_tabs.count() == 2`、标签文案、`folder_tree.topLevelItemCount() >= 1`（存在磁盘）。
+- 仓库标记与打开：构造「仓库根为某目录子项」的临时仓库，直接调用 `_load_dir_item`
+  以快速定位（避免遍历真实磁盘），断言 `ROLE_KIND == "repo"`；`_on_folder_double_clicked`
+  后 `repo.root == 仓库路径`。
+- 添加到仓库管理：`_build_folder_repo_menu(path).actions()[0].trigger()`
+  后 `path in _repo_list` 且 `repo_tree.topLevelItemCount() == 1`。

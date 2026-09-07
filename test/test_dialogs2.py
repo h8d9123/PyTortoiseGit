@@ -598,6 +598,84 @@ def test_mainmenu_submodule_lazy_load(qapp, isolated_settings, tmp_path_factory)
     dlg.reject()
 
 
+def test_mainmenu_folder_tab_two_tabs(qapp, isolated_settings):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    dlg = MainMenuDlg()
+    assert dlg.manager_tabs.count() == 2
+    assert dlg.manager_tabs.tabText(0) == "仓库管理"
+    assert dlg.manager_tabs.tabText(1) == "目录树"
+    # 目录树根节点为磁盘分区
+    assert dlg.folder_tree.topLevelItemCount() >= 1
+    dlg.reject()
+
+
+def test_mainmenu_folder_tree_marks_and_opens_repo(
+        qapp, isolated_settings, tmp_path_factory):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QTreeWidgetItem
+
+    parent = tmp_path_factory.mktemp("froot")
+    inner = parent / "innerrepo"
+    inner.mkdir()
+    runner = GitRunner(cwd=str(inner))
+    runner.init(str(inner), initial_branch="main")
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    (inner / "a.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "init").returncode == 0
+
+    dlg = MainMenuDlg()
+    # 用内部方法直接加载一个目录节点，避免遍历真实磁盘
+    parent_item = QTreeWidgetItem()
+    parent_item.setData(0, Qt.ItemDataRole.UserRole, str(parent))
+    dlg._load_dir_item(parent_item)
+    assert parent_item.childCount() == 1
+    child = parent_item.child(0)
+    assert child.data(0, Qt.ItemDataRole.UserRole + 1) == "repo"
+    # 双击仓库目录 → 主窗口打开
+    dlg._on_folder_double_clicked(child, 0)
+    assert dlg.repo is not None and dlg.repo.root == str(inner)
+    dlg.reject()
+
+
+def test_mainmenu_folder_tree_add_to_repo_list(
+        qapp, isolated_settings, tmp_path_factory):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QTreeWidgetItem
+
+    parent = tmp_path_factory.mktemp("froot2")
+    inner = parent / "innerrepo"
+    inner.mkdir()
+    runner = GitRunner(cwd=str(inner))
+    runner.init(str(inner), initial_branch="main")
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    (inner / "a.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "init").returncode == 0
+
+    dlg = MainMenuDlg()
+    parent_item = QTreeWidgetItem()
+    parent_item.setData(0, Qt.ItemDataRole.UserRole, str(parent))
+    dlg._load_dir_item(parent_item)
+    child = parent_item.child(0)
+    assert child.data(0, Qt.ItemDataRole.UserRole + 1) == "repo"
+    # 用真实菜单构造助手，触发第一个动作“添加到仓库管理”
+    path = child.data(0, Qt.ItemDataRole.UserRole)
+    menu = dlg._build_folder_repo_menu(path)
+    actions = menu.actions()
+    assert actions
+    actions[0].trigger()
+    assert str(inner) in dlg._repo_list
+    assert dlg.repo_tree.topLevelItemCount() == 1
+    dlg.reject()
+
+
 def test_packaging_specs_compile():
     import ast
     from pathlib import Path

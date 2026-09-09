@@ -947,6 +947,37 @@ def test_mainmenu_content_context_menu_classic_for_worktree(
     dlg.reject()
 
 
+def test_mainmenu_blank_area_context_menu_uses_current_dir(
+        qapp, isolated_settings, tmp_path_factory):
+    """内容区空白处右键 → 对当前浏览目录弹菜单（TortoiseGit 行为）。"""
+    import os
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    parent = tmp_path_factory.mktemp("blank_ctx")
+    repo = parent / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    sub = repo / "sub"
+    sub.mkdir()
+    plain = parent / "plain"
+    plain.mkdir()
+    dlg = MainMenuDlg()
+    # 当前浏览为工作树内子目录 → 空白处菜单为经典菜单
+    dlg._show_content(str(sub))
+    menu = dlg._build_dir_menu(dlg._current_dir(), dlg.content_list)
+    labels = [a.text() for a in menu.actions()]
+    assert "Commit…" in labels
+    assert "Settings" in labels
+    # 当前浏览为仓库外目录 → Clone+Settings
+    dlg._show_content(str(plain))
+    menu2 = dlg._build_dir_menu(dlg._current_dir(), dlg.content_list)
+    labels2 = [a.text() for a in menu2.actions()]
+    assert "Clone…" in " ".join(labels2)
+    assert "Settings" in labels2
+    dlg.reject()
+
+
 def test_mainmenu_file_menu_includes_tg_commands(
         qapp, isolated_settings, tmp_path_factory):
     """文件右键菜单（工作树内）：Commit/Diff/Log/Stash/Blame/Settings。"""

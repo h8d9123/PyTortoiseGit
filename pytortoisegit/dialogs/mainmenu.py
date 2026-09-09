@@ -448,16 +448,12 @@ class MainMenuDlg(QMainWindow):
         if self._is_dir_index(index):
             self._navigate(path)
 
-    def _build_context_menu_for(self, index) -> "QMenu | None":
+    def _build_dir_menu(self, path: str, parent=None) -> "QMenu":
+        """目录右键菜单：工作树内→经典 Git 菜单；否则→Clone…+Settings。"""
         from PySide6.QtWidgets import QMenu
-        path = self._path_of_index(index)
-        if not path or not os.path.exists(path):
-            return None
-        if not self._is_dir_index(index):
-            return self._build_file_menu(path, self.content_list)
         if self._inside_repo(path):
-            return self._build_classic_menu(path, self.content_list)
-        menu = QMenu(self.content_list)
+            return self._build_classic_menu(path, parent or self.content_list)
+        menu = QMenu(parent or self.content_list)
         act_clone = menu.addAction(tr("repo_menu_clone", "Git Clone…"))
         self._set_action_icon(act_clone, "IDI_CLONE")
         act_clone.triggered.connect(
@@ -468,13 +464,24 @@ class MainMenuDlg(QMainWindow):
             lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         return menu
 
+    def _build_context_menu_for(self, index) -> "QMenu | None":
+        path = self._path_of_index(index)
+        if not path or not os.path.exists(path):
+            return None
+        if not self._is_dir_index(index):
+            return self._build_file_menu(path, self.content_list)
+        return self._build_dir_menu(path, self.content_list)
+
     def _on_content_context_menu(self, pos):
         index = self.content_list.indexAt(pos)
-        if not index.isValid():
+        if index.isValid() and self.content_list.visualRect(index).contains(pos):
+            self._show_context_menu_for(index, pos)
             return
-        if not self.content_list.visualRect(index).contains(pos):
-            return
-        self._show_context_menu_for(index, pos)
+        # 空白处：对当前浏览目录弹右键菜单（TortoiseGit 行为）
+        cur = self._current_dir()
+        if cur and os.path.exists(cur):
+            menu = self._build_dir_menu(cur, self.content_list)
+            menu.exec(self.content_list.viewport().mapToGlobal(pos))
 
     def _open_content_selected(self):
         """“打开”按钮：与双击一致。"""

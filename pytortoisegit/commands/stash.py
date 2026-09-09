@@ -1,8 +1,10 @@
-"""commands/stash.py —— /command:stash 打开暂存管理对话框。"""
+"""commands/stash.py —— /command:stash 暂存当前改动（Stash changes…）。"""
 
 from __future__ import annotations
 
 from ..dialogs.stashdlg import StashDlg
+from ..dialogs.progress import ProgressDialog
+from ..res.strings import tr
 from ._util import repo_from_cl
 from .dispatcher import CommandContext, register
 
@@ -11,7 +13,24 @@ from .dispatcher import CommandContext, register
 def stash(ctx: CommandContext):
     repo = repo_from_cl(ctx.cl)
     dlg = StashDlg(repo, parent=None)
-    dlg.exec()
+    if dlg.exec() != StashDlg.DialogCode.Accepted:
+        return "cancel"
+    args = ["stash", "push"]
+    if dlg.include_untracked:
+        args.append("--include-untracked")
+    if dlg.use_all:
+        args.append("--all")
+    if dlg.message:
+        args += ["-m", dlg.message]
+    prog = ProgressDialog(title=tr("progress", "Progress"), parent=None)
+    prog.set_label(" ".join(args))
+    def _bg():
+        r = repo.runner.run(*args)
+        if r.stdout: prog.log_async(r.stdout)
+        if r.stderr: prog.log_async(r.stderr)
+        return r.returncode == 0
+    prog.run(_bg)
+    prog.exec()
     return "ok"
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.

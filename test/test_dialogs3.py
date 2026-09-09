@@ -44,11 +44,11 @@ def _smoke(qapp, make, wait_ms=2500):
 
 
 def test_stash_dialog(qapp, repo):
-    from pytortoisegit.git.stash import GitStash
-    GitStash(repo).create(message="wip")
     from pytortoisegit.dialogs.stashdlg import StashDlg
     dlg = _smoke(qapp, lambda: StashDlg(repo))
-    assert dlg.tree.topLevelItemCount() >= 1
+    assert dlg.msg_edit is not None
+    assert dlg.untracked_box is not None
+    assert dlg.all_box is not None
 
 
 def test_merge_dialog(qapp, repo):

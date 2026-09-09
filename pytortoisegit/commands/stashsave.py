@@ -1,5 +1,6 @@
 """commands/stashsave.py —— /command:stashsave 暂存当前改动。"""
 
+from ..dialogs.stashdlg import StashDlg
 from ..dialogs.progress import ProgressDialog
 from ..res.strings import tr
 from ._util import repo_from_cl
@@ -9,17 +10,25 @@ from .dispatcher import CommandContext, register
 @register("stashsave")
 def stashsave(ctx: CommandContext):
     repo = repo_from_cl(ctx.cl)
+    dlg = StashDlg(repo, parent=None)
+    if dlg.exec() != StashDlg.DialogCode.Accepted:
+        return "cancel"
     args = ["stash", "push"]
-    dlg = ProgressDialog(title=tr("progress", "Progress"), parent=None)
-    dlg.set_label("git stash push")
-    import threading
+    if dlg.include_untracked:
+        args.append("--include-untracked")
+    if dlg.use_all:
+        args.append("--all")
+    if dlg.message:
+        args += ["-m", dlg.message]
+    prog = ProgressDialog(title=tr("progress", "Progress"), parent=None)
+    prog.set_label(" ".join(args))
     def _bg():
         r = repo.runner.run(*args)
-        if r.stdout: dlg.log(r.stdout)
-        if r.stderr: dlg.log(r.stderr)
+        if r.stdout: prog.log_async(r.stdout)
+        if r.stderr: prog.log_async(r.stderr)
         return r.returncode == 0
-    dlg.run(_bg)
-    dlg.exec()
+    prog.run(_bg)
+    prog.exec()
     return "ok"
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.

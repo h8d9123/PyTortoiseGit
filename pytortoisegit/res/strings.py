@@ -76,8 +76,13 @@ STRINGS: Dict[str, str] = {
     "select_repo_folder": "选择存放 Git 仓库的文件夹",
     "open_repo": "打开仓库...",
 
-    # ---- Stash (StashDlg) ----
-    "stash_title": "暂存 (Stash)",
+    # ---- Stash (StashDlg / StashSave) ----
+    "stash_title": "Stash",
+    "stash_message_group": "Stash &Message",
+    "stash_options_group": "Options",
+    "stash_include_untracked": "include &untracked",
+    "stash_all": "--&all",
+    "stash_untracked_warning": "Including untracked files will also add untracked files to the stash. Are you sure you want to continue?",
     "stash_ref": "引用",
     "stash_subject": "说明",
     "stash_date": "时间",

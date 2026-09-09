@@ -1,212 +1,120 @@
-"""stashdlg.py —— StashDlg：stash 管理对话框（镜像 TortoiseGit 的 StashDlg）。"""
+"""stashdlg.py —— StashDlg：stash 保存对话框（镜像 TortoiseGit 的 StashSave 对话框）。"""
 
 from __future__ import annotations
 
-from typing import List, Optional
-
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
-    QDialogButtonBox,
+    QGroupBox,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
-    QMenu,
     QMessageBox,
-    QPushButton,
-    QSplitter,
-    QTreeWidget,
-    QTreeWidgetItem,
     QVBoxLayout,
 )
 
-from ..asyncfw import run_async
 from ..git.repo import Repository
-from ..git.stash import GitStash, StashEntry
 from ..res.strings import tr
-from .widgets import DiffView
 
 
 class StashDlg(QDialog):
+    """镜像原版 TortoiseGit 的 Stash Changes 对话框（IDD_STASH）。
+
+    布局：
+      - "Stash Message" 分组框 + 单行输入
+      - "Options" 分组框：include untracked / --all（互斥）
+      - OK / Cancel 按钮
+    """
+
     def __init__(self, repo: Repository, parent=None):
         super().__init__(parent)
         self.repo = repo
-        self.stash = GitStash(repo)
-        self.entries: List[StashEntry] = []
-        self._current: Optional[StashEntry] = None
-
         self.setWindowTitle(f"{repo.name} — {tr('stash_title')}")
-        self.resize(860, 560)
+        self.setMinimumWidth(350)
         self._build_ui()
-        self.refresh()
 
     # ---- UI ----
     def _build_ui(self):
         root = QVBoxLayout(self)
 
-        create = QHBoxLayout()
-        self.msg_edit = QLineEdit(self)
-        self.msg_edit.setPlaceholderText(tr("stash_msg"))
-        create.addWidget(self.msg_edit, 1)
-        self.untracked_box = QCheckBox(tr("stash_untracked"), self)
-        create.addWidget(self.untracked_box)
-        btn_add = QPushButton(tr("stash_create"), self)
-        btn_add.clicked.connect(self._on_create)
-        create.addWidget(btn_add)
-        root.addLayout(create)
+        grp_msg = QGroupBox(tr("stash_message_group", "Stash &Message"), self)
+        msg_layout = QHBoxLayout(grp_msg)
+        self.msg_edit = QLineEdit(grp_msg)
+        msg_layout.addWidget(self.msg_edit)
+        root.addWidget(grp_msg)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        grp_opt = QGroupBox(tr("stash_options_group", "Options"), self)
+        opt_layout = QVBoxLayout(grp_opt)
+        self.untracked_box = QCheckBox(
+            tr("stash_include_untracked", "include &untracked"), grp_opt)
+        self.untracked_box.toggled.connect(self._on_untracked_toggled)
+        opt_layout.addWidget(self.untracked_box)
+        self.all_box = QCheckBox(
+            tr("stash_all", "--&all"), grp_opt)
+        self.all_box.toggled.connect(self._on_all_toggled)
+        opt_layout.addWidget(self.all_box)
+        root.addWidget(grp_opt)
 
-        self.tree = QTreeWidget(splitter)
-        self.tree.setHeaderLabels([tr("stash_ref"), tr("stash_subject"),
-                                   tr("stash_date")])
-        self.tree.setColumnWidth(0, 90)
-        self.tree.setColumnWidth(1, 260)
-        self.tree.itemSelectionChanged.connect(self._on_selection_changed)
-        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tree.customContextMenuRequested.connect(self._on_menu)
-        splitter.addWidget(self.tree)
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self._ok_btn = self._make_button(tr("ok"), self._on_ok, primary=True)
+        btn_layout.addWidget(self._ok_btn)
+        cancel_btn = self._make_button(tr("cancel"), self.reject)
+        btn_layout.addWidget(cancel_btn)
+        root.addLayout(btn_layout)
 
-        self.view = DiffView(splitter)
-        splitter.addWidget(self.view)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
-        root.addWidget(splitter, 1)
+    @staticmethod
+    def _make_button(text, handler, primary=False):
+        from PySide6.QtWidgets import QPushButton
+        btn = QPushButton(text)
+        if primary:
+            btn.setDefault(True)
+        btn.clicked.connect(handler)
+        return btn
 
-        btns = QDialogButtonBox(self)
-        btn_apply = btns.addButton(tr("stash_apply"), QDialogButtonBox.ButtonRole.ActionRole)
-        btn_apply.clicked.connect(self._on_apply)
-        btn_pop = btns.addButton(tr("stash_pop"), QDialogButtonBox.ButtonRole.ActionRole)
-        btn_pop.clicked.connect(self._on_pop)
-        btn_drop = btns.addButton(tr("stash_drop"), QDialogButtonBox.ButtonRole.ActionRole)
-        btn_drop.clicked.connect(self._on_drop)
-        btn_clear = btns.addButton(tr("stash_clear"), QDialogButtonBox.ButtonRole.ActionRole)
-        btn_clear.clicked.connect(self._on_clear)
-        self._btn_refresh = btns.addButton(tr("refresh"), QDialogButtonBox.ButtonRole.ActionRole)
-        self._btn_refresh.clicked.connect(self.refresh)
-        btn_close = btns.addButton(QDialogButtonBox.StandardButton.Close)
-        btn_close.setText(tr("close"))
-        btns.rejected.connect(self.reject)
-        root.addWidget(btns)
-
-    # ---- 数据 ----
-    def refresh(self):
-        run_async(self._load_bg, on_done=self._on_loaded,
-                  on_error=lambda m, _tb: self.view.display_text(m), parent=self)
-
-    def _load_bg(self) -> List[StashEntry]:
-        return self.stash.list()
-
-    def _on_loaded(self, entries: List[StashEntry]):
-        self.entries = entries
-        self._current = None
-        self.tree.clear()
-        for e in entries:
-            item = QTreeWidgetItem([e.gd, e.subject, e.date])
-            item.setData(0, Qt.ItemDataRole.UserRole, e.gd)
-            self.tree.addTopLevelItem(item)
-        if entries:
-            self.tree.setCurrentItem(self.tree.topLevelItem(0))
-            self._current = entries[0]
-            self._load_preview(entries[0])
+    # ---- 互斥逻辑 ----
+    def _on_untracked_toggled(self, checked):
+        if checked:
+            self.all_box.setChecked(False)
+            self.all_box.setEnabled(False)
         else:
-            self.view.display_text(tr("stash_empty"))
+            self.all_box.setEnabled(True)
 
-    def _current_entry(self) -> Optional[StashEntry]:
-        id_by_gd = {e.gd: e for e in self.entries}
-        item = self.tree.currentItem()
-        if item is None:
-            return None
-        return id_by_gd.get(item.data(0, Qt.ItemDataRole.UserRole))
-
-    def _on_selection_changed(self):
-        e = self._current_entry()
-        if e is not None and e is not self._current:
-            self._current = e
-            self._load_preview(e)
-
-    def _load_preview(self, entry: StashEntry):
-        self.view.display_text(tr("loading"))
-        run_async(self.stash.show, args=(entry.gd,),
-                  on_done=self.view.display_patch,
-                  on_error=lambda m, _tb: self.view.display_text(m), parent=self)
-
-    # ---- 动作 ----
-    def _on_create(self):
-        msg = self.msg_edit.text().strip()
-        ok = self.stash.create(message=msg,
-                               include_untracked=self.untracked_box.isChecked())
-        if ok:
-            self.msg_edit.clear()
+    def _on_all_toggled(self, checked):
+        if checked:
             self.untracked_box.setChecked(False)
-            self.refresh()
+            self.untracked_box.setEnabled(False)
         else:
-            QMessageBox.warning(self, tr("error"), tr("stash_created"))
+            self.untracked_box.setEnabled(True)
 
-    def _on_apply(self):
-        e = self._current_entry()
-        if e is None:
-            return
-        if self.stash.apply(e.gd):
-            self.refresh()
-        else:
-            QMessageBox.warning(self, tr("error"), tr("stash_applied"))
+    # ---- 确认 ----
+    def _on_ok(self):
+        if self.untracked_box.isChecked():
+            resp = QMessageBox.warning(
+                self,
+                tr("warning"),
+                tr("stash_untracked_warning",
+                   "Including untracked files will also add untracked files to the stash. "
+                   "Are you sure you want to continue?"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resp != QMessageBox.StandardButton.Yes:
+                return
 
-    def _on_pop(self):
-        e = self._current_entry()
-        if e is None:
-            return
-        if self.stash.pop(e.gd):
-            self.refresh()
-        else:
-            QMessageBox.warning(self, tr("error"), tr("stash_popped"))
+        self.accept()
 
-    def _on_drop(self):
-        e = self._current_entry()
-        if e is None:
-            return
-        if self.stash.drop(e.gd):
-            self.refresh()
-        else:
-            QMessageBox.warning(self, tr("error"), tr("stash_dropped"))
+    # ---- 返回值 ----
+    @property
+    def message(self) -> str:
+        return self.msg_edit.text().strip()
 
-    def _on_clear(self):
-        if not self.entries:
-            return
-        resp = QMessageBox.question(
-            self, tr("confirm"), tr("stash_confirm_clear"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if resp != QMessageBox.StandardButton.Yes:
-            return
-        self.stash.clear()
-        self.refresh()
+    @property
+    def include_untracked(self) -> bool:
+        return self.untracked_box.isChecked()
 
-    def _on_menu(self, pos):
-        item = self.tree.itemAt(pos)
-        if item is None:
-            return
-        e = self._current_entry()
-        if e is None:
-            return
-        menu = QMenu(self)
-        act_apply = menu.addAction(tr("stash_apply", "应用 (Apply)"))
-        act_pop = menu.addAction(tr("stash_pop", "弹出 (Pop)"))
-        act_drop = menu.addAction(tr("stash_drop", "删除 (Drop)"))
-        menu.addSeparator()
-        act_diff = menu.addAction(tr("log_diff", "查看 diff"))
-        chosen = menu.exec(self.tree.viewport().mapToGlobal(pos))
-        if chosen is None:
-            return
-        if chosen is act_apply:
-            self._on_apply()
-        elif chosen is act_pop:
-            self._on_pop()
-        elif chosen is act_drop:
-            self._on_drop()
-        elif chosen is act_diff:
-            from .diffdlg import DiffDlg
-            DiffDlg(self.repo, rev1=e.gd, rev2=None, parent=self).show()
+    @property
+    def use_all(self) -> bool:
+        return self.all_box.isChecked()
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
 # Copyright (C) 2026  PyTortoiseGit contributors

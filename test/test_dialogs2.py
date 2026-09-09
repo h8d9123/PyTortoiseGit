@@ -500,6 +500,33 @@ def test_mainmenu_dialog(qapp):
         assert expected in labels
 
 
+def test_mainmenu_command_menu_lists_all_commands(qapp):
+    """菜单栏「命令(&C)」覆盖全部已注册命令，且按功能分组。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.commands.dispatcher import available_commands
+    from pytortoisegit.res.strings import tr as _tr
+    dlg = MainMenuDlg()
+    top = [a.text() for a in dlg.menuBar().actions()]
+    assert any(t.startswith("命令") for t in top)
+    cmd_act = next(a for a in dlg.menuBar().actions()
+                   if a.text().startswith("命令"))
+    cmd_menu = cmd_act.menu()
+    assert cmd_menu is not None
+    shown: set[str] = set()
+    group_labels: list[str] = []
+    for act in cmd_menu.actions():
+        sub = act.menu()
+        if sub is not None:
+            group_labels.append(act.text())
+            shown.update(a.text() for a in sub.actions())
+    for name in available_commands():
+        label = _tr("menu_cmd_" + name, name)
+        assert label in shown, f"命令菜单缺少: {name}"
+    assert "本地更改" in group_labels
+    assert "其他" in group_labels
+    dlg.reject()
+
+
 def test_mainmenu_content_shows_subfolders(qapp, tmp_path_factory):
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
     from pytortoisegit.git.git import GitRunner

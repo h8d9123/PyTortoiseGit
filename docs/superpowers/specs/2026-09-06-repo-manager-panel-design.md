@@ -396,7 +396,26 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 "file_menu_blame": "追溯（Blame）…",
 "file_menu_log": "显示日志（Log）…",
 "file_menu_remove": "删除（Remove）…",
+"menu_commands": "命令(&C)",
+"menu_grp_changes": "本地更改",
+"menu_grp_inspect": "查看/比较",
+"menu_grp_syncing": "获取/发布",
+"menu_grp_branch": "分支/合并",
+"menu_grp_clone": "仓库",
+"menu_grp_format": "补丁/导出",
+"menu_grp_utils": "工具/其他",
+"menu_grp_other": "其他",
+（`menu_cmd_<name>`：各命令显示名）
 ```
+
+### 命令菜单
+
+- 菜单栏在「视图」与「帮助」间新增「命令(&C)」(`menu_commands`)。
+- `_build_command_menu(m_cmd)`：调用 `_ensure_imports()` 后遍历
+  `available_commands()`，按 `MENU_GROUPS`（类常量：组名 → 命令列表）归入
+  各分组子菜单；未归类的命令放入「其他」。
+- 标签：`tr("menu_cmd_" + name, name)`（有映射则显示友好名，否则为命令名）。
+- 所有菜单项触发 `_dispatch(name)`（与工具栏一致，作用于当前 `path_row`）。
 
 ### 测试要点（追加）
 
@@ -409,5 +428,7 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 - `test_mainmenu_file_menu_includes_tg_commands` / `test_mainmenu_file_menu_outside_repo_only_system`：
   文件右键菜单——工作树内文件含打开/显示位置 + TortoiseGit 子菜单
   （Diff/Blame/Log/Remove）；仓库外文件仅系统项。
+- `test_mainmenu_command_menu_lists_all_commands`：命令菜单含全部分组
+  （本地更改/其他等），且每个 `available_commands()` 的命令均有对应菜单项。
 
 > 时序：模型异步填充，测试用 `QTest.qWait` 轮询 `rowCount>0` 后再断言。

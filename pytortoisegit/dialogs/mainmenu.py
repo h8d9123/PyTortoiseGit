@@ -82,6 +82,31 @@ class MainMenuDlg(QMainWindow):
         ("settings", "IDI_GENERAL", "Settings"),
     ]
 
+    # 菜单栏“命令(&C)”分组：组名 → 该组包含的命令
+    MENU_GROUPS = [
+        ("menu_grp_changes", "本地更改",
+         ["commit", "revert", "cleanup", "add", "remove", "ignore",
+          "unignore", "rename", "resolve", "conflicteditor"]),
+        ("menu_grp_inspect", "查看/比较",
+         ["log", "diff", "prevdiff", "review", "blame", "repostatus",
+          "revisiongraph", "repobrowser", "cat", "reflog"]),
+        ("menu_grp_syncing", "获取/发布",
+         ["sync", "pull", "push", "fetch", "requestpull", "sendmail",
+          "subsync"]),
+        ("menu_grp_branch", "分支/合并",
+         ["branch", "merge", "merge3", "mergeabort", "rebase", "switch",
+          "bisect", "reset", "stash", "stashsave", "stashpop", "stashapply",
+          "stashlist", "worktreelist", "worktreecreate", "newworktree"]),
+        ("menu_grp_clone", "仓库",
+         ["clone", "addremote", "submodule", "repocreate", "lfslock",
+          "lfslocks", "lfsunlock"]),
+        ("menu_grp_format", "补丁/导出",
+         ["export", "formatpatch", "importpatch", "showcompare"]),
+        ("menu_grp_utils", "工具/其他",
+         ["settings", "firststart", "updatecheck", "help", "shell",
+          "daemon", "rtfm", "changed", "revision"]),
+    ]
+
     def __init__(self, repo_path: str = "", parent=None):
         super().__init__(parent, Qt.WindowType.Window)
         self.setWindowTitle(tr("menu_title", "PyTortoiseGit 主窗口"))
@@ -132,11 +157,40 @@ class MainMenuDlg(QMainWindow):
         act_tool.setChecked(True)
         act_tool.toggled.connect(lambda on: self.toolbar.setVisible(on))
         m_view.addAction(act_tool)
+        # 命令（列出所有已注册命令，按功能分组）
+        m_cmd = bar.addMenu(tr("menu_commands", "命令(&C)"))
+        self._build_command_menu(m_cmd)
         # 帮助
         m_help = bar.addMenu(tr("menu_help", "帮助(&H)"))
         act_about = QAction(tr("about_title", "关于"), self)
         act_about.triggered.connect(self._on_about)
         m_help.addAction(act_about)
+
+    def _build_command_menu(self, m_cmd):
+        """把全部已注册命令按功能分组挂到“命令”菜单。"""
+        from ..commands.dispatcher import available_commands
+        from ..commands.dispatcher import _ensure_imports
+        _ensure_imports()
+        available = set(available_commands())
+        # 人工分组；余下的命令放进“其他”
+        placed: set[str] = set()
+        for grp_key, grp_label, names in self.MENU_GROUPS:
+            items = [n for n in names if n in available]
+            if not items:
+                continue
+            placed.update(items)
+            sub = m_cmd.addMenu(tr(grp_key, grp_label))
+            for name in items:
+                act = sub.addAction(tr("menu_cmd_" + name, name))
+                act.triggered.connect(
+                    lambda _=False, n=name: self._dispatch(n))
+        other = sorted(available - placed)
+        if other:
+            sub = m_cmd.addMenu(tr("menu_grp_other", "其他"))
+            for name in other:
+                act = sub.addAction(tr("menu_cmd_" + name, name))
+                act.triggered.connect(
+                    lambda _=False, n=name: self._dispatch(n))
 
     # ---- 工具栏（QToolButton 一排 Git 操作）----
     def _build_toolbar(self):

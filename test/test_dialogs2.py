@@ -963,14 +963,16 @@ def test_mainmenu_blank_area_context_menu_uses_current_dir(
     plain = parent / "plain"
     plain.mkdir()
     dlg = MainMenuDlg()
-    # 当前浏览为工作树内子目录 → 空白处菜单含完整 TortoiseGit 命令
+    # 当前浏览为工作树内子目录 → 空白处菜单含完整 TortoiseGit 命令（状态驱动）
     dlg._show_content(str(sub))
     menu = dlg._build_blank_menu(dlg._current_dir(), dlg.content_list)
     labels = [a.text() for a in menu.actions()]
-    for expected in ("Git Clone…", "Pull…", "Push…", "Sync", "Commit…",
+    for expected in ("Pull…", "Push…", "Sync", "Commit…",
                      "Diff…", "Show log", "Repo Browser", "Stash changes…",
                      "Revert…", "Switch/Checkout…", "Merge…", "Settings"):
         assert expected in labels, expected
+    # 工作树内子目录本身不显示 Git Clone（文件夹已在 git 中）
+    assert "Git Clone…" not in labels
     # 当前浏览为仓库外目录 → Clone+Settings
     dlg._show_content(str(plain))
     menu2 = dlg._build_blank_menu(dlg._current_dir(), dlg.content_list)
@@ -995,20 +997,18 @@ def test_mainmenu_file_menu_includes_tg_commands(
     sub = repo / "sub"
     sub.mkdir()
     (sub / "b.txt").write_text("b\n", encoding="utf-8")
+    runner.run("add", "-A")
+    runner.run("commit", "-m", "init")
+    (repo / "a.txt").write_text("modified\n", encoding="utf-8")
     dlg = MainMenuDlg()
-    # 工作树内文件 → 打开/显示位置 + TortoiseGit 命令
+    # 工作树内文件 → 打开/显示位置 + TortoiseGit 命令（状态驱动）
     menu = dlg._build_file_menu(str(repo / "a.txt"), dlg.content_list)
     labels = [a.text() for a in menu.actions()]
     assert "打开" in labels
     assert "显示位置" in labels
-    assert "Commit…" in labels
-    assert "Diff…" in labels
-    assert "Show log" in labels
-    assert "Stash changes…" in labels
-    assert "Blame…" in labels
-    assert "Settings" in labels
-    # 无 Remove（TortoiseGit 经典文件菜单不含 Delete 的 TGit 项被移除）
-    assert not any("Remove" in t for t in labels)
+    for expected in ("Commit…", "Diff…", "Show log", "Stash changes…",
+                     "Blame…", "Settings", "Revert…", "Remove…"):
+        assert expected in labels, expected
     # 工作树内子目录中的文件
     menu2 = dlg._build_file_menu(str(sub / "b.txt"), dlg.content_list)
     labels2 = [a.text() for a in menu2.actions()]
@@ -1046,6 +1046,9 @@ def test_mainmenu_menu_actions_have_tortoisegit_icons(
     runner = GitRunner(cwd=str(repo))
     runner.init(str(repo), initial_branch="main")
     (repo / "a.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    runner.run("commit", "-m", "init")
+    (repo / "a.txt").write_text("b\n", encoding="utf-8")
     plain = parent / "plain"
     plain.mkdir()
     dlg = MainMenuDlg()
@@ -1071,6 +1074,93 @@ def test_mainmenu_menu_actions_have_tortoisegit_icons(
         act = by_label(nrepo.actions(), label)
         assert not act.icon().isNull(), label
     dlg.reject()
+
+
+def test_mainmenu_shift_extends_menu(
+        qapp, isolated_settings, tmp_path_factory, monkeypatch):
+    """按住 Shift 时，扩展命令（defaultExtMenuEntries）满足状态条件才显示。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit import menuitems as mi
+    parent = tmp_path_factory.mktemp("shift_ctx")
+    repo = parent / "repo"
+    repo.mkdir()
+    from pytortoisegit.git.git import GitRunner
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    (repo / "a.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    runner.run("commit", "-m", "init")
+    runner.run("config", "svn-remote.svn.url", "http://example.com/svn")
+    # 构造 stash，使 StashApply 的 ITEMIS_STASH 条件成立
+    (repo / "a.txt").write_text("b\n", encoding="utf-8")
+    runner.run("stash", "push", "-m", "wip")
+
+    dlg = MainMenuDlg()
+    dlg._shift_pressed = lambda: False
+
+    def labels_of(menu):
+        return [a.text() for a in menu.actions() if a.text()]
+
+    states = mi.compute_item_states(str(repo), extended=False)
+    cmds_plain = mi.menu_entries(states)
+    plain_cmds = [e.command for e in cmds_plain if e.command != "separator"]
+    ext_cmds = ("svnignore", "stashapply", "subsync")
+    # 未按 Shift → 扩展项不显示
+    assert not any(c in plain_cmds for c in ext_cmds)
+    # 按住 Shift（有 stash→StashApply 条件成立）
+    dlg._shift_pressed = lambda: True
+    menu = dlg._build_classic_menu(str(repo), dlg.content_list)
+    a_labels = labels_of(menu)
+    assert any(("Stash Apply" == t) for t in a_labels), a_labels
+    dlg.reject()
+
+
+def test_menuitems_state_driven_entries(tmp_path_factory):
+    """状态引擎：不同文件/目录状态显示不同菜单项（镜像 MenuInfo.cpp）。"""
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit import menuitems as mi
+    parent = tmp_path_factory.mktemp("mi_engine")
+    repo = parent / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    runner.run("config", "user.email", "t@x.com")
+    runner.run("config", "user.name", "T")
+    (repo / "tracked.txt").write_text("a\n", encoding="utf-8")
+    (repo / "untracked.txt").write_text("u\n", encoding="utf-8")
+    (repo / "new.txt").write_text("n\n", encoding="utf-8")
+    sub = repo / "sub"
+    sub.mkdir()
+    runner.run("add", "tracked.txt")
+    runner.run("commit", "-m", "init")
+    (repo / "tracked.txt").write_text("mod\n", encoding="utf-8")
+    (repo / "untracked.txt").write_text("u2\n", encoding="utf-8")
+
+    def cmds(path):
+        s = mi.compute_item_states(str(path), extended=False)
+        return [e.command for e in mi.menu_entries(s) if e.command != "separator"]
+
+    # 未跟踪文件 → Add/Ignore，无 Commit/Diff/Lock
+    c = cmds(repo / "untracked.txt")
+    assert "add" in c and "ignore" in c
+    assert "commit" not in c and "diff" not in c
+    # 已跟踪且已修改 → Commit/Diff/Log/StashSave/Revert/Blame/Lock
+    c = cmds(repo / "tracked.txt")
+    for want in ("commit", "diff", "log", "stashsave", "revert", "blame", "lfslock"):
+        assert want in c, want
+    # 工作树内目录 → 仓库级操作（Pull/Push/Sync/RepoBrowser/Log）
+    c = cmds(repo)
+    for want in ("pull", "push", "sync", "repobrowser", "log", "commit"):
+        assert want in c, want
+    # 未知文件（未在 status 中）→ 提交/修改菜单；新增文件被 add 后未知→ commit/diff
+    c = cmds(repo / "new.txt")
+    assert "add" in c or "commit" in c
+    # 仓库外目录 → Clone/CreateRepo+Settings，无 Commit
+    plain = parent / "plain"
+    plain.mkdir()
+    c = cmds(plain)
+    assert "clone" in c and "repocreate" in c
+    assert "commit" not in c and "diff" not in c
 
 
 def test_packaging_specs_compile():

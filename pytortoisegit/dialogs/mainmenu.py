@@ -48,35 +48,6 @@ ROLE_KIND = Qt.ItemDataRole.UserRole + 1    # "repo" / "submodule" / "drive" /
 ROLE_PARENT = Qt.ItemDataRole.UserRole + 2  # 子模块的父仓库根
 ROLE_LOADED = Qt.ItemDataRole.UserRole + 3  # 节点是否已加载下级内容
 
-# 经典 TortoiseGit 右键菜单：(命令名, 文案键, 默认文案)
-_CLASSIC_MENU = [
-    ("commit", "repo_menu_commit", "Commit…"),
-    ("log", "repo_menu_log", "Show log"),
-    ("pull", "repo_menu_pull", "Pull…"),
-    ("push", "repo_menu_push", "Push…"),
-    ("sync", "repo_menu_sync", "Sync"),
-    ("revert", "repo_menu_revert", "Revert…"),
-    ("cleanup", "repo_menu_cleanup", "Clean Up…"),
-]
-
-# 空白处（文件夹背景）右键菜单：(命令名, 文案键, 默认文案)。
-# 参考 TortoiseGit 工作树内文件夹空白处的 TortoiseGit 菜单。
-_BLANK_MENU = [
-    ("clone", "repo_menu_clone", "Git Clone…"),
-    ("pull", "repo_menu_pull", "Pull…"),
-    ("push", "repo_menu_push", "Push…"),
-    ("sync", "repo_menu_sync", "Sync"),
-    ("commit", "repo_menu_commit", "Commit…"),
-    ("diff", "file_menu_diff", "Diff…"),
-    ("log", "repo_menu_log", "Show log"),
-    ("repobrowser", "menu_cmd_repobrowser", "Repo Browser"),
-    ("stash", "menu_cmd_stash", "Stash changes…"),
-    ("revert", "repo_menu_revert", "Revert…"),
-    ("switch", "menu_cmd_switch", "Switch/Checkout…"),
-    ("merge", "menu_cmd_merge", "Merge…"),
-    ("settings", "repo_menu_settings", "Settings"),
-]
-
 # 命令名 → TortoiseGit 菜单图标 ID（参考 TortoiseShell/resourceshell.rc 的 IDI_* ↔ 资源文件映射）
 _CMD_ICON = {
     "commit": "IDI_COMMIT",          # menucommit.ico
@@ -92,6 +63,7 @@ _CMD_ICON = {
     "resolve": "IDI_RESOLVE",        # menuresolve.ico
     "ignore": "IDI_IGNORE",          # menuignore.ico
     "unignore": "IDI_IGNORE",        # menuignore.ico
+    "svnignore": "IDI_IGNORE",       # menuignore.ico
     "diff": "IDI_DIFF",              # menucompare.ico
     "prevdiff": "IDI_DIFF",          # menucompare.ico
     "repostatus": "IDI_SHOWCHANGED", # menushowchanged.ico
@@ -473,21 +445,45 @@ class MainMenuDlg(QMainWindow):
     def _build_blank_menu(self, path: str, parent=None) -> "QMenu":
         """内容区空白处右键菜单（参考 TortoiseGit 文件夹背景菜单）。
 
-        工作树内显示完整选项（Clone/Pull/Push/Sync/Commit/Diff/Show log/
-        Repo Browser/Stash changes/Revert/Switch・Checkout/Merge/Settings），
-        非仓库目录仅 Clone…+Settings。
-        """
+        工作树内由状态引擎决定显示项（Pull/Push/Sync/Commit/Diff/Show log/
+        Repo Browser/Stash/Revert/Switch/Merge/Settings 等），非仓库目录仅
+        Clone…+Settings。"""
         from PySide6.QtWidgets import QMenu
         if not self._inside_repo(path):
             return self._build_dir_menu(path, parent)
-        menu = QMenu(parent or self.content_list)
-        for cmd, key, label in _BLANK_MENU:
-            act = menu.addAction(tr(key, label))
-            icon_id = _CMD_ICON.get(cmd)
+        return self._build_tortoisegit_menu(path, parent)
+
+    @staticmethod
+    def _shift_pressed() -> bool:
+        """右键时是否按住 Shift（对应原版 CMF_EXTENDEDVERBS / ITEMIS_EXTENDED）。"""
+        from PySide6.QtWidgets import QApplication
+        return bool(QApplication.keyboardModifiers()
+                    & Qt.KeyboardModifier.ShiftModifier)
+
+    def _build_tortoisegit_menu(self, path: str, parent=None,
+                                shift: bool | None = None) -> "QMenu":
+        """按原版 TortoiseGit 状态驱动引擎构建右键菜单。
+
+        path 是当前被右击的路径（文件/目录/仓库根）。从 menuitems 计算其
+        itemStates，再结合 Shift 依次插入匹配的菜单项（含分隔线）。
+        """
+        from .. import menuitems as mi
+        from PySide6.QtWidgets import QMenu
+        if shift is None:
+            shift = self._shift_pressed()
+        menu = QMenu(parent or self.repo_tree)
+        states = mi.compute_item_states(path, extended=shift)
+        for entry in mi.menu_entries(states, extended=shift):
+            if entry.command == "separator":
+                menu.addSeparator()
+                continue
+            act = menu.addAction(tr(entry.label_key, entry.label))
+            icon_id = entry.icon_id or _CMD_ICON.get(entry.command)
             if icon_id:
                 self._set_action_icon(act, icon_id)
             act.triggered.connect(
-                lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
+                lambda _=False, c=entry.command, p=path:
+                self._dispatch(c, extra={"path": p}))
         return menu
 
     def _build_context_menu_for(self, index) -> "QMenu | None":
@@ -529,33 +525,9 @@ class MainMenuDlg(QMainWindow):
         act_show.triggered.connect(lambda _=False, p=path: self._show_in_explorer(p))
         if self._inside_repo(path):
             menu.addSeparator()
-            # TortoiseGit 经典“已跟踪文件”菜单（参考 MenuInfo.cpp）：
-            # Commit / Diff / DiffLater / Log / ShowChanged / StashSave / Blame / Settings
-            act_commit = menu.addAction(tr("repo_menu_commit", "Commit…"))
-            self._set_action_icon(act_commit, "IDI_COMMIT")
-            act_commit.triggered.connect(
-                lambda _=False, p=path: self._dispatch("commit", extra={"path": p}))
-            act_diff = menu.addAction(tr("file_menu_diff", "Diff…"))
-            self._set_action_icon(act_diff, "IDI_DIFF")
-            act_diff.triggered.connect(
-                lambda _=False, p=path: self._dispatch("diff", extra={"path": p}))
-            act_log = menu.addAction(tr("file_menu_log", "Show log"))
-            self._set_action_icon(act_log, "IDI_LOG")
-            act_log.triggered.connect(
-                lambda _=False, p=path: self._dispatch("log", extra={"path": p}))
-            act_stash = menu.addAction(tr("file_menu_stash", "Stash changes…"))
-            self._set_action_icon(act_stash, "IDI_SHELVE")
-            act_stash.triggered.connect(
-                lambda _=False, p=path: self._dispatch("stash", extra={"path": p}))
-            act_blame = menu.addAction(tr("file_menu_blame", "Blame…"))
-            self._set_action_icon(act_blame, "IDI_BLAME")
-            act_blame.triggered.connect(
-                lambda _=False, p=path: self._dispatch("blame", extra={"path": p}))
-            menu.addSeparator()
-            act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
-            self._set_action_icon(act_set, "IDI_SETTINGS")
-            act_set.triggered.connect(
-                lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
+            engine_menu = self._build_tortoisegit_menu(path, menu)
+            for act in engine_menu.actions():
+                menu.addAction(act)
         return menu
 
     def _open_with_system(self, path: str):
@@ -655,22 +627,8 @@ class MainMenuDlg(QMainWindow):
                 self.open_repo(path)
 
     def _build_classic_menu(self, path: str, parent=None) -> "QMenu":
-        """经典 TortoiseGit 右键菜单（作用于给定仓库路径）。"""
-        from PySide6.QtWidgets import QMenu
-        menu = QMenu(parent or self.repo_tree)
-        for cmd, key, label in _CLASSIC_MENU:
-            act = menu.addAction(tr(key, label))
-            icon_id = _CMD_ICON.get(cmd)
-            if icon_id:
-                self._set_action_icon(act, icon_id)
-            act.triggered.connect(
-                lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
-        menu.addSeparator()
-        act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
-        self._set_action_icon(act_set, "IDI_SETTINGS")
-        act_set.triggered.connect(
-            lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
-        return menu
+        """经典 TortoiseGit 右键菜单（作用于给定仓库路径，由状态引擎驱动）。"""
+        return self._build_tortoisegit_menu(path, parent)
 
     def _on_repo_context_menu(self, pos):
         item = self.repo_tree.itemAt(pos)
@@ -822,18 +780,9 @@ class MainMenuDlg(QMainWindow):
         act_add.triggered.connect(
             lambda _=False, p=path: self._ensure_in_repo_list(p))
         menu.addSeparator()
-        for cmd, key, label in _CLASSIC_MENU:
-            act = menu.addAction(tr(key, label))
-            icon_id = _CMD_ICON.get(cmd)
-            if icon_id:
-                self._set_action_icon(act, icon_id)
-            act.triggered.connect(
-                lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
-        menu.addSeparator()
-        act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
-        self._set_action_icon(act_set, "IDI_SETTINGS")
-        act_set.triggered.connect(
-            lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
+        engine_menu = self._build_tortoisegit_menu(path, menu)
+        for act in engine_menu.actions():
+            menu.addAction(act)
         if item is not None:
             menu.addSeparator()
             act_refresh = menu.addAction(tr("refresh"))

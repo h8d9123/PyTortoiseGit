@@ -380,7 +380,8 @@ def _refresh_folder_item(self, item):
 - 右键经 `_build_context_menu_for(index)`（仅构建）与 `_show_context_menu_for`
   （构建+exec）显示菜单：文件→文件菜单；工作树内目录→经典菜单；其余→Clone+Settings。
 - commit 命令（commands/commit.py）现在透传文件路径给 CommitDlg(paths=)。
-- 底部「打开」按钮（`btn_open`）执行与双击相同动作。
+- 底部「打开/关于/关闭」按钮已移除（2026-09-09）：双击与右键覆盖全部操作，
+  「关于」在菜单栏帮助菜单，「关闭」用窗口标题栏/任务栏按钮。
 - 导航行（Windows 资源管理器风格）：后退 `btn_back`(←)、前进
   `btn_forward`(→)、向上 `btn_up`(↑)、刷新 `btn_refresh`(⟳)。
   - `_navigate(path)`：进入目录并把当前压入后退栈、清空前栈（后退可回退）。

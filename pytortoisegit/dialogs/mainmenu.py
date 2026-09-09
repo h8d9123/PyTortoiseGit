@@ -358,18 +358,6 @@ class MainMenuDlg(QMainWindow):
         self.content_list.customContextMenuRequested.connect(
             self._on_content_context_menu)
         right_lay.addWidget(self.content_list, 1)
-        last = QHBoxLayout()
-        self.btn_open = QPushButton(tr("menu_open_content", "打&开"), right)
-        self.btn_open.clicked.connect(self._open_content_selected)
-        self.btn_about = QPushButton(tr("about_title", "关于"), right)
-        self.btn_about.clicked.connect(self._on_about)
-        self.btn_close = QPushButton(tr("close", "关&闭"), right)
-        self.btn_close.clicked.connect(self.close)
-        last.addStretch(1)
-        last.addWidget(self.btn_open)
-        last.addWidget(self.btn_about)
-        last.addWidget(self.btn_close)
-        right_lay.addLayout(last)
         split.addWidget(right)
         split.setStretchFactor(0, 2)
         split.setStretchFactor(1, 3)
@@ -520,12 +508,6 @@ class MainMenuDlg(QMainWindow):
         if cur and os.path.exists(cur):
             menu = self._build_blank_menu(cur, self.content_list)
             menu.exec(self.content_list.viewport().mapToGlobal(pos))
-
-    def _open_content_selected(self):
-        """“打开”按钮：与双击一致。"""
-        index = self.content_list.currentIndex()
-        if index.isValid():
-            self._on_content_double_clicked(index, 0)
 
     def _show_context_menu_for(self, index, pos=None):
         menu = self._build_context_menu_for(index)

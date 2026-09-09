@@ -441,13 +441,11 @@ class MainMenuDlg(QMainWindow):
             lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         return menu
 
-    def _show_context_menu_for(self, index):
-        menu = self._build_context_menu_for(index)
-        if menu is None:
+    def _on_content_context_menu(self, pos):
+        index = self.content_list.indexAt(pos)
+        if not index.isValid():
             return
-        rect = self.content_list.visualRect(index)
-        menu.exec(self.content_list.viewport().mapToGlobal(
-            rect.center()))
+        self._show_context_menu_for(index, pos)
 
     def _open_content_selected(self):
         """“打开”按钮：与双击一致。"""
@@ -455,11 +453,14 @@ class MainMenuDlg(QMainWindow):
         if index.isValid():
             self._on_content_double_clicked(index, 0)
 
-    def _on_content_context_menu(self, pos):
-        index = self.content_list.indexAt(pos)
-        if not index.isValid():
+    def _show_context_menu_for(self, index, pos=None):
+        menu = self._build_context_menu_for(index)
+        if menu is None:
             return
-        self._show_context_menu_for(index)
+        if pos is None:
+            rect = self.content_list.visualRect(index)
+            pos = rect.center()
+        menu.exec(self.content_list.viewport().mapToGlobal(pos))
 
     def _build_file_menu(self, path: str, parent=None) -> "QMenu":
         """文件右键菜单：系统打开 + TortoiseGit 命令（仿 TortoiseGit 经典菜单）。"""

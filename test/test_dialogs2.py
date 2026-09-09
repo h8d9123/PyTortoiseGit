@@ -949,7 +949,7 @@ def test_mainmenu_content_context_menu_classic_for_worktree(
 
 def test_mainmenu_blank_area_context_menu_uses_current_dir(
         qapp, isolated_settings, tmp_path_factory):
-    """内容区空白处右键 → 对当前浏览目录弹菜单（TortoiseGit 行为）。"""
+    """内容区空白处右键 → 对当前浏览目录弹完整 TortoiseGit 菜单。"""
     import os
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
     from pytortoisegit.git.git import GitRunner
@@ -963,18 +963,21 @@ def test_mainmenu_blank_area_context_menu_uses_current_dir(
     plain = parent / "plain"
     plain.mkdir()
     dlg = MainMenuDlg()
-    # 当前浏览为工作树内子目录 → 空白处菜单为经典菜单
+    # 当前浏览为工作树内子目录 → 空白处菜单含完整 TortoiseGit 命令
     dlg._show_content(str(sub))
-    menu = dlg._build_dir_menu(dlg._current_dir(), dlg.content_list)
+    menu = dlg._build_blank_menu(dlg._current_dir(), dlg.content_list)
     labels = [a.text() for a in menu.actions()]
-    assert "Commit…" in labels
-    assert "Settings" in labels
+    for expected in ("Git Clone…", "Pull…", "Push…", "Sync", "Commit…",
+                     "Diff…", "Show log", "Repo Browser", "Stash changes…",
+                     "Revert…", "Switch/Checkout…", "Merge…", "Settings"):
+        assert expected in labels, expected
     # 当前浏览为仓库外目录 → Clone+Settings
     dlg._show_content(str(plain))
-    menu2 = dlg._build_dir_menu(dlg._current_dir(), dlg.content_list)
+    menu2 = dlg._build_blank_menu(dlg._current_dir(), dlg.content_list)
     labels2 = [a.text() for a in menu2.actions()]
-    assert "Clone…" in " ".join(labels2)
+    assert "Git Clone…" in labels2
     assert "Settings" in labels2
+    assert "Commit…" not in labels2
     dlg.reject()
 
 

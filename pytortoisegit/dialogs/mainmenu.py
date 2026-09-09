@@ -59,6 +59,24 @@ _CLASSIC_MENU = [
     ("cleanup", "repo_menu_cleanup", "Clean Up…"),
 ]
 
+# 空白处（文件夹背景）右键菜单：(命令名, 文案键, 默认文案)。
+# 参考 TortoiseGit 工作树内文件夹空白处的 TortoiseGit 菜单。
+_BLANK_MENU = [
+    ("clone", "repo_menu_clone", "Git Clone…"),
+    ("pull", "repo_menu_pull", "Pull…"),
+    ("push", "repo_menu_push", "Push…"),
+    ("sync", "repo_menu_sync", "Sync"),
+    ("commit", "repo_menu_commit", "Commit…"),
+    ("diff", "file_menu_diff", "Diff…"),
+    ("log", "repo_menu_log", "Show log"),
+    ("repobrowser", "menu_cmd_repobrowser", "Repo Browser"),
+    ("stash", "menu_cmd_stash", "Stash changes…"),
+    ("revert", "repo_menu_revert", "Revert…"),
+    ("switch", "menu_cmd_switch", "Switch/Checkout…"),
+    ("merge", "menu_cmd_merge", "Merge…"),
+    ("settings", "repo_menu_settings", "Settings"),
+]
+
 # 命令名 → TortoiseGit 菜单图标 ID（参考 TortoiseShell/resourceshell.rc 的 IDI_* ↔ 资源文件映射）
 _CMD_ICON = {
     "commit": "IDI_COMMIT",          # menucommit.ico
@@ -464,6 +482,26 @@ class MainMenuDlg(QMainWindow):
             lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         return menu
 
+    def _build_blank_menu(self, path: str, parent=None) -> "QMenu":
+        """内容区空白处右键菜单（参考 TortoiseGit 文件夹背景菜单）。
+
+        工作树内显示完整选项（Clone/Pull/Push/Sync/Commit/Diff/Show log/
+        Repo Browser/Stash changes/Revert/Switch・Checkout/Merge/Settings），
+        非仓库目录仅 Clone…+Settings。
+        """
+        from PySide6.QtWidgets import QMenu
+        if not self._inside_repo(path):
+            return self._build_dir_menu(path, parent)
+        menu = QMenu(parent or self.content_list)
+        for cmd, key, label in _BLANK_MENU:
+            act = menu.addAction(tr(key, label))
+            icon_id = _CMD_ICON.get(cmd)
+            if icon_id:
+                self._set_action_icon(act, icon_id)
+            act.triggered.connect(
+                lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
+        return menu
+
     def _build_context_menu_for(self, index) -> "QMenu | None":
         path = self._path_of_index(index)
         if not path or not os.path.exists(path):
@@ -480,7 +518,7 @@ class MainMenuDlg(QMainWindow):
         # 空白处：对当前浏览目录弹右键菜单（TortoiseGit 行为）
         cur = self._current_dir()
         if cur and os.path.exists(cur):
-            menu = self._build_dir_menu(cur, self.content_list)
+            menu = self._build_blank_menu(cur, self.content_list)
             menu.exec(self.content_list.viewport().mapToGlobal(pos))
 
     def _open_content_selected(self):

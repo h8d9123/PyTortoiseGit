@@ -367,9 +367,12 @@ def _refresh_folder_item(self, item):
   **工作树内任意位置**（`find_repo_root(path)` 非空，含仓库根与仓库内子目录）
   显示完整经典 TortoiseGit 菜单（`_build_classic_menu`，Commit/Log/Pull/Push/Sync/
   Revert/Clean Up + Settings）；仓库之外的目录显示 Clone… + Settings。
-- 空白处右键（`_on_content_context_menu` / `_build_dir_menu`）：TortoiseGit 行为，
-  对「当前浏览目录」弹目录级右键菜单——工作树内→经典菜单；仓库外→Clone+Settings。
-  目录/文件上右键优先弹对应 item 菜单。
+- 空白处右键（`_on_content_context_menu` / `_build_blank_menu`）：TortoiseGit 行为，
+  对「当前浏览目录」弹**文件夹背景菜单**（`_BLANK_MENU`）——工作树内显示完整选项：
+  Git Clone… / Pull… / Push… / Sync / Commit… / Diff… / Show log / Repo Browser /
+  Stash changes… / Revert… / Switch/Checkout… / Merge… / Settings（参考
+  TortoiseGit 文件夹空白菜单）；仓库外 → Clone…+Settings。目录/文件上右键仍弹
+  item 对应菜单（`_CLASSIC_MENU`/文件菜单）。
 - 文件右键（`_build_file_menu`）：系统「打开」（`QDesktopServices.openUrl`）
   与「显示位置」（explorer /select）；若文件位于工作树内，另附 TortoiseGit
   经典**已跟踪文件**菜单（参考 MenuInfo.cpp）：Commit… / Diff… / Show log /
@@ -454,6 +457,8 @@ def _refresh_folder_item(self, item):
   （打开/Commit/Diff/Show log/Stash/Blame/Settings）、仓库外目录
   （Clone/Settings）各项 `icon().isNull()` 均为 False。
 - `test_mainmenu_blank_area_context_menu_uses_current_dir`：内容区空白处右键
-  对当前浏览目录弹菜单（工作树内→经典菜单；仓库外→Clone+Settings）。
+  对当前浏览目录弹菜单——工作树内含完整选项
+  （Clone/Pull/Push/Sync/Commit/Diff/Show log/Repo Browser/Stash changes/Revert/
+  Switch・Checkout/Merge/Settings）；仓库外仅 Clone+Settings。
 
 > 时序：模型异步填充，测试用 `QTest.qWait` 轮询 `rowCount>0` 后再断言。

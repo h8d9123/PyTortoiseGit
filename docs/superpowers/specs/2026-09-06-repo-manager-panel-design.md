@@ -371,8 +371,7 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
   与「显示位置」（explorer /select）；若文件位于工作树内，另附 TortoiseGit
   经典**已跟踪文件**菜单（参考 MenuInfo.cpp）：Commit… / Diff… / Show log /
   Stash changes… / Blame… / Settings（不含 Remove）。仓库外文件仅有系统项。
-- 右键与**左键单击**（`_on_content_single_clicked`，TortoiseGit 风格）统一经
-  `_build_context_menu_for(index)`（仅构建）与 `_show_context_menu_for(index)`
+- 右键经 `_build_context_menu_for(index)`（仅构建）与 `_show_context_menu_for`
   （构建+exec）显示菜单：文件→文件菜单；工作树内目录→经典菜单；其余→Clone+Settings。
 - commit 命令（commands/commit.py）现在透传文件路径给 CommitDlg(paths=)。
 - 底部「打开」按钮（`btn_open`）执行与双击相同动作。
@@ -432,8 +431,6 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 - `test_mainmenu_file_menu_includes_tg_commands` / `test_mainmenu_file_menu_outside_repo_only_system`：
   文件右键菜单——工作树内文件含打开/显示位置 + Commit/Diff/Log/Stash/Blame/
   Settings（无 Remove）；仓库外文件仅系统项。
-- `test_mainmenu_content_single_click_opens_context_menu`：单击文件/目录时经
-  `_build_context_menu_for` 生成与右键一致菜单（Commit…）。
 - `test_mainmenu_command_menu_lists_all_commands`：命令菜单含全部分组
   （本地更改/其他等），且每个 `available_commands()` 的命令均有对应菜单项。
 

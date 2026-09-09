@@ -310,7 +310,6 @@ class MainMenuDlg(QMainWindow):
             if c != 0:
                 self.content_list.setColumnHidden(c, True)
         self.content_list.doubleClicked.connect(self._on_content_double_clicked)
-        self.content_list.clicked.connect(self._on_content_single_clicked)
         self.content_list.setContextMenuPolicy(
             Qt.ContextMenuPolicy.CustomContextMenu)
         self.content_list.customContextMenuRequested.connect(
@@ -423,10 +422,6 @@ class MainMenuDlg(QMainWindow):
             return
         if self._is_dir_index(index):
             self._navigate(path)
-
-    def _on_content_single_clicked(self, index):
-        """右侧单击文件夹/文件：如同 TortoiseGit 弹出右键菜单。"""
-        self._show_context_menu_for(index)
 
     def _build_context_menu_for(self, index) -> "QMenu | None":
         from PySide6.QtWidgets import QMenu

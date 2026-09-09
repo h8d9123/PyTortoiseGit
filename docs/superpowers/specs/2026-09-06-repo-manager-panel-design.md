@@ -368,9 +368,13 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
   显示完整经典 TortoiseGit 菜单（`_build_classic_menu`，Commit/Log/Pull/Push/Sync/
   Revert/Clean Up + Settings）；仓库之外的目录显示 Clone… + Settings。
 - 文件右键（`_build_file_menu`）：系统「打开」（`QDesktopServices.openUrl`）
-  与「显示位置」（explorer /select）；若文件位于工作树内，另附 **TortoiseGit ▸**
-  子菜单：与 HEAD 比较（Diff…）、追溯（Blame…）、显示日志（Log…，log 已支持
-  pathspec 文件过滤）、删除（Remove…）。仓库外文件仅有系统项。
+  与「显示位置」（explorer /select）；若文件位于工作树内，另附 TortoiseGit
+  经典**已跟踪文件**菜单（参考 MenuInfo.cpp）：Commit… / Diff… / Show log /
+  Stash changes… / Blame… / Settings（不含 Remove）。仓库外文件仅有系统项。
+- 右键与**左键单击**（`_on_content_single_clicked`，TortoiseGit 风格）统一经
+  `_build_context_menu_for(index)`（仅构建）与 `_show_context_menu_for(index)`
+  （构建+exec）显示菜单：文件→文件菜单；工作树内目录→经典菜单；其余→Clone+Settings。
+- commit 命令（commands/commit.py）现在透传文件路径给 CommitDlg(paths=)。
 - 底部「打开」按钮（`btn_open`）执行与双击相同动作。
 - 导航行（Windows 资源管理器风格）：后退 `btn_back`(←)、前进
   `btn_forward`(→)、向上 `btn_up`(↑)、刷新 `btn_refresh`(⟳)。
@@ -426,8 +430,10 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 - `test_mainmenu_content_double_click_repo_enters`：双击仓库内容节点 → 进入
   浏览（`_current_dir` 变为仓库路径，`repo` 不打开）。
 - `test_mainmenu_file_menu_includes_tg_commands` / `test_mainmenu_file_menu_outside_repo_only_system`：
-  文件右键菜单——工作树内文件含打开/显示位置 + TortoiseGit 子菜单
-  （Diff/Blame/Log/Remove）；仓库外文件仅系统项。
+  文件右键菜单——工作树内文件含打开/显示位置 + Commit/Diff/Log/Stash/Blame/
+  Settings（无 Remove）；仓库外文件仅系统项。
+- `test_mainmenu_content_single_click_opens_context_menu`：单击文件/目录时经
+  `_build_context_menu_for` 生成与右键一致菜单（Commit…）。
 - `test_mainmenu_command_menu_lists_all_commands`：命令菜单含全部分组
   （本地更改/其他等），且每个 `available_commands()` 的命令均有对应菜单项。
 

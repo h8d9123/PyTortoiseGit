@@ -310,6 +310,7 @@ class MainMenuDlg(QMainWindow):
             if c != 0:
                 self.content_list.setColumnHidden(c, True)
         self.content_list.doubleClicked.connect(self._on_content_double_clicked)
+        self.content_list.clicked.connect(self._on_content_single_clicked)
         self.content_list.setContextMenuPolicy(
             Qt.ContextMenuPolicy.CustomContextMenu)
         self.content_list.customContextMenuRequested.connect(
@@ -423,6 +424,36 @@ class MainMenuDlg(QMainWindow):
         if self._is_dir_index(index):
             self._navigate(path)
 
+    def _on_content_single_clicked(self, index):
+        """右侧单击文件夹/文件：如同 TortoiseGit 弹出右键菜单。"""
+        self._show_context_menu_for(index)
+
+    def _build_context_menu_for(self, index) -> "QMenu | None":
+        from PySide6.QtWidgets import QMenu
+        path = self._path_of_index(index)
+        if not path or not os.path.exists(path):
+            return None
+        if not self._is_dir_index(index):
+            return self._build_file_menu(path, self.content_list)
+        if self._inside_repo(path):
+            return self._build_classic_menu(path, self.content_list)
+        menu = QMenu(self.content_list)
+        act_clone = menu.addAction(tr("repo_menu_clone", "Git Clone…"))
+        act_clone.triggered.connect(
+            lambda _=False, p=path: self._run_clone_in(p))
+        act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+        act_set.triggered.connect(
+            lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
+        return menu
+
+    def _show_context_menu_for(self, index):
+        menu = self._build_context_menu_for(index)
+        if menu is None:
+            return
+        rect = self.content_list.visualRect(index)
+        menu.exec(self.content_list.viewport().mapToGlobal(
+            rect.center()))
+
     def _open_content_selected(self):
         """“打开”按钮：与双击一致。"""
         index = self.content_list.currentIndex()
@@ -430,28 +461,10 @@ class MainMenuDlg(QMainWindow):
             self._on_content_double_clicked(index, 0)
 
     def _on_content_context_menu(self, pos):
-        from PySide6.QtWidgets import QMenu
         index = self.content_list.indexAt(pos)
         if not index.isValid():
             return
-        path = self._path_of_index(index)
-        if not os.path.exists(path):
-            return
-        if not self._is_dir_index(index):
-            self._build_file_menu(path, self.content_list).exec(
-                self.content_list.viewport().mapToGlobal(pos))
-            return
-        if self._inside_repo(path):
-            menu = self._build_classic_menu(path, self.content_list)
-        else:
-            menu = QMenu(self.content_list)
-            act_clone = menu.addAction(tr("repo_menu_clone", "Git Clone…"))
-            act_clone.triggered.connect(
-                lambda _=False, p=path: self._run_clone_in(p))
-            act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
-            act_set.triggered.connect(
-                lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
-        menu.exec(self.content_list.viewport().mapToGlobal(pos))
+        self._show_context_menu_for(index)
 
     def _build_file_menu(self, path: str, parent=None) -> "QMenu":
         """文件右键菜单：系统打开 + TortoiseGit 命令（仿 TortoiseGit 经典菜单）。"""
@@ -463,20 +476,27 @@ class MainMenuDlg(QMainWindow):
         act_show.triggered.connect(lambda _=False, p=path: self._show_in_explorer(p))
         if self._inside_repo(path):
             menu.addSeparator()
-            tg = menu.addMenu(tr("file_menu_tg", "TortoiseGit"))
-            act_diff = tg.addAction(
-                tr("file_menu_diff", "与 HEAD 比较（Diff）…"))
+            # TortoiseGit 经典“已跟踪文件”菜单（参考 MenuInfo.cpp）：
+            # Commit / Diff / Log / StashSave / Blame / Settings
+            act_commit = menu.addAction(tr("repo_menu_commit", "Commit…"))
+            act_commit.triggered.connect(
+                lambda _=False, p=path: self._dispatch("commit", extra={"path": p}))
+            act_diff = menu.addAction(tr("file_menu_diff", "Diff…"))
             act_diff.triggered.connect(
                 lambda _=False, p=path: self._dispatch("diff", extra={"path": p}))
-            act_blame = tg.addAction(tr("file_menu_blame", "追溯（Blame）…"))
-            act_blame.triggered.connect(
-                lambda _=False, p=path: self._dispatch("blame", extra={"path": p}))
-            act_log = tg.addAction(tr("file_menu_log", "显示日志（Log）…"))
+            act_log = menu.addAction(tr("file_menu_log", "Show log"))
             act_log.triggered.connect(
                 lambda _=False, p=path: self._dispatch("log", extra={"path": p}))
-            act_rem = tg.addAction(tr("file_menu_remove", "删除（Remove）…"))
-            act_rem.triggered.connect(
-                lambda _=False, p=path: self._dispatch("remove", extra={"path": p}))
+            act_stash = menu.addAction(tr("file_menu_stash", "Stash changes…"))
+            act_stash.triggered.connect(
+                lambda _=False, p=path: self._dispatch("stash", extra={"path": p}))
+            act_blame = menu.addAction(tr("file_menu_blame", "Blame…"))
+            act_blame.triggered.connect(
+                lambda _=False, p=path: self._dispatch("blame", extra={"path": p}))
+            menu.addSeparator()
+            act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+            act_set.triggered.connect(
+                lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         return menu
 
     def _open_with_system(self, path: str):

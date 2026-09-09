@@ -952,7 +952,7 @@ def test_mainmenu_content_context_menu_classic_for_worktree(
 
 def test_mainmenu_file_menu_includes_tg_commands(
         qapp, isolated_settings, tmp_path_factory):
-    """文件右键菜单：打开/显示位置 + TortoiseGit 子菜单（工作树内）。"""
+    """文件右键菜单（工作树内）：Commit/Diff/Log/Stash/Blame/Settings。"""
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
     from pytortoisegit.git.git import GitRunner
     parent = tmp_path_factory.mktemp("file_ctx")
@@ -970,21 +970,25 @@ def test_mainmenu_file_menu_includes_tg_commands(
     labels = [a.text() for a in menu.actions()]
     assert "打开" in labels
     assert "显示位置" in labels
-    tg = next(a for a in menu.actions() if a.text() == "TortoiseGit")
-    submenu = tg.menu()
-    assert "与 HEAD 比较（Diff）…" in [a.text() for a in submenu.actions()]
-    assert "追溯（Blame）…" in [a.text() for a in submenu.actions()]
-    assert "显示日志（Log）…" in [a.text() for a in submenu.actions()]
-    assert "删除（Remove）…" in [a.text() for a in submenu.actions()]
+    assert "Commit…" in labels
+    assert "Diff…" in labels
+    assert "Show log" in labels
+    assert "Stash changes…" in labels
+    assert "Blame…" in labels
+    assert "Settings" in labels
+    # 无 Remove（TortoiseGit 经典文件菜单不含 Delete 的 TGit 项被移除）
+    assert not any("Remove" in t for t in labels)
     # 工作树内子目录中的文件
     menu2 = dlg._build_file_menu(str(sub / "b.txt"), dlg.content_list)
-    assert "TortoiseGit" in [a.text() for a in menu2.actions()]
+    labels2 = [a.text() for a in menu2.actions()]
+    assert "Commit…" in labels2
+    assert "Stash changes…" in labels2
     dlg.reject()
 
 
 def test_mainmenu_file_menu_outside_repo_only_system(
         qapp, isolated_settings, tmp_path_factory):
-    """仓库外文件右键：仅有打开/显示位置，无 TortoiseGit 子菜单。"""
+    """仓库外文件右键：仅有打开/显示位置，无 Git 命令。"""
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
     parent = tmp_path_factory.mktemp("file_plain")
     f = parent / "x.txt"
@@ -994,7 +998,35 @@ def test_mainmenu_file_menu_outside_repo_only_system(
     labels = [a.text() for a in menu.actions()]
     assert "打开" in labels
     assert "显示位置" in labels
-    assert "TortoiseGit" not in labels
+    assert "Commit…" not in labels
+    assert "Stash changes…" not in labels
+    assert "Settings" not in labels
+    dlg.reject()
+
+
+def test_mainmenu_content_single_click_opens_context_menu(
+        qapp, isolated_settings, tmp_path_factory):
+    """单击右侧文件/目录弹出与右键相同的菜单（TortoiseGit 风格）。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    parent = tmp_path_factory.mktemp("click_ctx")
+    repo = parent / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    (repo / "a.txt").write_text("a\n", encoding="utf-8")
+    dlg = MainMenuDlg()
+    dlg._show_content(str(repo))
+    # 文件单击 → 构建文件菜单（含 Commit…）
+    idx = dlg.fs_model.index(str(repo / "a.txt"))
+    menu = dlg._build_context_menu_for(idx)
+    assert menu is not None
+    labels = [a.text() for a in menu.actions()]
+    assert "Commit…" in labels
+    # repo 目录单击 → 构建经典菜单
+    menu2 = dlg._build_context_menu_for(dlg.fs_model.index(str(repo)))
+    labels2 = [a.text() for a in menu2.actions()]
+    assert "Commit…" in labels2
     dlg.reject()
 
 

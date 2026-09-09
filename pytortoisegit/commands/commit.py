@@ -12,7 +12,8 @@ from .dispatcher import CommandContext, register
 @register("commit")
 def commit(ctx: CommandContext):
     repo = repo_from_cl(ctx.cl)
-    dlg = CommitDlg(repo, parent=None)
+    paths = ctx.cl.all_values("path") if ctx.cl else []
+    dlg = CommitDlg(repo, paths=paths or None, parent=None)
     dlg.exec()
     return "ok" if dlg.result() == QDialog.DialogCode.Accepted else "cancel"
 

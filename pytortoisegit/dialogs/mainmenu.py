@@ -1,13 +1,12 @@
-"""mainmenu.py —— 主窗口：菜单栏 + Git 操作工具栏 + 左侧标签面板（仓库管理/目录树）。
+"""mainmenu.py —— 主窗口：菜单栏 + 左侧标签面板（仓库管理/目录树）。
 
 GUI 入口（`python -m pytortoisegit` 无参数时打开此窗口），
 或 `/command:menu` 显式打开。
 
 布局（从顶部到底部）：
-  1. 菜单栏（文件 / 视图 / 帮助）
-  2. 工具栏：QToolButton 一排 Git 操作按钮（图标用 TortoiseGit icon）
-  3. 主区：左侧标签面板（仓库管理树 + 目录树）+ 右侧命令列表 / 欢迎页
-  4. 底部：仓库路径 + 按钮 + 状态栏
+  1. 菜单栏（文件 / 视图 / 命令 / 帮助）
+  2. 主区：左侧标签面板（仓库管理树 + 目录树）+ 右侧命令列表 / 欢迎页
+  3. 底部：仓库路径 + 按钮 + 状态栏
 """
 
 from __future__ import annotations
@@ -28,7 +27,6 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStyle,
     QTabWidget,
-    QToolButton,
     QTreeView,
     QTreeWidget,
     QTreeWidgetItem,
@@ -116,24 +114,7 @@ _CMD_ICON = {
 
 
 class MainMenuDlg(QMainWindow):
-    """主窗口：菜单栏 + 工具栏 + 标签面板（仓库管理 / 目录树）+ 命令面板。"""
-
-    # 工具栏按钮：(命令名, 资源图标 IDI, 标签)
-    TOOLBAR = [
-        ("commit", "IDI_COMMIT_BKG", "Commit"),
-        ("log", "IDI_DIALOGS", "Log"),
-        ("diff", "IDI_SWITCHLEFTRIGHT", "Diff"),
-        ("clone", "IDI_GITFOLDER", "Clone"),
-        ("sync", "IDI_GITREMOTE", "Sync"),
-        ("pull", "IDI_REFRESH", "Pull"),
-        ("push", "IDI_REFRESH", "Push"),
-        ("fetch", "IDI_REFRESH", "Fetch"),
-        ("submodule", "IDI_GITFOLDER", "Submodule"),
-        ("stash", "IDI_SAVE", "Stash"),
-        ("branch", "IDI_GITREMOTE", "Branch"),
-        ("blame", "IDI_TORTOISEBLAME", "Blame"),
-        ("settings", "IDI_GENERAL", "Settings"),
-    ]
+    """主窗口：菜单栏 + 标签面板（仓库管理 / 目录树）+ 命令面板。"""
 
     # 菜单栏“命令(&C)”分组：组名 → 该组包含的命令
     MENU_GROUPS = [
@@ -187,7 +168,6 @@ class MainMenuDlg(QMainWindow):
         self._nav_forward: list[str] = []  # 前进历史
         self._nav_current: str = ""
         self._build_menu()
-        self._build_toolbar()
         self._build_central()
         self._build_statusbar()
         # 从 QSettings 加载已添加仓库并刷新树
@@ -216,11 +196,6 @@ class MainMenuDlg(QMainWindow):
         act_repo.setChecked(True)
         act_repo.toggled.connect(lambda on: self.manager_tabs.setVisible(on))
         m_view.addAction(act_repo)
-        act_tool = QAction(tr("menu_toolbar", "工具栏"), self)
-        act_tool.setCheckable(True)
-        act_tool.setChecked(True)
-        act_tool.toggled.connect(lambda on: self.toolbar.setVisible(on))
-        m_view.addAction(act_tool)
         # 命令（列出所有已注册命令，按功能分组）
         m_cmd = bar.addMenu(tr("menu_commands", "命令(&C)"))
         self._build_command_menu(m_cmd)
@@ -261,26 +236,6 @@ class MainMenuDlg(QMainWindow):
                     self._set_action_icon(act, icon_id)
                 act.triggered.connect(
                     lambda _=False, n=name: self._dispatch(n))
-
-    # ---- 工具栏（QToolButton 一排 Git 操作）----
-    def _build_toolbar(self):
-        self.toolbar = self.addToolBar(tr("menu_toolbar", "Git 操作"))
-        self.toolbar.setMovable(False)
-        self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        for name, icon_id, label in self.TOOLBAR:
-            btn = QToolButton(self.toolbar)
-            btn.setText(tr(name, label))
-            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            try:
-                from ..res import icons
-                ic = icons.icon(icon_id)
-                if ic and not ic.isNull():
-                    btn.setIcon(ic)
-            except Exception:
-                pass
-            btn.clicked.connect(lambda _=False, n=name: self._dispatch(n))
-            self.toolbar.addWidget(btn)
-            self.toolbar.addSeparator()
 
     # ---- 主区：左侧标签页（仓库管理 + 目录树）+ 右侧内容浏览 ----
     def _build_central(self):
@@ -516,6 +471,8 @@ class MainMenuDlg(QMainWindow):
     def _on_content_context_menu(self, pos):
         index = self.content_list.indexAt(pos)
         if not index.isValid():
+            return
+        if not self.content_list.visualRect(index).contains(pos):
             return
         self._show_context_menu_for(index, pos)
 

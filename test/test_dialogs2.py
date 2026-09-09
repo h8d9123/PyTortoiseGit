@@ -488,16 +488,13 @@ def test_command_registry_has_c5_commands():
 
 
 def test_mainmenu_dialog(qapp):
+    from PySide6.QtWidgets import QToolBar
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
     dlg = _smoke(qapp, lambda: MainMenuDlg())
     # 右侧为内容浏览区（资源管理器中间窗格）
     assert dlg.content_list is not None
-    # 工具栏保留关键 Git 命令入口
-    from PySide6.QtWidgets import QToolButton
-    labels = [b.text() for b in dlg.toolbar.findChildren(QToolButton)]
-    for expected in ("Commit", "Log", "Diff", "Clone", "Sync",
-                     "Push", "Pull", "设置"):
-        assert expected in labels
+    # 无工具栏（Git 操作入口在“命令”菜单）
+    assert dlg.findChild(QToolBar) is None
 
 
 def test_mainmenu_command_menu_lists_all_commands(qapp):

@@ -344,9 +344,9 @@ def _refresh_folder_item(self, item):
 
 ## 13. 右侧内容浏览面板（2026-09-07 追加，后改用 QFileSystemModel）
 
-右侧「命令列表」替换为「内容浏览」区（资源管理器中间窗格风格），命令入口
-移至工具栏（QToolButton 一行：Commit/Log/Diff/Clone/Sync/Pull/Push/Fetch/
-Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
+右侧「命令列表」替换为「内容浏览」区（资源管理器中间窗格风格）；命令入口
+移至菜单栏「命令(&C)」（`_build_command_menu` + `MENU_GROUPS` 分组）。
+已移除工具栏（TOOLBAR）与「视图→工具栏」开关（2026-09-09）。
 
 `content_list` = `QTreeView` + `QFileSystemModel`（`fs_model`），仅显示名称列，
 `setRootIsDecorated(False)`/`setItemsExpandable(False)` 关闭展开装饰。
@@ -361,12 +361,14 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
   `IDI_GITFOLDER`，其余交给系统默认图标。
 - 右侧双击（`_on_content_double_clicked`）：任意目录（含仓库根）→ 进入浏览；
   文件 → 无操作。仓库不因双击直接打开，仓库操作通过右键菜单
-  （`_build_classic_menu`）与工具栏命令执行。
+  （`_build_classic_menu`）与「命令」菜单执行。
 - 右侧右键（`_on_content_context_menu`）/ 目录树右键
   （`_on_folder_context_menu`）：用 `_inside_repo(path)` 判定——
   **工作树内任意位置**（`find_repo_root(path)` 非空，含仓库根与仓库内子目录）
   显示完整经典 TortoiseGit 菜单（`_build_classic_menu`，Commit/Log/Pull/Push/Sync/
   Revert/Clean Up + Settings）；仓库之外的目录显示 Clone… + Settings。
+- 空白处右键不弹菜单：`content_list` 的右键处理器校验
+  `indexAt(pos).isValid()` 与 `visualRect(index).contains(pos)`，命中空白区域直接返回。
 - 文件右键（`_build_file_menu`）：系统「打开」（`QDesktopServices.openUrl`）
   与「显示位置」（explorer /select）；若文件位于工作树内，另附 TortoiseGit
   经典**已跟踪文件**菜单（参考 MenuInfo.cpp）：Commit… / Diff… / Show log /
@@ -436,8 +438,7 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 
 ### 测试要点（追加）
 
-- `test_mainmenu_dialog`：`content_list` 存在，工具栏含关键命令
-  （Commit/Log/Diff/Clone/Sync/Push/Pull/设置）。
+- `test_mainmenu_dialog`：`content_list` 存在，且窗口无工具栏（`findChild(QToolBar) is None`）。
 - `test_mainmenu_content_shows_subfolders`：`_show_content` 后 `rowCount==3`
   （plain/innerrepo/b.txt），innerrepo 识别为仓库根。
 - `test_mainmenu_content_double_click_repo_enters`：双击仓库内容节点 → 进入

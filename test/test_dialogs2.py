@@ -1163,6 +1163,44 @@ def test_menuitems_state_driven_entries(tmp_path_factory):
     assert "commit" not in c and "diff" not in c
 
 
+def test_content_folder_icons_untracked_plain(tmp_path_factory, qapp):
+    """内容区目录图标：仅仓库根显示 git 绿勾，未受版本管理的子目录为普通图标。"""
+    import os
+    from PySide6.QtCore import Qt
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.res import icons
+    parent = tmp_path_factory.mktemp("icontest")
+    repo = parent / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    runner.run("config", "user.email", "t@x.com")
+    runner.run("config", "user.name", "T")
+    (repo / "a.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    runner.run("commit", "-m", "init")
+    # 未受版本管理的子目录
+    (repo / "nd").mkdir()
+    (repo / "nd" / "x.txt").write_text("x\n", encoding="utf-8")
+
+    dlg = MainMenuDlg()
+    dlg._show_content(str(repo))
+    model = dlg.fs_model
+    git_icon = icons.icon("IDI_GITFOLDER")
+
+    def is_git(p):
+        ic = model.data(model.index(p), Qt.ItemDataRole.DecorationRole)
+        return ic is not None and not ic.isNull() and \
+            ic.cacheKey() == git_icon.cacheKey()
+
+    # 仓库根 → git 图标
+    assert is_git(str(repo))
+    # 未受版本管理的子目录 → 普通图标
+    assert not is_git(str(repo / "nd"))
+    dlg.reject()
+
+
 def test_packaging_specs_compile():
     import ast
     from pathlib import Path

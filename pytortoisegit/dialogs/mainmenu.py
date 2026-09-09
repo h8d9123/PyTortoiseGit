@@ -345,6 +345,10 @@ class MainMenuDlg(QMainWindow):
     def _show_content(self, path: str):
         """让右侧显示给定目录的内容（含子文件夹与文件），并同步路径栏。"""
         abspath = os.path.abspath(path)
+        # 强制刷新图标缓存：stash push/pop 会删除再重建目录，Qt 的
+        # QFileSystemModel 可能保留旧的目录图标（例如误用 git 文件夹图标）。
+        # 重新设置 iconProvider 会让模型重新请求图标。
+        self.fs_model.setIconProvider(_GitIconProvider(self))
         self.fs_model.setRootPath(abspath)
         self.content_list.setRootIndex(self.fs_model.index(abspath))
         self._nav_current = abspath
@@ -929,6 +933,8 @@ class _GitIconProvider(QFileIconProvider):
     def icon(self, info):  # noqa: A003 - 覆写基类成员名
         if info.isDir():
             p = info.absoluteFilePath()
+            # 仅仓库工作树根目录显示 git 图标；其余目录（含未受版本管理的
+            # 子目录）一律使用普通文件夹图标。
             if p and find_repo_root(p) == os.path.abspath(p):
                 try:
                     from ..res import icons

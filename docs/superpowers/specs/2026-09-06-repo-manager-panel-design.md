@@ -420,6 +420,20 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
 - 标签：`tr("menu_cmd_" + name, name)`（有映射则显示友好名，否则为命令名）。
 - 所有菜单项触发 `_dispatch(name)`（与工具栏一致，作用于当前 `path_row`）。
 
+### 右键菜单图标（2026-09-09 追加）
+
+- 图标与 TortoiseGit 一致：`scripts/sync_icons.py` 现同时扫描
+  `TortoiseGit-master/src/Resources` 与 `src/TortoiseShell`（`resourceshell.rc`），
+  生成 `res/icon_map.py`（IDI_* → menu*.ico）。共 141 个图标、149 条映射。
+- mainmenu.py 定义 `_CMD_ICON`：命令名 → TGit 菜单图标 ID（如
+  commit→IDI_COMMIT=menucommit.ico、log→IDI_LOG=menulog.ico、
+  pull→IDI_PULL=pull1.ico、push→IDI_PUSH=Push.ico、sync→IDI_RELOCATE、
+  revert→IDI_REVERT、cleanup→IDI_CLEANUP、diff→IDI_DIFF=menucompare.ico、
+  stash→IDI_SHELVE、blame→IDI_BLAME、settings→IDI_SETTINGS=menusettings.ico）。
+- `_set_action_icon(action, icon_id)` 为动作设图标；`_build_classic_menu`、
+  `_build_file_menu`、`_build_context_menu_for`、`_build_command_menu`、
+  `_build_folder_repo_menu`、`_build_folder_nonrepo_menu` 均已为 Git 命令项加图标。
+
 ### 测试要点（追加）
 
 - `test_mainmenu_dialog`：`content_list` 存在，工具栏含关键命令
@@ -433,5 +447,9 @@ Submodule/Stash/Branch/Blame/Settings，TOOLBAR 常量驱动）。
   Settings（无 Remove）；仓库外文件仅系统项。
 - `test_mainmenu_command_menu_lists_all_commands`：命令菜单含全部分组
   （本地更改/其他等），且每个 `available_commands()` 的命令均有对应菜单项。
+- `test_mainmenu_menu_actions_have_tortoisegit_icons`：经典菜单
+  （Commit/Log/Pull/Push/Sync/Revert/CleanUp/Settings）、文件菜单
+  （打开/Commit/Diff/Show log/Stash/Blame/Settings）、仓库外目录
+  （Clone/Settings）各项 `icon().isNull()` 均为 False。
 
 > 时序：模型异步填充，测试用 `QTest.qWait` 轮询 `rowCount>0` 后再断言。

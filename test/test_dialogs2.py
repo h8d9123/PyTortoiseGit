@@ -1004,6 +1004,44 @@ def test_mainmenu_file_menu_outside_repo_only_system(
     dlg.reject()
 
 
+def test_mainmenu_menu_actions_have_tortoisegit_icons(
+        qapp, isolated_settings, tmp_path_factory):
+    """右键菜单 Git 操作带 TortoiseGit 图标（IDI_* 对应的 menu*.ico）。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    parent = tmp_path_factory.mktemp("menu_icons")
+    repo = parent / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    (repo / "a.txt").write_text("a\n", encoding="utf-8")
+    plain = parent / "plain"
+    plain.mkdir()
+    dlg = MainMenuDlg()
+
+    def by_label(actions, label):
+        return next(a for a in actions if a.text() == label)
+
+    # 经典菜单：Commit/Log/Pull/Push/Sync/Revert/CleanUp/Settings 均有图标
+    classic = dlg._build_classic_menu(str(repo))
+    for label in ["Commit…", "Show log", "Pull…", "Push…", "Sync",
+                  "Revert…", "Clean Up…", "Settings"]:
+        act = by_label(classic.actions(), label)
+        assert not act.icon().isNull(), label
+    # 文件菜单：打开/Commit/Diff/Show log/Stash changes…/Blame…/Settings
+    fmenu = dlg._build_file_menu(str(repo / "a.txt"), dlg.content_list)
+    for label in ["打开", "Commit…", "Diff…", "Show log",
+                  "Stash changes…", "Blame…", "Settings"]:
+        act = by_label(fmenu.actions(), label)
+        assert not act.icon().isNull(), label
+    # 仓库外目录：Clone + Settings
+    nrepo = dlg._build_folder_nonrepo_menu(str(plain))
+    for label in ["Git Clone…", "Settings"]:
+        act = by_label(nrepo.actions(), label)
+        assert not act.icon().isNull(), label
+    dlg.reject()
+
+
 def test_packaging_specs_compile():
     import ast
     from pathlib import Path

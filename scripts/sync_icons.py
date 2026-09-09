@@ -1,6 +1,6 @@
 """scripts/sync_icons.py —— 从 TortoiseGit Resources 同步图标到 PyTortoiseGit。
 
-扫描 TortoiseGit-master/src/Resources/*.rc 里的 ICON 定义，
+扫描 TortoiseGit-master/src/Resources 和 src/TortoiseShell 里的 ICON 定义，
 把对应 .ico 复制到 pytortoisegit/res/icons/，并生成 res/icon_map.py。
 
 用法：python scripts/sync_icons.py
@@ -15,7 +15,10 @@ import shutil
 import sys
 from pathlib import Path
 
-SRC_ROOT = Path("../TortoiseGit-master/src/Resources")
+SRC_ROOTS = [
+    Path("../TortoiseGit-master/src/Resources"),
+    Path("../TortoiseGit-master/src/TortoiseShell"),
+]
 DST_ROOT = Path("pytortoisegit/res/icons")
 MAP_FILE = Path("pytortoisegit/res/icon_map.py")
 
@@ -45,35 +48,49 @@ _GPL_HEAD = (
 
 def collect() -> dict:
     mapping: dict = {}
-    for f in glob.glob(str(SRC_ROOT / "*.rc")) + glob.glob(str(SRC_ROOT / "**" / "*.rc"), recursive=True):
-        try:
-            t = open(f, encoding="utf-8", errors="replace").read()
-        except Exception:
-            continue
-        for m in ICON_RE.finditer(t):
-            mapping[m.group(1)] = m.group(2).replace("\\", os.sep)
+    for root in SRC_ROOTS:
+        globs = glob.glob(str(root / "*.rc")) + glob.glob(str(root / "*.rc2"), recursive=True)
+        for f in globs:
+            try:
+                t = open(f, encoding="utf-8", errors="replace").read()
+            except Exception:
+                continue
+            for m in ICON_RE.finditer(t):
+                rel = m.group(2).replace("\\", os.sep)
+                # 相对 .rc 文件目录解析；若不存在则回退到每个 SRC_ROOT
+                abs_cand = os.path.normpath(os.path.join(os.path.dirname(f), rel))
+                if os.path.isfile(abs_cand):
+                    mapping[m.group(1)] = abs_cand
+                else:
+                    for root2 in SRC_ROOTS:
+                        cand = root2 / rel
+                        if cand.is_file():
+                            mapping[m.group(1)] = str(cand)
+                            break
     return mapping
 
 
 def main() -> int:
-    if not SRC_ROOT.is_dir():
-        print(f"未找到 {SRC_ROOT}，请在仓库根目录运行。")
-        return 1
+    for root in SRC_ROOTS:
+        if not root.is_dir():
+            print(f"未找到 {root}，请在仓库根目录运行。")
+            return 1
     mapping = collect()
     os.makedirs(DST_ROOT, exist_ok=True)
     copied = 0
-    for rid, rel in sorted(mapping.items()):
-        sp = SRC_ROOT / rel
-        if not sp.is_file():
-            continue
-        shutil.copy2(sp, DST_ROOT / os.path.basename(rel))
-        copied += 1
+    copied_names: set = set()
+    for rid, abs_sp in sorted(mapping.items()):
+        basename = os.path.basename(abs_sp)
+        if basename not in copied_names:
+            shutil.copy2(abs_sp, DST_ROOT / basename)
+            copied_names.add(basename)
+            copied += 1
     with open(MAP_FILE, "w", encoding="utf-8") as fh:
         fh.write(_GPL_HEAD)
         fh.write('"""icon_map.py —— TortoiseGit 图标资源映射（ID -> 资源文件名）。"""\n\n')
         fh.write("ICON_MAP = {\n")
-        for rid, rel in sorted(mapping.items()):
-            fh.write(f'    "{rid}": "{os.path.basename(rel)}",\n')
+        for rid, abs_sp in sorted(mapping.items()):
+            fh.write(f'    "{rid}": "{os.path.basename(abs_sp)}",\n')
         fh.write("}\n")
     print(f"同步完成：复制 {copied} 个图标，生成 {len(mapping)} 条映射。")
     return 0

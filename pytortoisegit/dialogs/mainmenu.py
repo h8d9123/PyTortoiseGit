@@ -61,6 +61,59 @@ _CLASSIC_MENU = [
     ("cleanup", "repo_menu_cleanup", "Clean Up…"),
 ]
 
+# 命令名 → TortoiseGit 菜单图标 ID（参考 TortoiseShell/resourceshell.rc 的 IDI_* ↔ 资源文件映射）
+_CMD_ICON = {
+    "commit": "IDI_COMMIT",          # menucommit.ico
+    "log": "IDI_LOG",                # menulog.ico
+    "pull": "IDI_PULL",              # pull1.ico
+    "push": "IDI_PUSH",              # Push.ico
+    "sync": "IDI_RELOCATE",          # menurelocate.ico
+    "revert": "IDI_REVERT",          # menurevert.ico
+    "cleanup": "IDI_CLEANUP",        # menucleanup.ico
+    "add": "IDI_ADD",                # menuadd.ico
+    "remove": "IDI_DELETE",          # menudelete.ico
+    "rename": "IDI_RENAME",          # menurename.ico
+    "resolve": "IDI_RESOLVE",        # menuresolve.ico
+    "ignore": "IDI_IGNORE",          # menuignore.ico
+    "unignore": "IDI_IGNORE",        # menuignore.ico
+    "diff": "IDI_DIFF",              # menucompare.ico
+    "prevdiff": "IDI_DIFF",          # menucompare.ico
+    "repostatus": "IDI_SHOWCHANGED", # menushowchanged.ico
+    "blame": "IDI_BLAME",            # TortoiseGitBlame.ico
+    "revisiongraph": "IDI_REVISIONGRAPH",  # menurevisiongraph.ico
+    "repobrowser": "IDI_REPOBROWSE", # menurepobrowse.ico
+    "reflog": "IDI_LOG",             # menulog.ico
+    "fetch": "IDI_UPDATE",           # menuupdate.ico
+    "sendmail": "IDI_MENUSENDMAIL",  # menusendmail.ico
+    "subsync": "IDI_MENUSYNC",       # menusync.ico
+    "branch": "IDI_COPY",            # menucopy.ico
+    "merge": "IDI_MERGE",            # menumerge.ico
+    "merge3": "IDI_MERGE",           # menumerge.ico
+    "mergeabort": "IDI_MERGEABORT",  # menumergeabort.ico
+    "rebase": "IDI_REBASE",          # menurebase.ico
+    "switch": "IDI_SWITCH",          # menuswitch.ico
+    "bisect": "IDI_BISECT",          # menubisect.ico
+    "stash": "IDI_SHELVE",           # menushelve.ico
+    "stashsave": "IDI_SHELVE",       # menushelve.ico
+    "stashpop": "IDI_UNSHELVE",      # menuunshelve.ico
+    "stashapply": "IDI_UNSHELVE",    # menuunshelve.ico
+    "stashlist": "IDI_LOG",          # menulog.ico
+    "clone": "IDI_CLONE",            # menucheckout.ico
+    "addremote": "IDI_ADD",          # menuadd.ico
+    "submodule": "IDI_UPDATE",       # menuupdate.ico
+    "repocreate": "IDI_CREATEREPOS", # menucreaterepos.ico
+    "export": "IDI_EXPORT",          # menuexport.ico
+    "formatpatch": "IDI_CREATEPATCH",  # menudiff.ico
+    "importpatch": "IDI_PATCH",      # menupatch.ico
+    "showcompare": "IDI_DIFF",       # menucompare.ico
+    "settings": "IDI_SETTINGS",      # menusettings.ico
+    "help": "IDI_HELP",              # menuhelp.ico
+    "daemon": "IDI_DAEMON",          # menudaemon.ico
+    "changed": "IDI_SHOWCHANGED",    # menushowchanged.ico
+    "lfslock": "IDI_LFSLOCK",        # menulock.ico
+    "lfsunlock": "IDI_LFSUNLOCK",    # menuunlock.ico
+}
+
 
 class MainMenuDlg(QMainWindow):
     """主窗口：菜单栏 + 工具栏 + 标签面板（仓库管理 / 目录树）+ 命令面板。"""
@@ -106,6 +159,17 @@ class MainMenuDlg(QMainWindow):
          ["settings", "firststart", "updatecheck", "help", "shell",
           "daemon", "rtfm", "changed", "revision"]),
     ]
+
+    @staticmethod
+    def _set_action_icon(action, icon_id: str):
+        """给 QAction 设置 TortoiseGit 菜单图标（读取失败时静默忽略）。"""
+        try:
+            from ..res import icons
+            ic = icons.icon(icon_id)
+            if ic is not None and not ic.isNull():
+                action.setIcon(ic)
+        except Exception:  # noqa: BLE001
+            pass
 
     def __init__(self, repo_path: str = "", parent=None):
         super().__init__(parent, Qt.WindowType.Window)
@@ -182,6 +246,9 @@ class MainMenuDlg(QMainWindow):
             sub = m_cmd.addMenu(tr(grp_key, grp_label))
             for name in items:
                 act = sub.addAction(tr("menu_cmd_" + name, name))
+                icon_id = _CMD_ICON.get(name)
+                if icon_id:
+                    self._set_action_icon(act, icon_id)
                 act.triggered.connect(
                     lambda _=False, n=name: self._dispatch(n))
         other = sorted(available - placed)
@@ -189,6 +256,9 @@ class MainMenuDlg(QMainWindow):
             sub = m_cmd.addMenu(tr("menu_grp_other", "其他"))
             for name in other:
                 act = sub.addAction(tr("menu_cmd_" + name, name))
+                icon_id = _CMD_ICON.get(name)
+                if icon_id:
+                    self._set_action_icon(act, icon_id)
                 act.triggered.connect(
                     lambda _=False, n=name: self._dispatch(n))
 
@@ -434,9 +504,11 @@ class MainMenuDlg(QMainWindow):
             return self._build_classic_menu(path, self.content_list)
         menu = QMenu(self.content_list)
         act_clone = menu.addAction(tr("repo_menu_clone", "Git Clone…"))
+        self._set_action_icon(act_clone, "IDI_CLONE")
         act_clone.triggered.connect(
             lambda _=False, p=path: self._run_clone_in(p))
         act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+        self._set_action_icon(act_set, "IDI_SETTINGS")
         act_set.triggered.connect(
             lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         return menu
@@ -467,30 +539,37 @@ class MainMenuDlg(QMainWindow):
         from PySide6.QtWidgets import QMenu
         menu = QMenu(parent or self.content_list)
         act_open = menu.addAction(tr("file_menu_open", "打开"))
+        self._set_action_icon(act_open, "IDI_OPEN")
         act_open.triggered.connect(lambda _=False, p=path: self._open_with_system(p))
         act_show = menu.addAction(tr("file_menu_show_in", "显示位置"))
         act_show.triggered.connect(lambda _=False, p=path: self._show_in_explorer(p))
         if self._inside_repo(path):
             menu.addSeparator()
             # TortoiseGit 经典“已跟踪文件”菜单（参考 MenuInfo.cpp）：
-            # Commit / Diff / Log / StashSave / Blame / Settings
+            # Commit / Diff / DiffLater / Log / ShowChanged / StashSave / Blame / Settings
             act_commit = menu.addAction(tr("repo_menu_commit", "Commit…"))
+            self._set_action_icon(act_commit, "IDI_COMMIT")
             act_commit.triggered.connect(
                 lambda _=False, p=path: self._dispatch("commit", extra={"path": p}))
             act_diff = menu.addAction(tr("file_menu_diff", "Diff…"))
+            self._set_action_icon(act_diff, "IDI_DIFF")
             act_diff.triggered.connect(
                 lambda _=False, p=path: self._dispatch("diff", extra={"path": p}))
             act_log = menu.addAction(tr("file_menu_log", "Show log"))
+            self._set_action_icon(act_log, "IDI_LOG")
             act_log.triggered.connect(
                 lambda _=False, p=path: self._dispatch("log", extra={"path": p}))
             act_stash = menu.addAction(tr("file_menu_stash", "Stash changes…"))
+            self._set_action_icon(act_stash, "IDI_SHELVE")
             act_stash.triggered.connect(
                 lambda _=False, p=path: self._dispatch("stash", extra={"path": p}))
             act_blame = menu.addAction(tr("file_menu_blame", "Blame…"))
+            self._set_action_icon(act_blame, "IDI_BLAME")
             act_blame.triggered.connect(
                 lambda _=False, p=path: self._dispatch("blame", extra={"path": p}))
             menu.addSeparator()
             act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+            self._set_action_icon(act_set, "IDI_SETTINGS")
             act_set.triggered.connect(
                 lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         return menu
@@ -597,10 +676,14 @@ class MainMenuDlg(QMainWindow):
         menu = QMenu(parent or self.repo_tree)
         for cmd, key, label in _CLASSIC_MENU:
             act = menu.addAction(tr(key, label))
+            icon_id = _CMD_ICON.get(cmd)
+            if icon_id:
+                self._set_action_icon(act, icon_id)
             act.triggered.connect(
                 lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
         menu.addSeparator()
         act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+        self._set_action_icon(act_set, "IDI_SETTINGS")
         act_set.triggered.connect(
             lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         return menu
@@ -757,15 +840,20 @@ class MainMenuDlg(QMainWindow):
         menu.addSeparator()
         for cmd, key, label in _CLASSIC_MENU:
             act = menu.addAction(tr(key, label))
+            icon_id = _CMD_ICON.get(cmd)
+            if icon_id:
+                self._set_action_icon(act, icon_id)
             act.triggered.connect(
                 lambda _=False, c=cmd, p=path: self._dispatch(c, extra={"path": p}))
         menu.addSeparator()
         act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+        self._set_action_icon(act_set, "IDI_SETTINGS")
         act_set.triggered.connect(
             lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         if item is not None:
             menu.addSeparator()
             act_refresh = menu.addAction(tr("refresh"))
+            self._set_action_icon(act_refresh, "IDI_REFRESH")
             act_refresh.triggered.connect(
                 lambda _=False, it=item: self._refresh_folder_item(it))
         return menu
@@ -775,14 +863,17 @@ class MainMenuDlg(QMainWindow):
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self.folder_tree)
         act_clone = menu.addAction(tr("repo_menu_clone", "Git Clone…"))
+        self._set_action_icon(act_clone, "IDI_CLONE")
         act_clone.triggered.connect(
             lambda _=False, p=path: self._run_clone_in(p))
         menu.addSeparator()
         act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+        self._set_action_icon(act_set, "IDI_SETTINGS")
         act_set.triggered.connect(
             lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
         menu.addSeparator()
         act_refresh = menu.addAction(tr("refresh"))
+        self._set_action_icon(act_refresh, "IDI_REFRESH")
         act_refresh.triggered.connect(
             lambda _=False, it=item: self._refresh_folder_item(it))
         return menu

@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal
@@ -34,6 +35,19 @@ from .diffcolors import DiffColors
 from .filetextlines import UnicodeType
 from .inlinediff import inline_spans
 from .viewdata import DiffState, EOL, HideState, ViewData
+
+
+class CharGroup(Enum):
+    """对齐 CBaseView::ECharGroup（按优先级低到高）。"""
+    UNKNOWN = 0
+    CONTROL = 1
+    WHITESPACE = 2
+    WORDSEPARATOR = 3
+    WORDLETTER = 4
+
+
+# 对齐 CBaseView 默认 WordSeparators
+DEFAULT_WORD_SEPARATORS = "[]();:.,{}!@#$%^&*-+=|/\\<>'`~\"?"
 
 
 @dataclass
@@ -94,6 +108,7 @@ class BaseView(QPlainTextEdit):
         self.tab_mode = 0
         self.line_endings = EOL.AutoLine
         self.text_type = UnicodeType.AUTOTYPE
+        self.word_separators = DEFAULT_WORD_SEPARATORS
 
     def line_number_width(self) -> int:
         return 62
@@ -436,6 +451,143 @@ class BaseView(QPlainTextEdit):
                     and le not in (EOL.AutoLine, EOL.NoEnding)):
                 ret.has_mixed_eols = True
         return ret
+
+    # ---- 状态分类（对齐 IsStateConflicted/Empty/Removed/ResolveState）----
+    @staticmethod
+    def is_state_conflicted(state: DiffState) -> bool:
+        return state in (DiffState.Conflict, DiffState.ConflictIgnored,
+                         DiffState.ConflictEmpty, DiffState.ConflictAdded)
+
+    @staticmethod
+    def is_state_empty(state: DiffState) -> bool:
+        return state in (DiffState.ConflictEmpty, DiffState.Unknown,
+                         DiffState.Empty)
+
+    @staticmethod
+    def is_state_removed(state: DiffState) -> bool:
+        return state in (DiffState.Removed, DiffState.TheirsRemoved,
+                         DiffState.YoursRemoved, DiffState.IdenticalRemoved)
+
+    @staticmethod
+    def resolve_state(state: DiffState) -> DiffState:
+        if BaseView.is_state_conflicted(state):
+            if state == DiffState.ConflictEmpty:
+                return DiffState.ConflictResolvedEmpty
+            return DiffState.ConflictsResolved
+        return state
+
+    def is_view_line_empty(self, n_view_line: int) -> bool:
+        if not (0 <= n_view_line < len(self.view_data)):
+            return False
+        return self.is_state_empty(self.view_data[n_view_line].state)
+
+    # ---- 字符分组（对齐 GetCharGroup/IsWordSeparator）----
+    def get_char_group(self, ch: str) -> CharGroup:
+        if ch in (" ", "\t"):
+            return CharGroup.WHITESPACE
+        if ch < "\x20":
+            return CharGroup.CONTROL
+        if ch in self.word_separators:
+            return CharGroup.WORDSEPARATOR
+        return CharGroup.WORDLETTER
+
+    def is_word_separator(self, ch: str) -> bool:
+        return self.get_char_group(ch) in (
+            CharGroup.CONTROL, CharGroup.WHITESPACE, CharGroup.WORDSEPARATOR)
+
+    # ---- 行长（对齐 GetViewLineLength/GetLineLengthWithTabsConverted）----
+    def get_view_line_length(self, n_view_line: int) -> int:
+        if not (0 <= n_view_line < len(self.view_data)):
+            return 0
+        return len(self.view_data[n_view_line].line)
+
+    def get_line_length_with_tabs_converted(self, index: int) -> int:
+        if not (0 <= index < len(self.view_data)):
+            return 0
+        s = self.view_data[index].line
+        tab_count = s.count("\t")
+        return len(s) + tab_count * (self.tab_size - 1)
+
+    def get_indent_chars_for_line(self, x: int, y: int) -> int:
+        """对齐 GetIndentCharsForLine（简化：SMARTINDENT 判定用 tab/空格）。"""
+        if not (0 <= y < len(self.view_data)):
+            return 0
+        line = self.view_data[y].line
+        TABMODE_SMARTINDENT = 1
+        if self.tab_mode & TABMODE_SMARTINDENT:
+            if "\t" in line:
+                return 0  # 用 tab
+            if self.get_largest_space_streak(line) > self.tab_size:
+                return self.tab_size  # 用空格
+        return 0
+
+    # ---- 缩进工具（对齐 Add/RemoveIndentationForSelectedBlock）----
+    def add_indentation_for_selected_block(self, start: int, end: int,
+                                           end_col: int = 1):
+        modified = False
+        for n in range(start, end + 1):
+            if n == end and end_col == 0:
+                continue
+            if not (0 <= n < len(self.view_data)):
+                continue
+            vd = self.view_data[n]
+            if vd.is_empty or not vd.line.strip():
+                continue
+            indent = self.get_indent_chars_for_line(0, n)
+            tab = (" " * indent) if indent > 0 else "\t"
+            vd.line = tab + vd.line
+            modified = True
+        if modified:
+            self.set_modified()
+            self._rebuild()
+
+    def remove_indentation_for_selected_block(self, start: int, end: int,
+                                              end_col: int = 1):
+        modified = False
+        for n in range(start, end + 1):
+            if n == end and end_col == 0:
+                continue
+            if not (0 <= n < len(self.view_data)):
+                continue
+            vd = self.view_data[n]
+            if vd.is_empty:
+                continue
+            s = vd.line
+            pos = 0
+            while pos < self.tab_size and pos < len(s):
+                c = s[pos]
+                if c == " ":
+                    pos += 1
+                    continue
+                if c == "\t":
+                    pos += 1
+                break
+            if pos > 0:
+                vd.line = s[pos:]
+                modified = True
+        if modified:
+            self.set_modified()
+            self._rebuild()
+
+    # ---- 清理全空行（对齐 CleanEmptyLines）----
+    def clean_empty_lines(self, views: List["BaseView"]) -> int:
+        removed = 0
+        i = 0
+        while i < len(self.view_data):
+            all_empty = True
+            for v in views:
+                if i < len(v.view_data) and not self.is_state_empty(
+                        v.view_data[i].state):
+                    all_empty = False
+                    break
+            if all_empty:
+                for v in views:
+                    if i < len(v.view_data):
+                        del v.view_data[i]
+                removed += 1
+                continue
+            i += 1
+        return removed
 
     def _emit_line(self, *_):
         self.line_moved.emit(self.current_view_line())

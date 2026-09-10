@@ -81,3 +81,60 @@ def test_text_type(qapp):
     assert v.get_text_type() == UnicodeType.AUTOTYPE
     v.set_text_type(UnicodeType.UTF8)
     assert v.get_text_type() == UnicodeType.UTF8
+
+
+def test_state_classification(qapp):
+    from pytortoisegit.merge.baseview import BaseView
+    assert BaseView.is_state_conflicted(DiffState.Conflict)
+    assert BaseView.is_state_conflicted(DiffState.ConflictAdded)
+    assert not BaseView.is_state_conflicted(DiffState.Normal)
+    assert BaseView.is_state_empty(DiffState.Empty)
+    assert BaseView.is_state_empty(DiffState.Unknown)
+    assert BaseView.is_state_removed(DiffState.Removed)
+    assert BaseView.is_state_removed(DiffState.TheirsRemoved)
+    assert BaseView.resolve_state(DiffState.Conflict) == DiffState.ConflictsResolved
+    assert BaseView.resolve_state(DiffState.ConflictEmpty) == DiffState.ConflictResolvedEmpty
+    assert BaseView.resolve_state(DiffState.Normal) == DiffState.Normal
+
+
+def test_char_group(qapp):
+    from pytortoisegit.merge.baseview import CharGroup
+    v = _view(["a"])
+    assert v.get_char_group(" ") == CharGroup.WHITESPACE
+    assert v.get_char_group("\t") == CharGroup.WHITESPACE
+    assert v.get_char_group("\x01") == CharGroup.CONTROL
+    assert v.get_char_group("(") == CharGroup.WORDSEPARATOR
+    assert v.get_char_group("a") == CharGroup.WORDLETTER
+    assert v.is_word_separator(" ")
+    assert v.is_word_separator("(")
+    assert not v.is_word_separator("a")
+
+
+def test_clean_empty_lines(qapp):
+    a = _view(["a", "", "b"])
+    b = _view(["x", "", "y"])
+    a.view_data[1].state = DiffState.Empty
+    b.view_data[1].state = DiffState.Empty
+    assert a.clean_empty_lines([a, b]) == 1
+    assert [vd.line for vd in a.view_data] == ["a", "b"]
+    assert [vd.line for vd in b.view_data] == ["x", "y"]
+
+
+def test_indentation(qapp):
+    v = _view(["foo", "bar", "baz"])
+    v.tab_size = 4
+    v.add_indentation_for_selected_block(0, 1)
+    assert v.view_data[0].line == "\tfoo"
+    assert v.view_data[1].line == "\tbar"
+    assert v.view_data[2].line == "baz"
+    v.remove_indentation_for_selected_block(0, 1)
+    assert v.view_data[0].line == "foo"
+    assert v.view_data[1].line == "bar"
+
+
+def test_line_length_with_tabs(qapp):
+    v = _view(["a\tb"])
+    v.tab_size = 4
+    # 3 字符 + 1 tab → 3 + 1*(4-1) = 6
+    assert v.get_line_length_with_tabs_converted(0) == 6
+    assert v.get_view_line_length(0) == 3

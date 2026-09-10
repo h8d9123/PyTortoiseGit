@@ -403,10 +403,10 @@ class MergeFrm(QMainWindow):
             if v.verticalScrollBar() is sender:
                 continue
             bar = v.verticalScrollBar()
+            # 不 blockSignals：否则 QAbstractScrollArea 收不到 valueChanged，
+            # 视口不会真正滚动（只是滚动条数值变了）。值相同则跳过，避免递归。
             if bar.value() != value:
-                bar.blockSignals(True)
                 bar.setValue(value)
-                bar.blockSignals(False)
         self._update_locator_viewport()
 
     def _sync_h_from(self, value: int):
@@ -417,9 +417,7 @@ class MergeFrm(QMainWindow):
             if bar is sender:
                 continue
             if bar.value() != value:
-                bar.blockSignals(True)
                 bar.setValue(value)
-                bar.blockSignals(False)
 
     def _update_locator_viewport(self):
         bar = self.left_view.verticalScrollBar()

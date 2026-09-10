@@ -292,6 +292,7 @@ class BaseView(QPlainTextEdit):
             cursor.insertText("\n")
             self._screen_to_view.append(i)
         self._update_line_area_width()
+        self._apply_extra_selections()
 
     _EOL_MARK = {
         EOL.LF: " ↵LF",

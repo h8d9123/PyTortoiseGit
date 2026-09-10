@@ -149,6 +149,9 @@ def test_scroll_sync(tmp_path_factory, qapp):
     lb.setValue(40)
     qapp.processEvents()
     assert rb.value() == 40
+    # 视口必须真正滚动（不只是滚动条数值）
+    assert frm.left_view.firstVisibleBlock().blockNumber() == 40
+    assert frm.right_view.firstVisibleBlock().blockNumber() == 40
     lh = frm.left_view.horizontalScrollBar()
     rh = frm.right_view.horizontalScrollBar()
     if lh.maximum() > 0:

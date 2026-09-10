@@ -59,7 +59,7 @@ def _split_lines_eol(text: str) -> Tuple[List[str], List[EOL]]:
             j += 1
         lines.append(text[i:j])
         if j >= n:
-            eols.append(EOL.NoneEOL)
+            eols.append(EOL.NoEnding)
             break
         if text[j] == "\r" and j + 1 < n and text[j + 1] == "\n":
             eols.append(EOL.CRLF)
@@ -457,8 +457,8 @@ class DiffData:
             if (not self.ignore_eol
                     and lv.state == DiffState.Normal
                     and rv.state == DiffState.Normal
-                    and lv.ending not in (EOL.NoneEOL, EOL.Autodetect)
-                    and rv.ending not in (EOL.NoneEOL, EOL.Autodetect)
+                    and lv.ending not in (EOL.NoEnding, EOL.AutoLine)
+                    and rv.ending not in (EOL.NoEnding, EOL.AutoLine)
                     and lv.ending != rv.ending):
                 lv.state = rv.state = DiffState.WhitespaceDiff
 

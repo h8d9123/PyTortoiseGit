@@ -27,6 +27,8 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional
 
+from .eol import EOL  # noqa: F401  (re-export，统一使用 EOL.h 对应的枚举)
+
 
 class DiffState(Enum):
     """一行文本的差异状态（翻译自 DiffStates.h 枚举）。"""
@@ -66,20 +68,11 @@ class HideState(Enum):
     Marker = 2
 
 
-class EOL(Enum):
-    """行尾（翻译自 EOL.h）。"""
-    NoneEOL = -1
-    Autodetect = 0
-    LF = 1
-    CRLF = 2
-    CR = 3
-
-
 class ViewData:
     """单行数据：state / linenumber / ending / hidestate / marked。"""
 
     def __init__(self, line: str = "", state: DiffState = DiffState.Unknown,
-                 linenumber: int = -1, ending: EOL = EOL.NoneEOL,
+                 linenumber: int = -1, ending: EOL = EOL.AutoLine,
                  hidestate: HideState = HideState.Shown, marked: bool = False):
         self.line = line
         self.state = state

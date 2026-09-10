@@ -188,8 +188,8 @@ class BaseView(QPlainTextEdit):
             other_vd = other[i] if i < len(other) else None
             eol_differs = (
                 not vd.is_empty and other_vd is not None
-                and vd.ending not in (EOL.NoneEOL, EOL.Autodetect)
-                and other_vd.ending not in (EOL.NoneEOL, EOL.Autodetect)
+                and vd.ending not in (EOL.NoEnding, EOL.AutoLine)
+                and other_vd.ending not in (EOL.NoEnding, EOL.AutoLine)
                 and vd.ending != other_vd.ending)
             marker = ""
             if not vd.is_empty and (self.show_whitespaces or eol_differs):

@@ -27,7 +27,8 @@ from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
-    QColor, QFont, QFontMetrics, QPainter, QPen, QTextCharFormat, QTextCursor,
+    QColor, QFont, QFontMetrics, QPainter, QPen, QTextBlockFormat,
+    QTextCharFormat, QTextCursor,
 )
 from PySide6.QtWidgets import QPlainTextEdit, QWidget
 
@@ -246,13 +247,15 @@ class BaseView(QPlainTextEdit):
             display = text + marker
             cursor.insertText(display)
             block = doc.findBlockByNumber(doc.blockCount() - 1)
-            sel = QTextCursor(block)
-            sel.select(QTextCursor.SelectionType.LineUnderCursor)
+            # 用块格式填充整行背景（对齐原版 DrawSingleLine：整行铺底色，
+            # 而字符格式只覆盖文字本身）。普通行也必须显式设置，否则会继承
+            # 上一块的背景色。
+            bf = QTextBlockFormat()
             bg = self.colors.back_color(vd.state)
             if bg is not None and vd.state != DiffState.Normal:
-                fmt = QTextCharFormat()
-                fmt.setBackground(bg)
-                sel.mergeCharFormat(fmt)
+                bf.setBackground(bg)
+            bc = QTextCursor(block)
+            bc.setBlockFormat(bf)
             if self.inline_diff and i < len(other):
                 ov = other[i]
                 if (vd.state in (DiffState.Removed, DiffState.TheirsRemoved, DiffState.YoursRemoved)

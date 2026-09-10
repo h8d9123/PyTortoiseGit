@@ -30,13 +30,18 @@ def _make_repo(root, before, after):
 
 
 def _block_bg(view, index):
+    from PySide6.QtCore import Qt
     from PySide6.QtGui import QTextCursor
     blk = view.document().findBlockByNumber(index)
+    # 行背景现在用块格式（整行铺底），行内差异仍用字符格式
+    bg = blk.blockFormat().background()
+    if bg.style() != Qt.BrushStyle.NoBrush:
+        return bg.color().name()
     cur = QTextCursor(blk)
     cur.movePosition(QTextCursor.MoveOperation.Right,
                      QTextCursor.MoveMode.KeepAnchor)
-    bg = cur.charFormat().background()
-    return bg.color().name() if bg.style() else None
+    cbg = cur.charFormat().background()
+    return cbg.color().name() if cbg.style() != Qt.BrushStyle.NoBrush else None
 
 
 @pytest.fixture(scope="module")
@@ -113,6 +118,32 @@ def test_eol_difference_shown(tmp_path_factory, qapp):
     assert frm.right_view.view_data[0].state == DiffState.WhitespaceDiff
     assert "CRLF" in frm.right_view.document().findBlockByNumber(0).text()
     assert "LF" in frm.left_view.document().findBlockByNumber(0).text()
+
+
+def test_line_background_full_width(tmp_path_factory, qapp):
+    """改动行背景铺满整行（块格式），普通行无背景（对齐 DrawSingleLine）。"""
+    from PySide6.QtCore import Qt
+    from pytortoisegit.merge.mergefrm import MergeFrm
+    root = tmp_path_factory.mktemp("mergeview_fw")
+    repo = _make_repo(root, "short\nsame\n", "SHORT\nsame\n")
+    frm = MergeFrm(repo, "a.txt", "HEAD", None)
+    frm.resize(600, 200)
+    frm.show()
+    qapp.processEvents()
+    lv = frm.left_view
+    doc = lv.document()
+
+    def bg_of(text):
+        for i in range(doc.blockCount()):
+            b = doc.findBlockByNumber(i)
+            if b.text() == text:
+                return b.blockFormat().background()
+        return None
+
+    removed_bg = bg_of("short")
+    assert removed_bg.style() != Qt.BrushStyle.NoBrush
+    assert removed_bg.color().name() == "#ffc864"
+    assert bg_of("same").style() == Qt.BrushStyle.NoBrush
 
 
 def test_caret_line_sync(tmp_path_factory, qapp):

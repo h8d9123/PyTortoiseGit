@@ -76,3 +76,29 @@ def test_gotolinedlg(qapp):
     dlg.set_label("行号:")
     dlg.spin.setValue(7)
     assert dlg.get_line_number() == 7
+
+
+_DIFF = """diff --git a/a.txt b/a.txt
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-x
++y
+"""
+
+
+def test_filepatchesdlg(qapp):
+    from pytortoisegit.merge.filepatchesdlg import FilePatchesDlg
+    from pytortoisegit.merge.patch import Patch
+    p = Patch()
+    p.parse_text(_DIFF)
+    dlg = FilePatchesDlg()
+    called = []
+    assert dlg.init(p, lambda *a: called.append(a), "/tmp")
+    assert dlg.has_files()
+    assert dlg.tree.topLevelItemCount() == 1
+    assert dlg.set_file_status_as_patched("a.txt")
+    assert not dlg.set_file_status_as_patched("nope.txt")
+    dlg.tree.setCurrentItem(dlg.tree.topLevelItem(0))
+    dlg.patch_selected()
+    assert called  # 回调被调用

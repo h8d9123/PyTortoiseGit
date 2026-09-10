@@ -153,7 +153,7 @@ class BaseView(QPlainTextEdit):
                     vd = self.view_data[view_i]
                     num = str(vd.linenumber) if vd.linenumber >= 0 else ""
                     p.drawText(4, top, 36, fm.height(), Qt.AlignmentFlag.AlignRight, num)
-                    icon = self._state_icon(vd.state)
+                    icon = self._state_icon(vd.state, vd.marked)
                     if icon is not None:
                         p.drawPixmap(42, top + max(0, (fm.height() - 16) // 2), icon.pixmap(16, 16))
             block = block.next()
@@ -715,26 +715,36 @@ class BaseView(QPlainTextEdit):
 
     _STATE_ICON = {
         DiffState.Added: "IDI_ADDEDLINE",
-        DiffState.Removed: "IDI_REMOVEDLINE",
-        DiffState.Edited: "IDI_LINEEDITED",
-        DiffState.Conflict: "IDI_CONFLICTEDLINE",
-        DiffState.ConflictIgnored: "IDI_CONFLICTEDIGNOREDLINE",
-        DiffState.ConflictAdded: "IDI_CONFLICTEDLINE",
-        DiffState.WhitespaceDiff: "IDI_WHITESPACELINE",
-        DiffState.MovedFrom: "IDI_MOVEDLINE",
-        DiffState.MovedTo: "IDI_MOVEDLINE",
-        DiffState.Normal: "IDI_EQUALLINE",
         DiffState.TheirsAdded: "IDI_ADDEDLINE",
         DiffState.YoursAdded: "IDI_ADDEDLINE",
+        DiffState.IdenticalAdded: "IDI_ADDEDLINE",
+        DiffState.ConflictAdded: "IDI_ADDEDLINE",
+        DiffState.Removed: "IDI_REMOVEDLINE",
         DiffState.TheirsRemoved: "IDI_REMOVEDLINE",
         DiffState.YoursRemoved: "IDI_REMOVEDLINE",
-        DiffState.IdenticalAdded: "IDI_ADDEDLINE",
         DiffState.IdenticalRemoved: "IDI_REMOVEDLINE",
+        DiffState.Conflict: "IDI_CONFLICTEDLINE",
+        DiffState.ConflictIgnored: "IDI_CONFLICTEDIGNOREDLINE",
+        DiffState.Edited: "IDI_LINEEDITED",
+        DiffState.MovedFrom: "IDI_MOVEDLINE",
+        DiffState.MovedTo: "IDI_MOVEDLINE",
+        DiffState.IdenticalMovedFrom: "IDI_MOVEDLINE",
+        DiffState.IdenticalMovedTo: "IDI_MOVEDLINE",
+        DiffState.Whitespace: "IDI_WHITESPACELINE",
+        DiffState.WhitespaceDiff: "IDI_WHITESPACELINE",
+        DiffState.Filtered: "IDI_EQUALLINE",
+        DiffState.FilteredDiff: "IDI_EQUALLINE",
+        DiffState.ConflictsResolved: "IDI_EQUALLINE",
     }
 
-    def _state_icon(self, state: DiffState):
-        key = self._STATE_ICON.get(state)
+    def _state_icon(self, state: DiffState, marked: bool = False):
+        key = "IDI_LINEMARKED" if marked else self._STATE_ICON.get(state)
         if not key:
+            return None
+        try:
+            from ..res import icons
+            return icons.icon(key)
+        except Exception:  # noqa: BLE001
             return None
         try:
             from ..res import icons

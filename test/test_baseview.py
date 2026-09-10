@@ -191,3 +191,17 @@ def test_use_view_file_of_marked(qapp):
     a.use_view_file_of_marked(b)
     assert a.view_data[0].line == "x1"  # 未标记 → 保留
     assert a.view_data[1].line == "y2"  # 标记 → 用 b 覆盖
+
+
+def test_state_icon_mapping(qapp):
+    from pytortoisegit.merge.baseview import BaseView
+    m = BaseView._STATE_ICON
+    assert m[DiffState.Added] == "IDI_ADDEDLINE"
+    assert m[DiffState.TheirsAdded] == "IDI_ADDEDLINE"
+    assert m[DiffState.Removed] == "IDI_REMOVEDLINE"
+    assert m[DiffState.Conflict] == "IDI_CONFLICTEDLINE"
+    assert m[DiffState.ConflictIgnored] == "IDI_CONFLICTEDIGNOREDLINE"
+    assert m[DiffState.Edited] == "IDI_LINEEDITED"
+    assert m[DiffState.MovedFrom] == "IDI_MOVEDLINE"
+    # Normal 无图标（对齐 C++：普通行不显示图标）
+    assert DiffState.Normal not in m

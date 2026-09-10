@@ -67,6 +67,26 @@ _ENCODING = {
 }
 
 
+_ENCODING_NAMES = {
+    UnicodeType.ASCII: "ASCII",
+    UnicodeType.UTF8: "UTF-8",
+    UnicodeType.UTF8BOM: "UTF-8 BOM",
+    UnicodeType.UTF16_LE: "UTF-16 LE",
+    UnicodeType.UTF16_LEBOM: "UTF-16 LE BOM",
+    UnicodeType.UTF16_BE: "UTF-16 BE",
+    UnicodeType.UTF16_BEBOM: "UTF-16 BE BOM",
+    UnicodeType.UTF32_LE: "UTF-32 LE",
+    UnicodeType.UTF32_BE: "UTF-32 BE",
+    UnicodeType.BINARY: "Binary",
+    UnicodeType.AUTOTYPE: "Auto",
+}
+
+
+def get_encoding_name(utype: UnicodeType) -> str:
+    """对齐 CFileTextLines::GetEncodingName。"""
+    return _ENCODING_NAMES.get(utype, str(utype))
+
+
 def check_unicode_type(buf: bytes) -> UnicodeType:
     """对齐 CFileTextLines::CheckUnicodeType。"""
     cb = len(buf)

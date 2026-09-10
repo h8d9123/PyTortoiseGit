@@ -122,3 +122,20 @@ def test_locatorbar_stripes(qapp):
     lb.set_states([DiffState.Normal, DiffState.Added])
     assert len(lb._stripes) == 1
 
+
+def test_mergefrm_statusbar_encoding(tmp_path_factory, qapp):
+    """状态栏显示行尾与编码（对齐 CMainFrame）。"""
+    from pytortoisegit.merge.mergefrm import MergeFrm
+    from pytortoisegit.merge.eol import EOL
+    from pytortoisegit.merge.filetextlines import UnicodeType
+    root = tmp_path_factory.mktemp("mergeview_sb")
+    repo = _make_repo(root, "a\nb\n", "a\nb\n")
+    frm = MergeFrm(repo, "a.txt", "HEAD", None)
+    frm.left_view.set_line_ending_style(EOL.CRLF)
+    for vd in frm.left_view.view_data:
+        vd.ending = EOL.CRLF
+    frm.left_view.set_text_type(UnicodeType.UTF8)
+    frm._update_statusbar_encoding()
+    assert frm._eol_lab.text() == "CRLF"
+    assert frm._enc_lab.text() == "UTF-8"
+

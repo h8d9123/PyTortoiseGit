@@ -148,8 +148,39 @@ class MergeFrm(QMainWindow):
     def _build_statusbar(self):
         self._status = QLabel("")
         self.statusBar().addWidget(self._status, 1)
+        self._eol_lab = QLabel("")
+        self.statusBar().addPermanentWidget(self._eol_lab)
+        self._enc_lab = QLabel("")
+        self.statusBar().addPermanentWidget(self._enc_lab)
         self._col_lab = QLabel(tr("tm_col", "列: 0"))
         self.statusBar().addPermanentWidget(self._col_lab)
+
+    def _update_statusbar_encoding(self):
+        """状态栏显示行尾与编码（对齐 CMainFrame 的 EOL/编码面板）。"""
+        from .eol import get_eol_name
+        from .filetextlines import get_encoding_name
+        v = self.left_view
+        self._eol_lab.setText(get_eol_name(v.get_line_endings()))
+        self._enc_lab.setText(get_encoding_name(v.get_text_type()))
+
+    def ask_user_for_new_line_endings_and_text_type(self, text_id: int = 0) -> bool:
+        """打开编码/行尾对话框并应用到目标视图（对齐 AskUserForNewLineEndingsAndTextType）。"""
+        v = self._target_view()
+        if v.is_readonly():
+            return False
+        from .encodingdlg import EncodingDlg
+        from .filetextlines import UnicodeType
+        dlg = EncodingDlg(self, texttype=int(v.get_text_type().value),
+                          eol=v.get_line_endings())
+        if not dlg.exec():
+            return False
+        try:
+            v.set_text_type(UnicodeType(dlg.texttype))
+        except ValueError:
+            pass
+        v.replace_line_endings(dlg.lineendings)
+        self._update_statusbar_encoding()
+        return True
 
     def _views(self) -> List[BaseView]:
         out = [self.left_view, self.right_view]
@@ -786,6 +817,7 @@ class MergeFrm(QMainWindow):
             self._acts[key].setEnabled(three)
         self._acts["mark"].setEnabled(three and not self._marked_as_resolved)
         self._sync_edit_action()
+        self._update_statusbar_encoding()
 
     def _toggle_edit(self, on: bool):
         v = self._active_view()

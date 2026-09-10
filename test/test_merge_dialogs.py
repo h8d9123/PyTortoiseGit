@@ -116,3 +116,32 @@ def test_settings_dialog(qapp):
     assert opts["tab_size"] == 8
     assert opts["ignoreeol"] is True
     assert opts["one_pane"] is True
+
+
+def test_mergefiles_command(qapp, tmp_path):
+    """独立文件合并：/theirs /mine → MergeFrm 本地两栏（对齐 TortoiseMerge）。"""
+    from pytortoisegit.cmdline import CommandLine
+    from pytortoisegit.commands.dispatcher import CommandContext
+    from pytortoisegit.merge.mergefrm import MergeFrm
+    import pytortoisegit.commands.mergefiles as mf
+    a = tmp_path / "theirs.txt"
+    a.write_bytes(b"x\n")
+    b = tmp_path / "mine.txt"
+    b.write_bytes(b"y\n")
+    cl = CommandLine(verb="mergefiles")
+    cl.options["theirs"] = [str(a)]
+    cl.options["mine"] = [str(b)]
+    ctx = CommandContext(qapp=None, cl=cl)
+    holder = {}
+    orig = MergeFrm.exec
+    MergeFrm.exec = lambda self: holder.setdefault("f", self)
+    try:
+        res = mf.mergefiles(ctx)
+    finally:
+        MergeFrm.exec = orig
+    assert res == "ok"
+    f = holder["f"]
+    assert f._local_left == str(a)
+    assert f._local_right == str(b)
+    assert [vd.line for vd in f.left_view.view_data] == ["x"]
+    assert [vd.line for vd in f.right_view.view_data] == ["y"]

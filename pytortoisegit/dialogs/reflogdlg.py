@@ -94,7 +94,7 @@ class ReflogDlg(QDialog):
         super().__init__(parent)
         self.repo = repo
         self.entries: List[ReflogEntry] = []
-        self.setWindowTitle(f"{repo.name} — {tr('reflog_title', '引用日志 (reflog)')}")
+        self.setWindowTitle(f"{repo.name} — {tr('reflog_title', 'Reference log (reflog)')}")
         self.resize(820, 520)
         self._build_ui()
         self._load()
@@ -107,8 +107,8 @@ class ReflogDlg(QDialog):
 
         self.table = QTableWidget(0, 4, self)
         self.table.setHorizontalHeaderLabels(
-            [tr("reflog_selector", "选择器"), tr("log_revision", "修订"),
-             tr("log_date", "日期"), tr("log_message", "消息")])
+            [tr("reflog_selector", "Selector"), tr("log_revision", "Revision"),
+             tr("log_date", "Date"), tr("log_message", "Message")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -121,7 +121,7 @@ class ReflogDlg(QDialog):
         from PySide6.QtWidgets import QComboBox, QPushButton, QLabel
         self.ref_combo = QComboBox(self)
         self.ref_combo.setEditable(True)
-        self.ref_label = QLabel(tr("reflog_hint", "当前分支的 reflog"), self)
+        self.ref_label = QLabel(tr("reflog_hint", "Reflog of the current branch"), self)
         self.ref_combo.editTextChanged.connect(lambda *_a: self._load())
         self.btn_search = QPushButton(tr("reflog_search", "&Search..."), self)
         self.btn_search.clicked.connect(self._load)
@@ -183,10 +183,10 @@ class ReflogDlg(QDialog):
         if entry is None:
             return
         menu = QMenu(self)
-        act_copy = menu.addAction(tr("log_copyhash", "复制完整哈希"))
-        act_checkout = menu.addAction(tr("log_checkout", "检出此提交…"))
-        act_branch = menu.addAction(tr("log_newbranch", "在此创建分支…"))
-        act_diff = menu.addAction(tr("log_diff", "与此提交比较…"))
+        act_copy = menu.addAction(tr("log_copyhash", "Copy full hash"))
+        act_checkout = menu.addAction(tr("log_checkout", "Checkout this commit…"))
+        act_branch = menu.addAction(tr("log_newbranch", "Create branch here…"))
+        act_diff = menu.addAction(tr("log_diff", "Compare with this commit…"))
         chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
         if chosen is None:
             return

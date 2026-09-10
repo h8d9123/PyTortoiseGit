@@ -70,7 +70,7 @@ class CloneDlg(QDialog):
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
-        self.setWindowTitle(spec.caption or tr("clone_title", "克隆仓库"))
+        self.setWindowTitle(spec.caption or tr("clone_title", "Clone repository"))
         font = self.font()
         font.setPointSize(spec.font_size or 9)
         self.setFont(font)
@@ -135,8 +135,7 @@ class CloneDlg(QDialog):
         self.btn_cancel.clicked.connect(self.reject)
         self.btn_help = QPushButton(tr("help"), self)
         self.btn_help.clicked.connect(lambda: QMessageBox.information(
-            self, tr("help"), tr("clone_help",
-                                 "填入要克隆的仓库 URL 与目标目录，开始克隆。")))
+            self, tr("help"), tr("clone_help", "Enter the repository URL to clone and the target directory, then start cloning.")))
 
         # 复选框 -> 编辑框 启用联动（对齐 TGit）
         for chk, edit in ((self.chk_depth, self.depth_edit),
@@ -263,14 +262,14 @@ class CloneDlg(QDialog):
 
     def _browse_dir(self):
         path = QFileDialog.getExistingDirectory(
-            self, tr("clone_dir", "目录"), self.dir_edit.text() or os.getcwd())
+            self, tr("clone_dir", "Directory"), self.dir_edit.text() or os.getcwd())
         if path:
             self.dir_edit.setText(path)
             self._dir_custom = True
 
     def _browse_putty(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, tr("clone_putty", "选择 Putty 密钥"),
+            self, tr("clone_putty", "Select PuTTY key"),
             self.putty_edit.text() or os.path.expanduser("~"),
             "Putty Key (*.ppk);;All Files (*.*)")
         if path:
@@ -309,7 +308,7 @@ class CloneDlg(QDialog):
         if os.path.exists(target) and os.path.isdir(target) and os.listdir(target):
             resp = QMessageBox.question(
                 self, tr("confirm"),
-                tr("clone_not_empty", "目标目录非空，仍要继续吗？"),
+                tr("clone_not_empty", "Target directory is not empty. Continue anyway?"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if resp != QMessageBox.StandardButton.Yes:
                 return
@@ -330,7 +329,7 @@ class CloneDlg(QDialog):
             args += ["-c", f"core.sshCommand=ssh -i {self.putty_edit.text().strip()}"]
         args += [url, target]
 
-        dlg = ProgressDialog(title=tr("clone_title", "克隆仓库"), parent=self)
+        dlg = ProgressDialog(title=tr("clone_title", "Clone repository"), parent=self)
         dlg.set_label("git clone " + url)
         dlg.run(lambda: _clone_reporter(dlg, url, target, args))
         dlg.on_finish(lambda ok: self._after_clone(ok, target))
@@ -397,5 +396,5 @@ def _clone_reporter(dlg, url: str, target: str, args) -> bool:
     if result.stderr:
         dlg.log(result.stderr)
     if result.returncode != 0 and not result.stderr:
-        dlg.log(tr("clone_failed", "克隆失败"))
+        dlg.log(tr("clone_failed", "Clone failed"))
     return result.returncode == 0

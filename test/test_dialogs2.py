@@ -336,8 +336,13 @@ def test_createrepo_dialog(qapp):
 
 def test_checkforupdates_dialog(qapp):
     from pytortoisegit.dialogs.checkforupdatesdlg import CheckForUpdatesDlg
-    dlg = _smoke(qapp, lambda: CheckForUpdatesDlg())
-    assert "version" in dlg.lbl_your.text().lower()
+    from pytortoisegit.res import strings
+    strings.set_language("en")
+    try:
+        dlg = _smoke(qapp, lambda: CheckForUpdatesDlg())
+        assert "version" in dlg.lbl_your.text().lower()
+    finally:
+        strings.set_language("zh")
 
 
 def test_bisectstart_dialog(qapp, repo):

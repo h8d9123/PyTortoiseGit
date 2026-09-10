@@ -207,7 +207,7 @@ class _GeneralPage(_SettingPage):
         if not start:
             start = shutil.which("git") or os.path.expanduser("~")
         path = QFileDialog.getExistingDirectory(
-            self, tr("set_browse", "选择 Git 目录"), start)
+            self, tr("set_browse", "Select Git directory"), start)
         if path and self.git_path_edit is not None:
             self.git_path_edit.setText(path)
 
@@ -229,31 +229,30 @@ class _GeneralPage(_SettingPage):
 
     def _show_env(self):
         lines = ["%s=%s" % (k, v) for k, v in sorted(os.environ.items())]
-        QMessageBox.information(self, tr("set_env", "环境变量"),
-                                "\n".join(lines) or "（无）")
+        QMessageBox.information(self, tr("set_env", "Environment variables"),
+                                "\n".join(lines) or tr("none", "(none)"))
 
     def _run_firststart(self):
         try:
             from ..dialogs.firststartdlg import FirstStartWizard
         except Exception:
             QMessageBox.information(self, tr("set_firststart", "First Start Wizard"),
-                                    tr("firststart_unavailable", "First Start Wizard 不可用。"))
+                                    tr("firststart_unavailable", "First Start Wizard is not available."))
         else:
             FirstStartWizard(self).exec_wizard()
 
     def _create_library(self):
         # Git 随附库（git-extras 等）在 Python 版中无对应概念，仅提示已就绪。
         QMessageBox.information(self, tr("set_library", "Create Library"),
-                                tr("set_library_done", "不需要额外创建库。"))
+                                tr("set_library_done", "No additional library needs to be created."))
 
     def _check_newer_now(self):
         try:
             from ..__init__ import __version__
         except Exception:
             __version__ = "0.0.0"
-        QMessageBox.information(self, tr("set_checknewer", "检查更新"),
-                                tr("set_checknewer_msg",
-                                   "当前版本：{ver}。此功能为占位，尚不支持自动联网检查。").format(ver=__version__))
+        QMessageBox.information(self, tr("set_checknewer", "Check for updates"),
+                                tr("set_checknewer_msg", "Current version: {ver}. This feature is a placeholder; automatic online checks are not supported yet.").format(ver=__version__))
 
     def _on_path_changed(self):
         path = self.git_path_edit.text().strip() if self.git_path_edit else ""
@@ -377,7 +376,7 @@ class SettingsDlg(QDialog):
 
     # ---- UI ----
     def _build_ui(self):
-        title = tr("settings_title", "设置")
+        title = tr("settings_title", "Settings")
         if self.repo is not None:
             title = f"{title} - {self.repo.root}"
         self.setWindowTitle(title)
@@ -512,7 +511,7 @@ class SettingsDlg(QDialog):
             self.stack.setCurrentIndex(idx)
 
     def _on_help(self):
-        QMessageBox.information(self, tr("help"), tr("settings_title", "设置"))
+        QMessageBox.information(self, tr("help"), tr("settings_title", "Settings"))
 
     # ---- 命名自定义逻辑（Git 页）----
     @property

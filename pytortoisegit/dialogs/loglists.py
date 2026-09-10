@@ -41,16 +41,16 @@ FILE_COL_SIZE = 7
 
 def log_column_labels() -> List[str]:
     return [
-        tr("log_graph", "图"),
-        tr("log_actions", "动作"),
-        tr("log_message", "信息"),
-        tr("log_author", "作者"),
-        tr("log_date", "日期"),
+        tr("log_graph", "Graph"),
+        tr("log_actions", "Action"),
+        tr("log_message", "Message"),
+        tr("log_author", "Author"),
+        tr("log_date", "Date"),
         tr("log_hash", "SHA-1"),
-        tr("log_email", "电子邮件"),
-        tr("log_commit_name", "提交者"),
-        tr("log_commit_email", "提交者电子邮件"),
-        tr("log_commit_date", "提交日期"),
+        tr("log_email", "E-mail"),
+        tr("log_commit_name", "Committer"),
+        tr("log_commit_email", "Committer E-mail"),
+        tr("log_commit_date", "Commit date"),
     ]
 
 
@@ -61,14 +61,14 @@ def log_default_hidden() -> tuple:
 
 def file_column_labels() -> List[str]:
     return [
-        tr("log_file_path", "文件"),
-        tr("log_file_filename", "文件名"),
-        tr("log_file_ext", "扩展名"),
-        tr("log_file_status", "状态"),
-        tr("log_file_add", "增加"),
-        tr("log_file_del", "删除"),
-        tr("log_file_modified", "修改日期"),
-        tr("log_file_size", "大小"),
+        tr("log_file_path", "File"),
+        tr("log_file_filename", "File name"),
+        tr("log_file_ext", "Extension"),
+        tr("log_file_status", "Status"),
+        tr("log_file_add", "Added"),
+        tr("log_file_del", "Deleted"),
+        tr("log_file_modified", "Modified"),
+        tr("log_file_size", "Size"),
     ]
 
 
@@ -89,13 +89,13 @@ _STATUS_COLOR = {
 
 
 _STATUS_TEXT = {
-    "M": lambda: tr("log_st_modified", "已修改"),
-    "A": lambda: tr("log_st_added", "已添加"),
-    "D": lambda: tr("log_st_deleted", "已删除"),
-    "R": lambda: tr("log_st_renamed", "已重命名"),
-    "C": lambda: tr("log_st_copied", "已复制"),
-    "T": lambda: tr("log_st_type", "类型变更"),
-    "U": lambda: tr("log_st_unmerged", "未合并"),
+    "M": lambda: tr("log_st_modified", "Modified"),
+    "A": lambda: tr("log_st_added", "Added"),
+    "D": lambda: tr("log_st_deleted", "Deleted"),
+    "R": lambda: tr("log_st_renamed", "Renamed"),
+    "C": lambda: tr("log_st_copied", "Copied"),
+    "T": lambda: tr("log_st_type", "Type changed"),
+    "U": lambda: tr("log_st_unmerged", "Unmerged"),
 }
 
 
@@ -144,7 +144,7 @@ class ChangedFile:
         if not self.old_path:
             return self.path
         # 对齐 GetCellText(eCol_Name)：path + " " + IDS_STATUSLIST_FROM
-        return self.path + " " + tr("log_file_from", "(来自 {})").format(self.old_path)
+        return self.path + " " + tr("log_file_from", "(from {})").format(self.old_path)
 
 
 def parse_show_files(text: str) -> List[ChangedFile]:

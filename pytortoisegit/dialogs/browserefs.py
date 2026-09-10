@@ -52,7 +52,7 @@ class BrowseRefsDlg(QDialog):
         super().__init__(parent)
         self.repo = repo
         self.current_branch = repo.current_branch()
-        self.setWindowTitle(f"{repo.name} — {tr('browse_refs', '分支与标签')}")
+        self.setWindowTitle(f"{repo.name} — {tr('browse_refs', 'Branches and tags')}")
         self.resize(720, 520)
         self._build_ui()
         self._load()
@@ -60,14 +60,14 @@ class BrowseRefsDlg(QDialog):
     def _build_ui(self):
         lay = QVBoxLayout(self)
         head = QHBoxLayout()
-        head.addWidget(QLabel(tr("browse_current", "当前分支") + "：", self))
+        head.addWidget(QLabel(tr("browse_current", "Current branch") + "：", self))
         self._curr = QLabel(self.current_branch, self)
         head.addWidget(self._curr)
         head.addStretch(1)
         lay.addLayout(head)
 
         self.tree = QTreeWidget(self)
-        self.tree.setHeaderLabels([tr("ref_name", "名称"), tr("ref_target", "指向"), tr("ref_subject", "信息")])
+        self.tree.setHeaderLabels([tr("ref_name", "Name"), tr("ref_target", "Target"), tr("ref_subject", "Message")])
         self.tree.setColumnWidth(0, 220)
         self.tree.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection)
@@ -77,10 +77,10 @@ class BrowseRefsDlg(QDialog):
 
         box = QDialogButtonBox(self)
         self._btn_checkout = box.addButton(
-            tr("browse_checkout", "检出"), QDialogButtonBox.ButtonRole.ActionRole)
+            tr("browse_checkout", "Checkout"), QDialogButtonBox.ButtonRole.ActionRole)
         self._btn_checkout.clicked.connect(self._checkout_selected)
         self._btn_delete = box.addButton(
-            tr("browse_delete", "删除…"), QDialogButtonBox.ButtonRole.ActionRole)
+            tr("browse_delete", "Delete…"), QDialogButtonBox.ButtonRole.ActionRole)
         self._btn_delete.clicked.connect(self._delete_selected)
         sep = box.addButton(QDialogButtonBox.StandardButton.Close)
         sep.setText(tr("close"))
@@ -104,9 +104,9 @@ class BrowseRefsDlg(QDialog):
         }
         for full, r in refs.items():
             by_type.setdefault(r.ref_type, []).append(r)
-        for tname, label in (("branch", tr("browse_branches", "分支")),
-                             ("remote", tr("browse_remotes", "远程分支")),
-                             ("tag", tr("browse_tags", "标签"))):
+        for tname, label in (("branch", tr("browse_branches", "Branches")),
+                             ("remote", tr("browse_remotes", "Remote branches")),
+                             ("tag", tr("browse_tags", "Tags"))):
             group = by_type.get(tname, [])
             if not group:
                 continue
@@ -146,7 +146,7 @@ class BrowseRefsDlg(QDialog):
             from ..res.strings import format_string
             QMessageBox.information(
                 self, tr("information"),
-                format_string(tr("browse_checkout_remote", "无法直接检出远程分支 {name}，请用 git checkout -b <local> {name}"),
+                format_string(tr("browse_checkout_remote", "Cannot directly check out remote branch {name}; use git checkout -b <local> {name}"),
                               name=fullname))
             return
         else:
@@ -166,7 +166,7 @@ class BrowseRefsDlg(QDialog):
         name = fullname.replace("refs/heads/", "").replace("refs/tags/", "").replace("refs/remotes/", "")
         from PySide6.QtWidgets import QMessageBox
         resp = QMessageBox.question(
-            self, tr("confirm"), f"确定删除「{name}」吗？",
+            self, tr("confirm"), tr('browse_delete_confirm', 'Delete "{name}"?').format(name=name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if resp != QMessageBox.StandardButton.Yes:
             return
@@ -191,8 +191,8 @@ class BrowseRefsDlg(QDialog):
             return
         self.tree.setCurrentItem(item)
         menu = QMenu(self)
-        act_checkout = menu.addAction(tr("browse_checkout", "检出"))
-        act_delete = menu.addAction(tr("browse_delete", "删除…"))
+        act_checkout = menu.addAction(tr("browse_checkout", "Checkout"))
+        act_delete = menu.addAction(tr("browse_delete", "Delete…"))
         chosen = menu.exec(self.tree.viewport().mapToGlobal(pos))
         if chosen is act_checkout:
             self._checkout_selected()

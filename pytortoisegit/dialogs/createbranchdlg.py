@@ -45,7 +45,7 @@ class CreateBranchDlg(QDialog):
         super().__init__(parent)
         self.repo = repo
         self.start = start
-        self.setWindowTitle(tr("branch_new", "新建分支"))
+        self.setWindowTitle(tr("branch_new", "New branch"))
         self.name: str = ""
         self._build_ui()
 
@@ -54,13 +54,13 @@ class CreateBranchDlg(QDialog):
         form = QFormLayout()
         self.name_edit = QLineEdit(self)
         self.name_edit.setPlaceholderText("feature/xxx")
-        form.addRow(tr("branch_name", "分支名称"), self.name_edit)
+        form.addRow(tr("branch_name", "Branch name"), self.name_edit)
 
-        self.switch_box = QCheckBox(tr("branch_switch", "创建后立即切到该分支"), self)
+        self.switch_box = QCheckBox(tr("branch_switch", "Switch to this branch after creating"), self)
         self.switch_box.setChecked(True)
         form.addRow("", self.switch_box)
 
-        self.track_box = QCheckBox(tr("branch_track", "基于当前分支"), self)
+        self.track_box = QCheckBox(tr("branch_track", "Base on current branch"), self)
         self.track_box.setChecked(self.start == "HEAD")
         self.track_box.setEnabled(False)
         form.addRow("", self.track_box)
@@ -99,7 +99,7 @@ class CreateTagDlg(QDialog):
         super().__init__(parent)
         self.repo = repo
         self.start = start
-        self.setWindowTitle(tr("tag_new", "新建标签"))
+        self.setWindowTitle(tr("tag_new", "New tag"))
         self.name: str = ""
         self._build_ui()
 
@@ -108,11 +108,11 @@ class CreateTagDlg(QDialog):
         form = QFormLayout()
         self.name_edit = QLineEdit(self)
         self.name_edit.setPlaceholderText("v1.0.0")
-        form.addRow(tr("tag_name", "标签名称"), self.name_edit)
+        form.addRow(tr("tag_name", "Tag name"), self.name_edit)
         self.msg_edit = QLineEdit(self)
-        self.msg_edit.setPlaceholderText(tr("tag_msg_hint", "仅附注标签需要"))
-        form.addRow(tr("tag_message", "附注"), self.msg_edit)
-        self.annotated_box = QCheckBox(tr("tag_annotated", "创建附注标签"), self)
+        self.msg_edit.setPlaceholderText(tr("tag_msg_hint", "Only needed for annotated tags"))
+        form.addRow(tr("tag_message", "Annotation"), self.msg_edit)
+        self.annotated_box = QCheckBox(tr("tag_annotated", "Create annotated tag"), self)
         form.addRow("", self.annotated_box)
         lay.addLayout(form)
 

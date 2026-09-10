@@ -45,14 +45,14 @@ class _WizardPage(QWizardPage):
 class _StartPage(_WizardPage):
     def __init__(self, parent=None):
         super().__init__("IDD_FIRSTSTARTWIZARD_START", parent)
-        self.title = tr("firststart_title", "欢迎使用 PyTortoiseGit")
+        self.title = tr("firststart_title", "Welcome to PyTortoiseGit")
         self.setTitle(self.title)
         spec = rc_mod.load_spec("IDD_FIRSTSTARTWIZARD_START")
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
-        hint = QLabel(tr(
-            "firststart_hint",
-            "此向导引导你完成基础 Git 配置：\n1. 选择界面语言\n"
-            "2. 定位 git.exe\n3. 填写姓名/邮箱\n4. 选择 SSH 客户端\n"), self)
+        hint = QLabel(tr("firststart_hint",
+            "This wizard guides you through basic Git configuration:\n"
+            "1. Choose the interface language\n2. Locate git.exe\n"
+            "3. Enter name/e-mail\n4. Choose the SSH client\n"), self)
         hint.setWordWrap(True)
         ctrl = spec.controls[0]
         hint.setGeometry(fu.px(ctrl.x, ctrl.y, ctrl.w, ctrl.h))
@@ -61,7 +61,7 @@ class _StartPage(_WizardPage):
 class _LanguagePage(_WizardPage):
     def __init__(self, parent=None):
         super().__init__("IDD_FIRSTSTARTWIZARD_LANGUAGE", parent)
-        self.setTitle(tr("firststart_language", "界面语言"))
+        self.setTitle(tr("firststart_language", "Interface language"))
         spec = rc_mod.load_spec("IDD_FIRSTSTARTWIZARD_LANGUAGE")
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
 
@@ -72,7 +72,7 @@ class _LanguagePage(_WizardPage):
                     break
             return wgt
         hint = placed("IDC_FIRSTSTART_HINT", QLabel(
-            tr("firststart_lang_hint", "选择界面语言。"), self))
+            tr("firststart_lang_hint", "Choose the interface language."), self))
         hint.setWordWrap(True)
         self.lang_label = placed("IDC_STATIC", QLabel(tr("firststart_lang", "&Language:"), self))
         self.lang_combo = placed("IDC_LANGUAGECOMBO", QComboBox(self))
@@ -87,7 +87,7 @@ class _LanguagePage(_WizardPage):
 class _GitPage(_WizardPage):
     def __init__(self, parent=None):
         super().__init__("IDD_FIRSTSTARTWIZARD_GIT", parent)
-        self.setTitle(tr("firststart_git", "Git 可执行文件"))
+        self.setTitle(tr("firststart_git", "Git executable"))
         spec = rc_mod.load_spec("IDD_FIRSTSTARTWIZARD_GIT")
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
 
@@ -97,9 +97,7 @@ class _GitPage(_WizardPage):
                     wgt.setGeometry(fu.px(c.x, c.y, c.w, c.h))
                     break
             return wgt
-        self.info = placed("IDC_STATIC", QLabel(tr(
-            "firststart_git_hint",
-            "TortoiseGit 需要一个 git.exe。"), self))
+        self.info = placed("IDC_STATIC", QLabel(tr("firststart_git_hint", "TortoiseGit requires a git.exe."), self))
         self.info.setWordWrap(True)
         self.git_path = placed("IDC_MSYSGIT_PATH", QLineEdit(
             shutil.which("git") or "", self))
@@ -133,7 +131,7 @@ class _GitPage(_WizardPage):
 class _UserPage(_WizardPage):
     def __init__(self, parent=None):
         super().__init__("IDD_FIRSTSTARTWIZARD_USER", parent)
-        self.setTitle(tr("firststart_user", "用户信息"))
+        self.setTitle(tr("firststart_user", "User information"))
         spec = rc_mod.load_spec("IDD_FIRSTSTARTWIZARD_USER")
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
 
@@ -153,7 +151,7 @@ class _UserPage(_WizardPage):
 class _AuthPage(_WizardPage):
     def __init__(self, parent=None):
         super().__init__("IDD_FIRSTSTARTWIZARD_AUTHENTICATION", parent)
-        self.setTitle(tr("firststart_auth", "身份验证"))
+        self.setTitle(tr("firststart_auth", "Authentication"))
         spec = rc_mod.load_spec("IDD_FIRSTSTARTWIZARD_AUTHENTICATION")
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
 
@@ -166,7 +164,7 @@ class _AuthPage(_WizardPage):
         self.ssh_label = placed("IDC_STATIC", QLabel(tr(
             "firststart_ssh", 'SSH (URLs look like "git@example.com")'), self))
         self.ssh_hint = placed("IDC_FIRSTSTART_SSHHINT", QLabel(
-            tr("firststart_ssh_hint", "选择 SSH 客户端。"), self))
+            tr("firststart_ssh_hint", "Choose the SSH client."), self))
         self.ssh_hint.setWordWrap(True)
         self.ssh_combo = placed("IDC_COMBO_SSHCLIENT", QComboBox(self))
         self.ssh_combo.addItems(["PuTTY (TortoiseGitPlink)", "ssh.exe (OpenSSH)"])

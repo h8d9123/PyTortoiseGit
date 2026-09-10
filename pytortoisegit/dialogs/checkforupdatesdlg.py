@@ -71,8 +71,8 @@ class CheckForUpdatesDlg(QDialog):
         self.log_view.setFont(mono)
         self.download_list = QTreeWidget(self)
         self.download_list.setColumnCount(2)
-        self.download_list.setHeaderLabels([tr("upd_file", "文件"),
-                                           tr("upd_size", "大小")])
+        self.download_list.setHeaderLabels([tr("upd_file", "File"),
+                                           tr("upd_size", "Size")])
         self.btn_download = QPushButton(tr("upd_download", "&Download"), self)
         self.btn_ok = QPushButton(tr("upd_close", "&Close"), self)
         self.btn_ok.setDefault(True)
@@ -107,16 +107,14 @@ class CheckForUpdatesDlg(QDialog):
 
     def _fill(self):
         ver = _version()
-        self.lbl_source.setText(tr("upd_source", "检查来源：PyTortoiseGit 仓库"))
+        self.lbl_source.setText(tr("upd_source", "Check source: PyTortoiseGit repository"))
         self.lbl_your.setText(tr("upd_your", "Your version is: {}").format(ver))
         self.lbl_current.setText(tr("upd_current", "Current version is: {}").format(
-            tr("upd_latest", "最新")))
-        self.lbl_result.setText(tr("upd_result", "您已使用最新版本。"))
-        item = QTreeWidgetItem([tr("upd_no_downloads", "无可用下载"), ""])
+            tr("upd_latest", "Latest")))
+        self.lbl_result.setText(tr("upd_result", "You are already using the latest version."))
+        item = QTreeWidgetItem([tr("upd_no_downloads", "No downloads available"), ""])
         self.download_list.addTopLevelItem(item)
-        self.log_view.setPlainText(tr(
-            "upd_changelog",
-            "PyTortoiseGit 无远端更新服务器。\n功能更新请关注仓库发布。"))
+        self.log_view.setPlainText(tr("upd_changelog", "PyTortoiseGit has no remote update server.\nFollow the repository releases for feature updates."))
 
 
 _ANCHORS = {

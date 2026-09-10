@@ -35,7 +35,7 @@ class BlameDlg(QDialog):
         self.resize(980, 640)
         self._build_ui()
         run_async(self._blame_bg, on_done=self._on_loaded,
-                  on_error=lambda msg, _tb: self._header_set(f"★ 错误：{msg}"),
+                  on_error=lambda msg, _tb: self._header_set(f"★ {tr('blame_error', 'Error')}: {msg}"),
                   parent=self)
 
     def _build_ui(self):
@@ -44,7 +44,9 @@ class BlameDlg(QDialog):
         self._header = QLabel("-", self)
         lay.addWidget(self._header)
         self.table = QTableWidget(0, 5, self)
-        self.table.setHorizontalHeaderLabels(["行", "提交", "作者", "日期", "代码"])
+        self.table.setHorizontalHeaderLabels([tr("blame_col_line", "Line"), tr("blame_col_commit", "Commit"),
+                tr("blame_col_author", "Author"), tr("blame_col_date", "Date"),
+                tr("blame_col_code", "Code")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -94,7 +96,7 @@ class BlameDlg(QDialog):
             self.table.setItem(row, 3, items[3])
             self.table.setItem(row, 4, items[4])
             items[1].setData(Qt.ItemDataRole.UserRole, bl.sha)
-        self._header_set(f" {self.filepath} — {len(lines)} 行")
+        self._header_set(f" {self.filepath} — {len(lines)} {tr('blame_lines', 'lines')}")
 
     def _on_menu(self, pos):
         item = self.table.itemAt(pos)
@@ -106,9 +108,9 @@ class BlameDlg(QDialog):
             return
         sha = sha_item.data(Qt.ItemDataRole.UserRole) or sha_item.text()
         menu = QMenu(self)
-        act_copy = menu.addAction(tr("log_copyhash", "复制完整哈希"))
-        act_log = menu.addAction(tr("menu_show_log", "查看该提交的日志"))
-        act_copy_short = menu.addAction(tr("log_copyshort", "复制短哈希"))
+        act_copy = menu.addAction(tr("log_copyhash", "Copy full hash"))
+        act_log = menu.addAction(tr("menu_show_log", "Show log for this commit"))
+        act_copy_short = menu.addAction(tr("log_copyshort", "Copy short hash"))
         chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
         if chosen is None:
             return

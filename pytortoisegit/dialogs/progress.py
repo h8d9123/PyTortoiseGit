@@ -45,7 +45,7 @@ class ProgressDialog(QDialog):
 
     def __init__(self, title: str = "", parent=None, cancellable: bool = True):
         super().__init__(parent)
-        self.setWindowTitle(title or tr("progress_title", "Git 命令进度"))
+        self.setWindowTitle(title or tr("progress_title", "Git command progress"))
         self.resize(560, 360)
         self._cancelled = False
         self._cancellable = cancellable
@@ -63,7 +63,7 @@ class ProgressDialog(QDialog):
     def _build_ui(self):
         # 对齐 IDD_GITPROGRESS：状态行、进度条、日志、Close(完成前禁用)/Abort
         layout = QVBoxLayout(self)
-        self._label = QLabel(tr("progress_wait", "请稍候…"), self)
+        self._label = QLabel(tr("progress_wait", "Please wait…"), self)
         layout.addWidget(self._label)
 
         self.progress = QProgressBar(self)
@@ -79,7 +79,7 @@ class ProgressDialog(QDialog):
         self._post_box = QHBoxLayout()
         buttons.addLayout(self._post_box)
         buttons.addStretch(1)
-        self._btn_cancel = QPushButton(tr("abort", "中止"), self)
+        self._btn_cancel = QPushButton(tr("abort", "Abort"), self)
         self._btn_cancel.clicked.connect(self.cancel)
         if not self._cancellable:
             self._btn_cancel.hide()
@@ -107,7 +107,7 @@ class ProgressDialog(QDialog):
         """跑一条 git 命令：先写命令行，再收输出，结束时标 Success / 退出码。"""
         shown = "git.exe " + " ".join(args)
         self.log(shown + "\n")
-        self.set_label(tr("progress_wait", "请稍候…"))
+        self.set_label(tr("progress_wait", "Please wait…"))
 
         def _bg():
             r = runner.run_interactive(*args)
@@ -129,7 +129,7 @@ class ProgressDialog(QDialog):
         self._btn_close.show()
         self._btn_close.setEnabled(False)
         if self._cancellable and self._morphed:
-            self._btn_cancel.setText(tr("abort", "中止"))
+            self._btn_cancel.setText(tr("abort", "Abort"))
             self._btn_cancel.clicked.disconnect(self.accept)
             self._btn_cancel.clicked.connect(self.cancel)
             self._morphed = False
@@ -179,11 +179,11 @@ class ProgressDialog(QDialog):
         self.progress.setRange(0, 100)
         self.progress.setValue(100)
         if ok:
-            msg = tr("progress_success", "成功")
+            msg = tr("progress_success", "Success")
             self._label.setText(msg)
             self.log("\n" + msg)
         else:
-            msg = tr("progress_unclean", "git 未能干净退出（退出码 {}）").format(code)
+            msg = tr("progress_unclean", "git did not exit cleanly (exit code {})").format(code)
             self._label.setText(msg)
             self.log("\n" + msg)
             self.progress.setStyleSheet(

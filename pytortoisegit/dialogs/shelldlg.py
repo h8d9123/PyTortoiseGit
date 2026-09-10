@@ -18,7 +18,7 @@ from ..shell_context import install, is_installed, status_text, uninstall
 class ShellDlg(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(tr("shell_title", "右键菜单集成"))
+        self.setWindowTitle(tr("shell_title", "Shell context menu integration"))
         self.resize(560, 320)
         self._build_ui()
         self._refresh_state()
@@ -34,10 +34,10 @@ class ShellDlg(QDialog):
 
         buttons = QDialogButtonBox(self)
         self._btn_install = buttons.addButton(
-            tr("shell_install", "安装右键菜单"), QDialogButtonBox.ButtonRole.ActionRole)
+            tr("shell_install", "Install context menu"), QDialogButtonBox.ButtonRole.ActionRole)
         self._btn_install.clicked.connect(self._do_install)
         self._btn_uninstall = buttons.addButton(
-            tr("shell_uninstall", "卸载右键菜单"), QDialogButtonBox.ButtonRole.ActionRole)
+            tr("shell_uninstall", "Uninstall context menu"), QDialogButtonBox.ButtonRole.ActionRole)
         self._btn_uninstall.clicked.connect(self._do_uninstall)
         closer = buttons.addButton(QDialogButtonBox.StandardButton.Close)
         closer.setText(tr("close"))
@@ -53,10 +53,10 @@ class ShellDlg(QDialog):
             self._refresh_state()
             QMessageBox.information(
                 self, tr("information"),
-                tr("shell_installed", f"已写入 {n} 个右键菜单项（重新打开资源管理器后生效）。"))
+                tr("shell_installed", "Wrote {n} context menu entries (take effect after reopening Explorer).").format(n=n))
         else:
             QMessageBox.information(self, tr("information"),
-                                    tr("shell_already", "右键菜单已安装。"))
+                                    tr("shell_already", "Context menu already installed."))
 
     def _do_uninstall(self):
         if is_installed():
@@ -64,10 +64,10 @@ class ShellDlg(QDialog):
             self._refresh_state()
             QMessageBox.information(
                 self, tr("information"),
-                tr("shell_uninstalled", f"已删除 {n} 个右键菜单项。"))
+                tr("shell_uninstalled", "Deleted {n} context menu entries.").format(n=n))
         else:
             QMessageBox.information(self, tr("information"),
-                                    tr("shell_not_installed", "右键菜单未安装。"))
+                                    tr("shell_not_installed", "Context menu not installed."))
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
 # Copyright (C) 2026  PyTortoiseGit contributors

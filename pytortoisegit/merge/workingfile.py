@@ -37,6 +37,8 @@ class WorkingFile:
         self.converted_filename: str = ""
         self.descriptive_name: str = ""
         self.reflected_name: str = ""
+        self._saved_mode = None
+        self._saved_mtime = None
 
     # ---- InUse / SetOutOfUse ----
     def in_use(self) -> bool:
@@ -47,6 +49,7 @@ class WorkingFile:
         self.converted_filename = ""
         self.descriptive_name = ""
         self.reflected_name = ""
+        self.clear_stored_attributes()
 
     # ---- 文件名 ----
     def set_file_name(self, new_filename: str):
@@ -97,6 +100,30 @@ class WorkingFile:
         if mtype == 0 and refl:
             return f"{desc} ({refl})"
         return desc
+
+    # ---- 文件属性（对齐 StoreFileAttributes/HasSourceFileChanged）----
+    def store_file_attributes(self):
+        self._saved_mode = None
+        self._saved_mtime = None
+        if self.filename and os.path.isfile(self.filename):
+            try:
+                st = os.stat(self.filename)
+                self._saved_mode = st.st_mode
+                self._saved_mtime = st.st_mtime
+            except OSError:
+                pass
+
+    def clear_stored_attributes(self):
+        self._saved_mode = None
+        self._saved_mtime = None
+
+    def has_source_file_changed(self) -> bool:
+        if not self.filename or self._saved_mtime is None:
+            return False
+        try:
+            return os.stat(self.filename).st_mtime != self._saved_mtime
+        except OSError:
+            return True
 
     # ---- 拷贝细节（TransferDetailsFrom）----
     def transfer_details_from(self, other: "WorkingFile"):

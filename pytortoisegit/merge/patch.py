@@ -61,6 +61,8 @@ class Patch:
         self.repo = repo
         self._file_diffs: List[_FileDiff] = []
         self._error: str = ""
+        self._raw: str = ""
+        self._strip_n: int = 0
 
     # ---- GetNumberOfFiles / GetFilename / GetRevision ----
     def get_number_of_files(self) -> int:
@@ -97,6 +99,7 @@ class Patch:
             return False
 
     def parse_text(self, diff_text: str) -> bool:
+        self._raw = diff_text or ""
         patches = parse_diff(diff_text)
         self._file_diffs = []
         for p in patches:
@@ -110,29 +113,85 @@ class Patch:
             self._error = "没有解析到补丁"
         return bool(self._file_diffs)
 
-    # ---- 应用补丁（PatchFile → git apply）----
-    def patch_file(self, strip: int, s_path: str, force: bool = False) -> int:
-        """应用补丁到 s_path。成功返回 0。"""
-        from tempfile import NamedTemporaryFile
-        return -1
+    # ---- 路径检查 / 匹配计数（对齐 CheckPatchPath/CountMatches/CountDirMatches）----
+    @staticmethod
+    def check_patch_path(path: str) -> str:
+        """拒绝绝对路径与 ..（返回空串表示不安全）。"""
+        p = (path or "").replace("\\", "/")
+        if re.match(r"^[A-Za-z]:", p) or p.startswith("/"):
+            return ""
+        if ".." in p.split("/"):
+            return ""
+        return path
 
-    def apply_patch(self, diff_text: str, cwd: str | None = None,
-                    strip: int = 1) -> int:
-        """用 git apply 应用补丁（需 repo）。"""
-        if self.repo is None and cwd is None:
+    def count_matches(self, path: str) -> int:
+        norm = (path or "").replace("\\", "/")
+        n = 0
+        for fd in self._file_diffs:
+            for cand in (fd.path, fd.path2):
+                if cand and cand.replace("\\", "/").endswith(norm):
+                    n += 1
+                    break
+        return n
+
+    def count_dir_matches(self, path: str) -> int:
+        norm = (path or "").replace("\\", "/").rstrip("/") + "/"
+        return sum(1 for fd in self._file_diffs
+                   if fd.path.replace("\\", "/").startswith(norm))
+
+    @staticmethod
+    def has_unicode_bom(text: str) -> bool:
+        return text.startswith("\ufeff")
+
+    @staticmethod
+    def remove_unicode_bom(text: str) -> str:
+        return text[1:] if text.startswith("\ufeff") else text
+
+    # ---- 应用补丁（PatchFile → git apply）----
+    def patch_file(self, strip: int, n_index: int, s_path: str,
+                   s_save_path: str = "", s_base_file: str = "",
+                   force: bool = False) -> int:
+        """把补丁第 n_index 个文件应用到 s_path。成功返回 0。
+
+        用 `git apply -p<strip> [--3way]` 实现；s_save_path 指定时输出到该路径。
+        """
+        if not self._raw:
             return -1
-        runner = self.repo.runner if self.repo else None
         import tempfile
+        from ..git.git import GitRunner
+        runner = self.repo.runner if self.repo else GitRunner(cwd=s_path)
         with tempfile.NamedTemporaryFile("w", suffix=".patch", delete=False,
-                                         encoding="utf-8") as fh:
-            fh.write(diff_text)
+                                         encoding="utf-8", newline="") as fh:
+            fh.write(self._raw)
             tmp = fh.name
         try:
             args = ["apply", f"-p{strip}"]
-            res = runner.run(*args, input=diff_text) if runner else None
-            return res.returncode if res else -1
+            if force:
+                args.append("--3way")
+            if s_save_path:
+                args += ["--directory", s_save_path]
+            args.append(tmp)
+            res = runner.run(*args, cwd=s_path)
+            if res.returncode != 0:
+                self._error = (res.stderr or "").strip()
+            return res.returncode
         finally:
             try:
                 os.unlink(tmp)
             except OSError:
                 pass
+
+    def apply_patch(self, diff_text: str, cwd: str | None = None,
+                    strip: int = 1, force: bool = False) -> int:
+        """用 git apply 应用补丁（需 repo）。成功返回 0。"""
+        if self.repo is None:
+            return -1
+        runner = self.repo.runner
+        args = ["apply", f"-p{strip}"]
+        if force:
+            args.append("--3way")
+        args.append("-")
+        res = runner.run(*args, input=diff_text, cwd=cwd)
+        if res.returncode != 0:
+            self._error = (res.stderr or "").strip()
+        return res.returncode

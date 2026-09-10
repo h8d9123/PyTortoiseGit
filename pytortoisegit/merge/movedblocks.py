@@ -38,32 +38,36 @@ def _strip(line: str) -> str:
     return line.strip()
 
 
-def detect_moved_blocks(left_lines: List[str], right_lines: List[str],
+def detect_moved_blocks(left_data: list, right_data: list,
                         min_block: int = 3) -> List[Tuple[int, int, int]]:
-    """返回 [(left_start, right_start, count)]：匹配的移动块。
+    """返回 [(left_index, right_index, count)]：匹配的移动块。
 
-    用简单 LCS 思路找相同行段（对齐 MovedBlocksDetect 的寻找匹配块）。
+    对齐原版 MovedBlocksDetect：**只考虑差异行**（左=删除行、右=新增行），
+    不会把两侧相同的普通行误判为“移动”。普通行本就是对齐的，不应高亮。
     """
+    # 仅取删除行（左）/新增行（右）作为候选，普通行不参与移动检测
+    left = [(i, left_data[i].line) for i in range(len(left_data))
+            if left_data[i].is_removed and left_data[i].line]
+    right = [(j, right_data[j].line) for j in range(len(right_data))
+             if right_data[j].is_added and right_data[j].line]
+
     matches: List[Tuple[int, int, int]] = []
-    # 对齐前先去掉空占位行（Empty）以便按文本匹配
-    left = [(i, l) for i, l in enumerate(left_lines) if l]
-    right = [(i, l) for i, l in enumerate(right_lines) if l]
     used_l: set = set()
     used_r: set = set()
 
-    # 贪心：找长度 >= min_block 的相同连续块
+    # 贪心：找长度 >= min_block 的相同连续块（在原文件中下标也须连续）
     for li in range(len(left)):
         if left[li][0] in used_l:
             continue
-        # 在 right 找相同文本起点
         for rj in range(len(right)):
             if right[rj][0] in used_r:
                 continue
             if right[rj][1] == left[li][1]:
-                # 向后扩展相同块
                 k = 0
                 while (li + k < len(left) and rj + k < len(right)
                        and left[li + k][1] == right[rj + k][1]
+                       and left[li + k][0] == left[li][0] + k
+                       and right[rj + k][0] == right[rj][0] + k
                        and left[li + k][0] not in used_l
                        and right[rj + k][0] not in used_r):
                     k += 1
@@ -76,11 +80,12 @@ def detect_moved_blocks(left_lines: List[str], right_lines: List[str],
     return matches
 
 
-def mark_moved(left_data: list, right_data: list,
-               left_lines: List[str], right_lines: List[str],
-               min_block: int = 3):
-    """在 ViewData 列表上把移动块标为 MovedFrom(左)/MovedTo(右)。"""
-    moved = detect_moved_blocks(left_lines, right_lines, min_block)
+def mark_moved(left_data: list, right_data: list, min_block: int = 3):
+    """在 ViewData 列表上把移动块标为 MovedFrom(左)/MovedTo(右)。
+
+    仅对差异行生效；普通行保持 Normal（不显示颜色）。
+    """
+    moved = detect_moved_blocks(left_data, right_data, min_block)
     for (l_start, r_start, count) in moved:
         for x in range(count):
             li = l_start + x

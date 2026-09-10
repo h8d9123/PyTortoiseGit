@@ -1,4 +1,4 @@
-"""MergeFrm 视图渲染：差异行背景色不得“渗透”到相邻行。"""
+"""MergeFrm 视图渲染：差异行背景色不得“渗透”到相邻行，相同行不得被当作移动块。"""
 
 import os
 
@@ -16,25 +16,21 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-@pytest.fixture(scope="module")
-def repo(tmp_path_factory):
-    root = tmp_path_factory.mktemp("mergeview")
+def _make_repo(root, before, after):
     runner = GitRunner(cwd=str(root))
     runner.init(str(root), initial_branch="main")
     runner.run("config", "user.email", "t@example.com")
     runner.run("config", "user.name", "Tester")
-    (root / "a.txt").write_text("line1\nline2\nline3\nline4\n", encoding="utf-8")
+    (root / "a.txt").write_text(before, encoding="utf-8")
     runner.run("add", "-A")
     runner.run("commit", "-m", "init")
-    (root / "a.txt").write_text(
-        "line1\nline2-CHANGED\nline3\nline4\nline5-new\n", encoding="utf-8")
+    (root / "a.txt").write_text(after, encoding="utf-8")
     return Repository.open(str(root))
 
 
 def _block_bg(view, index):
     from PySide6.QtGui import QTextCursor
-    doc = view.document()
-    blk = doc.findBlockByNumber(index)
+    blk = view.document().findBlockByNumber(index)
     cur = QTextCursor(blk)
     cur.movePosition(QTextCursor.MoveOperation.Right,
                      QTextCursor.MoveMode.KeepAnchor)
@@ -42,24 +38,55 @@ def _block_bg(view, index):
     return bg.color().name() if bg.style() else None
 
 
+@pytest.fixture(scope="module")
+def repo(tmp_path_factory):
+    root = tmp_path_factory.mktemp("mergeview")
+    before = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"
+    after = "1\n2\n3\n4\nFIVE\n6\n7\n8\n9\n10\n"
+    return _make_repo(root, before, after)
+
+
 def test_diff_line_background_no_bleed(qapp, repo):
-    """回归：改动行的背景色不能渗透到其后的 Normal/Empty 行。"""
+    """回归：改动行的背景色不能渗透到其后的普通行。"""
     from pytortoisegit.merge.mergefrm import MergeFrm
     frm = MergeFrm(repo, "a.txt", "HEAD", None)
-    left = frm.left_view
-    right = frm.right_view
+    left, right = frm.left_view, frm.right_view
 
-    normal_bg = _block_bg(left, 0)          # line1 Normal
-    removed_bg = _block_bg(left, 1)         # line2 Removed
-    added_bg = _block_bg(right, 1)          # line2-CHANGED Added
+    normal_bg = _block_bg(left, 0)
+    assert _block_bg(left, 4) != normal_bg     # 第 5 行 Removed
+    assert _block_bg(right, 4) != normal_bg    # 第 5 行 Added
+    # 其后的普通行必须回到默认背景（不得沿用改动色）
+    for i in (0, 1, 2, 3, 5, 6, 7, 8, 9):
+        assert _block_bg(left, i) == normal_bg, i
+        assert _block_bg(right, i) == normal_bg, i
 
-    # 改动行应有区别于普通行的背景
-    assert removed_bg != normal_bg
-    assert added_bg != normal_bg
-    # 其后的 Normal 行必须回到普通背景（不得沿用改动色）
-    assert _block_bg(left, 2) == normal_bg
-    assert _block_bg(left, 3) == normal_bg
-    assert _block_bg(right, 2) == normal_bg
-    assert _block_bg(right, 3) == normal_bg
-    # 末尾 Empty 行也不得带改动色
-    assert _block_bg(left, 4) == normal_bg
+
+def test_identical_lines_not_marked_moved(qapp, repo):
+    """回归：两侧相同的普通行不得被判为 MovedFrom/MovedTo（否则整段着色）。"""
+    from pytortoisegit.merge.mergefrm import MergeFrm
+    from pytortoisegit.merge.viewdata import DiffState
+    frm = MergeFrm(repo, "a.txt", "HEAD", None)
+    moved = {DiffState.MovedFrom, DiffState.MovedTo}
+    for view in (frm.left_view, frm.right_view):
+        for vd in view.view_data:
+            assert vd.state not in moved, (vd.line, vd.state)
+    # 只有真正变化的行有差异状态
+    assert frm.left_view.view_data[4].state == DiffState.Removed
+    assert frm.right_view.view_data[4].state == DiffState.Added
+
+
+def test_real_moved_block_still_detected(tmp_path_factory, qapp):
+    """真正的移动块（整段位移）仍应被识别为 MovedFrom/MovedTo。"""
+    from pytortoisegit.merge.mergefrm import MergeFrm
+    from pytortoisegit.merge.viewdata import DiffState
+    root = tmp_path_factory.mktemp("mergeview_moved")
+    before = "A\nB\nC\nD\nE\nF\nG\nH\n"
+    after = "D\nE\nF\nG\nH\nA\nB\nC\n"
+    repo = _make_repo(root, before, after)
+    frm = MergeFrm(repo, "a.txt", "HEAD", None)
+    left_states = [vd.state for vd in frm.left_view.view_data]
+    right_states = [vd.state for vd in frm.right_view.view_data]
+    assert DiffState.MovedFrom in left_states
+    assert DiffState.MovedTo in right_states
+    # D..H 未移动，保持普通
+    assert left_states[3] == DiffState.Normal

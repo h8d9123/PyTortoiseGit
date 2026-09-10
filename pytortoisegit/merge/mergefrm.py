@@ -303,9 +303,7 @@ class MergeFrm(QMainWindow):
             left, right, bottom = dd.three_way(
                 self.path, self.rev2 or "HEAD", self.rev1 or "HEAD")
             if self.view_moved:
-                mark_moved_blocks(left, right,
-                                  [vd.line for vd in left],
-                                  [vd.line for vd in right], min_block=3)
+                mark_moved_blocks(left, right, min_block=3)
             self._apply_view_flags()
             self.left_view.set_view_data(left)
             self.right_view.set_view_data(right)
@@ -326,9 +324,7 @@ class MergeFrm(QMainWindow):
         else:
             left, right = dd.load(self.path, self.rev1, self.rev2)
         if self.view_moved:
-            mark_moved_blocks(left, right,
-                              [vd.line for vd in left],
-                              [vd.line for vd in right], min_block=3)
+            mark_moved_blocks(left, right, min_block=3)
         self._apply_view_flags()
         self.left_view.set_view_data(left)
         self.right_view.set_view_data(right)

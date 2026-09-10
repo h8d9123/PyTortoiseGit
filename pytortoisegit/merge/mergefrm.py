@@ -421,6 +421,9 @@ class MergeFrm(QMainWindow):
         self._col_lab.setText(tr("tm_col_n", "列: {}").format(col))
         self._update_locator_viewport()
         self._sync_edit_action()
+        first, last = self.left_view.block_range(line)
+        for v in self._views():
+            v.set_current_block(first, last)
 
     def _refresh_linebar(self):
         line = self.left_view.current_view_line()

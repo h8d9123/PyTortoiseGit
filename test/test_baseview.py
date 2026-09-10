@@ -205,3 +205,11 @@ def test_state_icon_mapping(qapp):
     assert m[DiffState.MovedFrom] == "IDI_MOVEDLINE"
     # Normal 无图标（对齐 C++：普通行不显示图标）
     assert DiffState.Normal not in m
+
+
+def test_set_current_block(qapp):
+    v = _view(["a", "b", "c"])
+    v.set_current_block(1, 2)
+    assert v._cur_block == (1, 2)
+    v.set_current_block(0)
+    assert v._cur_block == (0, 0)

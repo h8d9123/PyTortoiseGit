@@ -117,6 +117,7 @@ class BaseView(QPlainTextEdit):
         self.marked_word_lines: List[int] = []
         self.find_string_lines: List[int] = []
         self.marked_word_count = 0
+        self._cur_block = (-1, -1)
 
     def line_number_width(self) -> int:
         return 62
@@ -151,6 +152,9 @@ class BaseView(QPlainTextEdit):
                 view_i = self._screen_to_view[block_n] if 0 <= block_n < len(self._screen_to_view) else block_n
                 if 0 <= view_i < len(self.view_data):
                     vd = self.view_data[view_i]
+                    if self._cur_block[0] <= view_i <= self._cur_block[1]:
+                        p.fillRect(0, top, self._line_area.width() - 1, fm.height(),
+                                   QColor(180, 180, 255))
                     num = str(vd.linenumber) if vd.linenumber >= 0 else ""
                     p.drawText(4, top, 36, fm.height(), Qt.AlignmentFlag.AlignRight, num)
                     icon = self._state_icon(vd.state, vd.marked)
@@ -799,6 +803,13 @@ class BaseView(QPlainTextEdit):
         self.go_to_line(line)
         if other is not None:
             other.go_to_line(line)
+
+    def set_current_block(self, first: int, last: int = -1):
+        """标记当前差异块（在行号区高亮），对齐 DrawBlockLine 语义。"""
+        if last < 0:
+            last = first
+        self._cur_block = (first, last)
+        self._line_area.update()
 
     def set_marked_block(self, first: int, last: int, marked: bool):
         for i in range(first, min(last + 1, len(self.view_data))):

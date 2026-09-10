@@ -115,6 +115,9 @@ class CUndo:
         self._redo: List[AllViewState] = []
         self._group_count = 0
         self._groups: List[bool] = []
+        self._original_left = 0
+        self._original_right = 0
+        self._original_bottom = 0
 
     # ---- Undo.h: CanUndo/CanRedo ----
     def can_undo(self) -> bool:
@@ -122,6 +125,23 @@ class CUndo:
 
     def can_redo(self) -> bool:
         return bool(self._redo)
+
+    # ---- Grouping（BeginGrouping/EndGrouping/IsGrouping）----
+    def is_grouping(self) -> bool:
+        return self._group_count > 0
+
+    def is_redo_grouping(self) -> bool:
+        return False
+
+    def mark_as_original_state(self, left: bool = True, right: bool = True,
+                               bottom: bool = True):
+        """对齐 MarkAsOriginalState：记录哪些视图已处于原始状态。"""
+        self._original_left = 1 if left else 0
+        self._original_right = 1 if right else 0
+        self._original_bottom = 1 if bottom else 0
+
+    def mark_all_as_original_state(self):
+        self.mark_as_original_state(True, True, True)
 
     # ---- Grouping（BeginGrouping/EndGrouping）----
     def begin_grouping(self):

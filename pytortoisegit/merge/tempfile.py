@@ -92,6 +92,28 @@ class TempFiles:
     def clear_all(self):
         self.cleanup()
 
+    def add_file_to_remove(self, path: str):
+        """对齐 AddFileToRemove：登记退出时删除的文件。"""
+        if path:
+            self._entries.setdefault(path, _TempEntry(path, True))
+
+    @staticmethod
+    def delete_old_temp_files(wildcard: str, max_age_seconds: float = 7 * 24 * 3600):
+        """对齐 DeleteOldTempFiles：只删除较旧的临时文件。"""
+        import glob
+        import time
+        now = time.time()
+        for p in glob.glob(wildcard):
+            try:
+                if now - os.path.getmtime(p) > max_age_seconds:
+                    if os.path.isdir(p):
+                        import shutil
+                        shutil.rmtree(p, ignore_errors=True)
+                    else:
+                        os.remove(p)
+            except OSError:
+                pass
+
     def __del__(self):
         try:
             self.cleanup()

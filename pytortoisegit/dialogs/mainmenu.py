@@ -144,7 +144,7 @@ class MainMenuDlg(QMainWindow):
 
     def __init__(self, repo_path: str = "", parent=None):
         super().__init__(parent, Qt.WindowType.Window)
-        self.setWindowTitle(tr("menu_title", "PyTortoiseGit 主窗口"))
+        self.setWindowTitle(tr("menu_title", "PyTortoiseGit Main Window"))
         self.resize(920, 620)
         try:
             from ..res import icons
@@ -171,27 +171,27 @@ class MainMenuDlg(QMainWindow):
     def _build_menu(self):
         bar = self.menuBar()
         # 文件
-        m_file = bar.addMenu(tr("menu_file", "文件(&F)"))
-        act_open = QAction(tr("menu_open_repo", "打开仓库…"), self)
+        m_file = bar.addMenu(tr("menu_file", "&File"))
+        act_open = QAction(tr("menu_open_repo", "Open Repository…"), self)
         act_open.triggered.connect(self._open_repo_dialog)
         m_file.addAction(act_open)
         m_file.addSeparator()
-        act_exit = QAction(tr("close", "退出(&Q)"), self)
+        act_exit = QAction(tr("close", "E&xit"), self)
         act_exit.triggered.connect(self.close)
         m_file.addAction(act_exit)
         # 视图
-        m_view = bar.addMenu(tr("menu_view", "视图(&V)"))
-        act_repo = QAction(tr("menu_left_panel", "左侧面板"), self)
+        m_view = bar.addMenu(tr("menu_view", "&View"))
+        act_repo = QAction(tr("menu_left_panel", "Left Panel"), self)
         act_repo.setCheckable(True)
         act_repo.setChecked(True)
         act_repo.toggled.connect(lambda on: self.manager_tabs.setVisible(on))
         m_view.addAction(act_repo)
         # 命令（列出所有已注册命令，按功能分组）
-        m_cmd = bar.addMenu(tr("menu_commands", "命令(&C)"))
+        m_cmd = bar.addMenu(tr("menu_commands", "&Commands"))
         self._build_command_menu(m_cmd)
         # 帮助
-        m_help = bar.addMenu(tr("menu_help", "帮助(&H)"))
-        act_about = QAction(tr("about_title", "关于"), self)
+        m_help = bar.addMenu(tr("menu_help", "&Help"))
+        act_about = QAction(tr("about_title", "About"), self)
         act_about.triggered.connect(self._on_about)
         m_help.addAction(act_about)
 
@@ -218,7 +218,7 @@ class MainMenuDlg(QMainWindow):
                     lambda _=False, n=name: self._dispatch(n))
         other = sorted(available - placed)
         if other:
-            sub = m_cmd.addMenu(tr("menu_grp_other", "其他"))
+            sub = m_cmd.addMenu(tr("menu_grp_other", "Other"))
             for name in other:
                 act = sub.addAction(tr("menu_cmd_" + name, name))
                 icon_id = _CMD_ICON.get(name)
@@ -235,12 +235,12 @@ class MainMenuDlg(QMainWindow):
         panel_lay = QVBoxLayout(self.repo_manager_panel)
         panel_lay.setContentsMargins(4, 4, 4, 4)
         panel_lay.addWidget(
-            QLabel(tr("repo_manager_title", "仓库管理"), self.repo_manager_panel))
+            QLabel(tr("repo_manager_title", "Repository Manager"), self.repo_manager_panel))
         self.repo_tree = QTreeWidget(self.repo_manager_panel)
         self.repo_tree.setColumnCount(3)
         self.repo_tree.setHeaderLabels([
-            tr("submodule_path", "路径"),
-            tr("submodule_status", "状态"),
+            tr("submodule_path", "Path"),
+            tr("submodule_status", "Status"),
             tr("submodule_sha", "SHA"),
         ])
         self.repo_tree.setRootIsDecorated(True)
@@ -252,14 +252,14 @@ class MainMenuDlg(QMainWindow):
         self.repo_tree.customContextMenuRequested.connect(self._on_repo_context_menu)
         panel_lay.addWidget(self.repo_tree)
         panel_lay.addWidget(QLabel(
-            tr("repo_manager_hint", "双击仓库切换；展开可查看子模块"),
+            tr("repo_manager_hint", "Double-click a repository to switch; expand to view submodules"),
             self.repo_manager_panel))
         # 标签页 2：目录树
         self.folder_tree_panel = QWidget(self)
         folder_lay = QVBoxLayout(self.folder_tree_panel)
         folder_lay.setContentsMargins(4, 4, 4, 4)
         folder_lay.addWidget(
-            QLabel(tr("browser_tab_folder", "目录树"), self.folder_tree_panel))
+            QLabel(tr("browser_tab_folder", "Folder Tree"), self.folder_tree_panel))
         self.folder_tree = QTreeWidget(self.folder_tree_panel)
         self.folder_tree.setColumnCount(1)
         self.folder_tree.setHeaderHidden(True)
@@ -273,42 +273,42 @@ class MainMenuDlg(QMainWindow):
             self._on_folder_context_menu)
         folder_lay.addWidget(self.folder_tree)
         folder_lay.addWidget(QLabel(
-            tr("folder_hint", "双击仓库目录打开；右键仓库目录可添加并执行操作"),
+            tr("folder_hint", "Double-click a repository folder to open; right-click to add and run actions"),
             self.folder_tree_panel))
         # 合并为左面板标签组
         self.manager_tabs = QTabWidget(self)
         self.manager_tabs.addTab(
-            self.repo_manager_panel, tr("browser_tab_repo", "仓库管理"))
+            self.repo_manager_panel, tr("browser_tab_repo", "Repository Manager"))
         self.manager_tabs.addTab(
-            self.folder_tree_panel, tr("browser_tab_folder", "目录树"))
+            self.folder_tree_panel, tr("browser_tab_folder", "Folder Tree"))
         split.addWidget(self.manager_tabs)
 
         right = QWidget(self)
         right_lay = QVBoxLayout(right)
-        self.path_row = RepoPickerRow(tr("menu_path_label", "仓库路径:"), right)
+        self.path_row = RepoPickerRow(tr("menu_path_label", "Repository path:"), right)
         self.path_row.setText(os.getcwd())
         self.path_row.connect_editingFinished(self._on_path_changed)
         right_lay.addWidget(self.path_row)
         self._welcome = QLabel(
-            tr("content_hint", "单击左侧目录/仓库查看子文件夹；双击进入或打开。"),
+            tr("content_hint", "Click a folder/repository on the left to view subfolders; double-click to enter or open."),
             right)
         self._welcome.setWordWrap(True)
         right_lay.addWidget(self._welcome)
         nav = QHBoxLayout()
         self.btn_back = QPushButton(tr("menu_nav_back", "←"), right)
-        self.btn_back.setToolTip(tr("menu_nav_back_tip", "后退"))
+        self.btn_back.setToolTip(tr("menu_nav_back_tip", "Back"))
         self.btn_back.clicked.connect(self._go_back)
         nav.addWidget(self.btn_back)
         self.btn_forward = QPushButton(tr("menu_nav_forward", "→"), right)
-        self.btn_forward.setToolTip(tr("menu_nav_forward_tip", "前进"))
+        self.btn_forward.setToolTip(tr("menu_nav_forward_tip", "Forward"))
         self.btn_forward.clicked.connect(self._go_forward)
         nav.addWidget(self.btn_forward)
         self.btn_up = QPushButton(tr("menu_nav_up", "↑"), right)
-        self.btn_up.setToolTip(tr("menu_nav_up_tip", "上一级"))
+        self.btn_up.setToolTip(tr("menu_nav_up_tip", "Up"))
         self.btn_up.clicked.connect(self._go_up)
         nav.addWidget(self.btn_up)
         self.btn_refresh = QPushButton(tr("menu_nav_refresh", "⟳"), right)
-        self.btn_refresh.setToolTip(tr("menu_nav_refresh_tip", "刷新"))
+        self.btn_refresh.setToolTip(tr("menu_nav_refresh_tip", "Refresh"))
         self.btn_refresh.clicked.connect(self._refresh_content)
         nav.addWidget(self.btn_refresh)
         nav.addStretch(1)
@@ -522,10 +522,10 @@ class MainMenuDlg(QMainWindow):
         """文件右键菜单：系统打开 + TortoiseGit 命令（仿 TortoiseGit 经典菜单）。"""
         from PySide6.QtWidgets import QMenu
         menu = QMenu(parent or self.content_list)
-        act_open = menu.addAction(tr("file_menu_open", "打开"))
+        act_open = menu.addAction(tr("file_menu_open", "Open"))
         self._set_action_icon(act_open, "IDI_OPEN")
         act_open.triggered.connect(lambda _=False, p=path: self._open_with_system(p))
-        act_show = menu.addAction(tr("file_menu_show_in", "显示位置"))
+        act_show = menu.addAction(tr("file_menu_show_in", "Show in Explorer"))
         act_show.triggered.connect(lambda _=False, p=path: self._show_in_explorer(p))
         if self._inside_repo(path):
             menu.addSeparator()
@@ -643,7 +643,7 @@ class MainMenuDlg(QMainWindow):
             path = item.data(0, ROLE_PATH)
             menu = self._build_classic_menu(path, self.repo_tree)
             menu.addSeparator()
-            act_rem = menu.addAction(tr("repo_menu_remove", "从列表移除"))
+            act_rem = menu.addAction(tr("repo_menu_remove", "Remove from list"))
             act_rem.triggered.connect(
                 lambda _=False, it=item: self._remove_repo_from_list(it))
         else:
@@ -651,7 +651,7 @@ class MainMenuDlg(QMainWindow):
             from PySide6.QtWidgets import QMenu
             menu = QMenu(self.repo_tree)
             sub_path = item.data(0, ROLE_PATH)
-            act = menu.addAction(tr("repo_menu_open_sub", "打开子模块"))
+            act = menu.addAction(tr("repo_menu_open_sub", "Open submodule"))
             act.triggered.connect(
                 lambda _=False, p=sub_path:
                 self._run_async_command("submodule", extra={"path": p}))
@@ -780,7 +780,7 @@ class MainMenuDlg(QMainWindow):
         """目录树中仓库节点的右键菜单：添加 + 经典 TortoiseGit 命令（含设置）。"""
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self.folder_tree)
-        act_add = menu.addAction(tr("menu_add_to_repo_list", "添加到仓库管理"))
+        act_add = menu.addAction(tr("menu_add_to_repo_list", "Add to repository manager"))
         act_add.triggered.connect(
             lambda _=False, p=path: self._ensure_in_repo_list(p))
         menu.addSeparator()
@@ -835,7 +835,7 @@ class MainMenuDlg(QMainWindow):
         cl.options["url"] = [""]
         cl.options["dir"] = [os.path.abspath(path)]
         ctx = CommandContext(qapp=None, cl=cl)
-        self.status.setText(format_string(tr("menu_running", "正在执行：{name}"), name="clone"))
+        self.status.setText(format_string(tr("menu_running", "Running: {name}"), name="clone"))
         QTimer.singleShot(0, lambda: self._run(ctx, "clone"))
 
     # ---- 仓库 ----
@@ -844,7 +844,7 @@ class MainMenuDlg(QMainWindow):
             self.repo = Repository.open(path)
         except Exception as exc:
             self.status.setText(
-                format_string(tr("menu_not_repo", "不是 Git 仓库：{msg}"), msg=exc))
+                format_string(tr("menu_not_repo", "Not a Git repository: {msg}"), msg=exc))
             return
         self.path_row.setText(path)
         self.status.setText(f" {path} · {self.repo.current_branch()}")
@@ -858,7 +858,7 @@ class MainMenuDlg(QMainWindow):
     def _open_repo_dialog(self):
         from PySide6.QtWidgets import QFileDialog
         d = QFileDialog.getExistingDirectory(
-            self, tr("menu_open_repo", "打开仓库"), self.path_row.text())
+            self, tr("menu_open_repo", "Open Repository…"), self.path_row.text())
         if d:
             self.open_repo(d)
 
@@ -866,7 +866,7 @@ class MainMenuDlg(QMainWindow):
     def _dispatch(self, name: str, extra=None):
         extra_path = bool(extra and extra.get("path"))
         if not (self.repo or self.path_row.text().strip() or extra_path):
-            self.status.setText(tr("menu_select_first", "请先选择仓库路径。"))
+            self.status.setText(tr("menu_select_first", "Please select a repository path first."))
             return
         from PySide6.QtCore import QTimer
         path = self.path_row.text().strip()
@@ -879,7 +879,7 @@ class MainMenuDlg(QMainWindow):
         from ..commands.dispatcher import CommandContext
         ctx = CommandContext(qapp=None, cl=cl)
         self.status.setText(
-            format_string(tr("menu_running", "正在执行：{name}"), name=name))
+            format_string(tr("menu_running", "Running: {name}"), name=name))
         QTimer.singleShot(0, lambda: self._run(ctx, name))
 
     def _run_async_command(self, name: str, extra=None):
@@ -890,7 +890,7 @@ class MainMenuDlg(QMainWindow):
         try:
             dispatch(name, ctx)
             self.status.setText(
-                format_string(tr("menu_done", "完成：{name}"), name=name))
+                format_string(tr("menu_done", "Done: {name}"), name=name))
         except UnknownCommandError:
             self.status.setText(
                 format_string(tr("unknown_command"), command=name))

@@ -471,6 +471,17 @@ STRINGS: Dict[str, str] = {
     "menu_cmd_submoduleupdate": "Submodule Update…",
     "menu_cmd_about": "About",
     "content_hint": "单击左侧目录/仓库查看子文件夹；双击进入或打开",
+    # ---- 主界面（mainmenu）----
+    "menu_title": "PyTortoiseGit 主窗口",
+    "menu_file": "文件(&F)",
+    "menu_open_repo": "打开仓库…",
+    "menu_view": "视图(&V)",
+    "menu_help": "帮助(&H)",
+    "menu_path_label": "仓库路径:",
+    "menu_running": "正在执行：{name}",
+    "menu_not_repo": "不是 Git 仓库：{msg}",
+    "menu_select_first": "请先选择仓库路径。",
+    "menu_done": "完成：{name}",
 }
 
 

@@ -137,7 +137,7 @@ class FormatPatchDlg(QDialog):
             self._anchors.apply(self.width(), self.height())
 
     def _pick_dir(self):
-        d = pick_dir(self, tr("fmt_patch_dir", "输出目录"), self.repo.root)
+        d = pick_dir(self, tr("fmt_patch_dir", "Output directory"), self.repo.root)
         if d:
             self.dir_combo.setEditText(d)
 
@@ -172,7 +172,7 @@ class FormatPatchDlg(QDialog):
 
     def _save_unified(self):
         from ..utils.pick import pick_file
-        path = pick_file(self, tr("fmt_patch_unified", "保存 unified diff"), "*.diff")
+        path = pick_file(self, tr("fmt_patch_unified", "Save unified diff"), "*.diff")
         if not path:
             return
         out = self.repo.runner.run("diff", "HEAD").stdout or ""

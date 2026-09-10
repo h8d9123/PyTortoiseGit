@@ -134,8 +134,8 @@ class RepositoryBrowserDlg(QDialog):
         data = item.data(0, Qt.ItemDataRole.UserRole)
         name = item.text(0) if data is None else (data[0] if isinstance(data, tuple) else str(data))
         menu = QMenu(self)
-        act_copy = menu.addAction(tr("menu_copy_path", "复制路径"))
-        act_open = menu.addAction(tr("menu_open", "查看 blob 内容"))
+        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
+        act_open = menu.addAction(tr("menu_open", "View blob content"))
         chosen = menu.exec(self.list.viewport().mapToGlobal(pos))
         if chosen is None:
             return

@@ -141,12 +141,12 @@ class ResolveDlg(QDialog):
         if not p:
             return
         menu = QMenu(self)
-        act_open = menu.addAction(tr("menu_open", "在编辑器打开"))
-        act_copy = menu.addAction(tr("menu_copy_path", "复制路径"))
-        act_edit = menu.addAction(tr("resolve_edit", "解决/标记已解决"))
+        act_open = menu.addAction(tr("menu_open", "Open in editor"))
+        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
+        act_edit = menu.addAction(tr("resolve_edit", "Resolve/Mark as resolved"))
         menu.addSeparator()
-        act_merge = menu.addAction(tr("resolve_merge", "用合并工具解决"))
-        act_diff = menu.addAction(tr("resolve_diff", "查看冲突"))
+        act_merge = menu.addAction(tr("resolve_merge", "Resolve with merge tool"))
+        act_diff = menu.addAction(tr("resolve_diff", "View conflict"))
         chosen = menu.exec(self.resolve_list.viewport().mapToGlobal(pos))
         if chosen is None:
             return

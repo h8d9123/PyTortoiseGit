@@ -191,7 +191,7 @@ class RepoPickerRow(QWidget):
         lay.addWidget(btn)
 
     def _browse(self):
-        path = QFileDialog.getExistingDirectory(self, "选择文件夹", self.edit.text())
+        path = QFileDialog.getExistingDirectory(self, tr("choose_folder", "Choose folder"), self.edit.text())
         if path:
             self.edit.setText(path)
 

@@ -158,7 +158,7 @@ class PushDlg(QDialog):
         self.btn_cancel.clicked.connect(self.reject)
         self.btn_help = QPushButton(tr("help"), self)
         self._status = QLabel(self)
-        self._status.setText(tr("push_ready", "就绪"))
+        self._status.setText(tr("push_ready", "Ready"))
         self._details = QLabel(self)
 
         mapping = {

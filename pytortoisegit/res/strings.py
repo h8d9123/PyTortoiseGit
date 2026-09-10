@@ -655,6 +655,48 @@ STRINGS: Dict[str, str] = {
     "clone_svn_branch": "分支(&H)：",
     "clone_svn_from": "来自(&F)：",
     "clone_username": "用户名(&N)：",
+    # ---- 冲突/解决 ----
+    "conflicts_take_ours": "取我方 (ours)",
+    "conflicts_take_theirs": "取对方 (theirs)",
+    "conflicts_mark": "标记已解决",
+    "conflicts_extmerge": "合并工具解决",
+    "resolve_edit": "解决/标记已解决",
+    "resolve_merge": "用合并工具解决",
+    "resolve_diff": "查看冲突",
+    # ---- 应用补丁 ----
+    "apply_patch_file": "Patch 文件",
+    "apply_add": "选择补丁",
+    # ---- 关于 ----
+    "about_contrib": "Significant contributions by (Git 仓库):",
+    # ---- 提交引用/引用名 ----
+    "commitref_ref": "引用",
+    "menu_copy_ref": "复制引用名",
+    "menu_copy_tag": "复制标签名",
+    # ---- 自动文本测试 ----
+    "autotext_match": "匹配：{}",
+    "autotext_nomatch": "无匹配",
+    # ---- 格式补丁 ----
+    "fmt_patch_dir": "输出目录",
+    "fmt_patch_unified": "保存 unified diff",
+    # ---- 修订图 ----
+    "revgraph_graph": "图 / 提交",
+    "revgraph_stats": "统计",
+    # ---- 导出/推送/重命名/工具关联/工作树 ----
+    "export_file": "Zip 文件",
+    "push_ready": "就绪",
+    "rename_browse": "选择文件",
+    "tool_browse": "选择工具",
+    "wt_dir": "工作树目录",
+    # ---- 补充 ----
+    "patches": "个补丁",
+    "about_authors": "PyTortoiseGit contributors\n基于 TortoiseGit (GPLv2, tortoisegit.org)\n图标经 TortoiseSVN (tortoisesvn.net) 授权使用",
+    "about_reimpl": "基于 TortoiseGit 复刻",
+    "about_icons": "图标源自 TortoiseSVN（tortoisesvn.net）",
+    "logorder_topo": "按拓扑顺序",
+    "logorder_date": "按日期",
+    "logorder_author_date": "按作者日期",
+    "logorder_default": "默认",
+    "choose_folder": "选择文件夹",
 }
 
 

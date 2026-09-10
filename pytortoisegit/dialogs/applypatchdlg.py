@@ -58,7 +58,7 @@ class ApplyPatchDlg(QDialog):
 
         self.patch_list = QTreeWidget(self)
         self.patch_list.setColumnCount(1)
-        self.patch_list.setHeaderLabels([tr("apply_patch_file", "Patch 文件")])
+        self.patch_list.setHeaderLabels([tr("apply_patch_file", "Patch file")])
         self.patch_list.setRootIsDecorated(False)
         self.patch_list.setIndentation(0)
         self.patch_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -123,7 +123,7 @@ class ApplyPatchDlg(QDialog):
             self._anchors.apply(self.width(), self.height())
 
     def _add_files(self):
-        files = pick_open_files(self, tr("apply_add", "选择补丁"), "*.patch *.diff" )
+        files = pick_open_files(self, tr("apply_add", "Select patch"), "*.patch *.diff" )
         if files:
             for f in files:
                 self._add_patch(f)
@@ -159,8 +159,8 @@ class ApplyPatchDlg(QDialog):
             return
         path = item.text(0)
         menu = QMenu(self)
-        act_open = menu.addAction(tr("menu_open", "在编辑器打开"))
-        act_copy = menu.addAction(tr("menu_copy_path", "复制路径"))
+        act_open = menu.addAction(tr("menu_open", "Open in editor"))
+        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
         menu.addSeparator()
         act_up = menu.addAction(tr("apply_up", "&Up"))
         act_down = menu.addAction(tr("apply_down", "&Down"))
@@ -189,7 +189,7 @@ class ApplyPatchDlg(QDialog):
         if not patches:
             return
         dlg = ProgressDialog(title=tr("progress", "Progress"), parent=self)
-        dlg.set_label(f"git apply ({len(patches)} 个补丁)")
+        dlg.set_label(f"git apply ({len(patches)} {tr('patches', 'patches')})")
         args = ["apply"]
         if self.chk_3way.isChecked():
             args.append("--3way")

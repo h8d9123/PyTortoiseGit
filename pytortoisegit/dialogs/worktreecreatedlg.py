@@ -132,7 +132,7 @@ class WorktreeCreateDlg(QDialog):
             self._anchors.apply(self.width(), self.height())
 
     def _pick_dir(self):
-        d = pick_dir(self, tr("wt_dir", "工作树目录"), self.repo.root)
+        d = pick_dir(self, tr("wt_dir", "Worktree directory"), self.repo.root)
         if d:
             self.dir_edit.setText(d)
 

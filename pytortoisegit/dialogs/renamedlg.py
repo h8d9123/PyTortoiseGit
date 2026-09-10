@@ -87,7 +87,7 @@ class RenameDlg(QDialog):
     def _browse(self):
         import os
         from ..utils.pick import pick_file
-        d = pick_file(self, tr("rename_browse", "选择文件"), "")
+        d = pick_file(self, tr("rename_browse", "Select file"), "")
         if d:
             self.name_edit.setText(d)
 

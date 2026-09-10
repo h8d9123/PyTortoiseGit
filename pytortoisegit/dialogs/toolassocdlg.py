@@ -68,7 +68,7 @@ class ToolAssocDlg(QDialog):
                 self._ctl[ctrl.ctrl_id] = wgt
 
     def _browse(self):
-        p = pick_open_file(self, tr("tool_browse", "选择工具"), "")
+        p = pick_open_file(self, tr("tool_browse", "Select tool"), "")
         if p:
             self.tool_edit.setText(p)
 

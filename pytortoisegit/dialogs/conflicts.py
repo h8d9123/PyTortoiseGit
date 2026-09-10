@@ -148,13 +148,13 @@ class ConflictsWidget(QWidget):
             return
         self.tree.setCurrentItem(item)
         menu = QMenu(self)
-        act_open = menu.addAction(tr("menu_open", "在编辑器打开"))
-        act_copy = menu.addAction(tr("menu_copy_path", "复制路径"))
+        act_open = menu.addAction(tr("menu_open", "Open in editor"))
+        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
         menu.addSeparator()
-        act_ours = menu.addAction(tr("conflicts_take_ours", "取我方 (ours)"))
-        act_theirs = menu.addAction(tr("conflicts_take_theirs", "取对方 (theirs)"))
-        act_mark = menu.addAction(tr("conflicts_mark", "标记已解决"))
-        act_ext = menu.addAction(tr("conflicts_extmerge", "合并工具解决"))
+        act_ours = menu.addAction(tr("conflicts_take_ours", "Take ours"))
+        act_theirs = menu.addAction(tr("conflicts_take_theirs", "Take theirs"))
+        act_mark = menu.addAction(tr("conflicts_mark", "Mark as resolved"))
+        act_ext = menu.addAction(tr("conflicts_extmerge", "Resolve with merge tool"))
         chosen = menu.exec(self.tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return

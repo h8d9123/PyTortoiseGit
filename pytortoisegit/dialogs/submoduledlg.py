@@ -145,7 +145,7 @@ class SubmoduleDlg(QDialog):
             okflag = self.sub.update(init=self.init_box.isChecked(),
                                      recursive=self.recursive_box.isChecked())
             if not okflag:
-                dlg.log(tr("sync_failed", "更新失败"))
+                dlg.log(tr("sync_failed", "Update failed"))
             return okflag
 
         dlg.run(_bg)
@@ -159,7 +159,7 @@ class SubmoduleDlg(QDialog):
         def _bg() -> bool:
             ok = self.sub.sync(recursive=self.recursive_box.isChecked())
             if not ok:
-                dlg.log(tr("sync_failed", "同步失败"))
+                dlg.log(tr("sync_failed", "Sync failed"))
             return ok
 
         dlg.run(_bg)
@@ -182,11 +182,11 @@ class SubmoduleDlg(QDialog):
         if not path:
             return
         menu = QMenu(self)
-        act_update = menu.addAction(tr("submodule_update", "更新"))
-        act_sync = menu.addAction(tr("submodule_sync", "同步"))
-        act_deinit = menu.addAction(tr("submodule_deinit", "取消初始化"))
+        act_update = menu.addAction(tr("submodule_update", "Update"))
+        act_sync = menu.addAction(tr("submodule_sync", "Sync"))
+        act_deinit = menu.addAction(tr("submodule_deinit", "Deinit"))
         menu.addSeparator()
-        act_copy = menu.addAction(tr("menu_copy_path", "复制路径"))
+        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
         chosen = menu.exec(self.tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return

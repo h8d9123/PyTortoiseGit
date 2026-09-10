@@ -100,7 +100,7 @@ class LfsLocksDlg(QDialog):
         path = item.text(0)
         menu = QMenu(self)
         act_unlock = menu.addAction(tr("lfs_unlock", "&Unlock"))
-        act_copy = menu.addAction(tr("menu_copy_path", "复制路径"))
+        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
         chosen = menu.exec(self.lock_list.viewport().mapToGlobal(pos))
         if chosen is None:
             return

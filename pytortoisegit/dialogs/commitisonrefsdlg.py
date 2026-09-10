@@ -56,7 +56,7 @@ class CommitIsOnRefsDlg(QDialog):
         self.btn_log.clicked.connect(self._show_log)
         self.ref_list = QTreeWidget(self)
         self.ref_list.setColumnCount(1)
-        self.ref_list.setHeaderLabels([tr("commitref_ref", "引用")])
+        self.ref_list.setHeaderLabels([tr("commitref_ref", "Reference")])
         self.ref_list.setRootIsDecorated(False)
         self.ref_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.ref_list.customContextMenuRequested.connect(self._on_menu)
@@ -140,8 +140,8 @@ class CommitIsOnRefsDlg(QDialog):
             return
         ref = item.text(0)
         menu = QMenu(self)
-        act_copy = menu.addAction(tr("menu_copy_ref", "复制引用名"))
-        act_checkout = menu.addAction(tr("log_checkout", "检出此提交…"))
+        act_copy = menu.addAction(tr("menu_copy_ref", "Copy reference name"))
+        act_checkout = menu.addAction(tr("log_checkout", "Checkout this commit…"))
         chosen = menu.exec(self.ref_list.viewport().mapToGlobal(pos))
         if chosen is None:
             return

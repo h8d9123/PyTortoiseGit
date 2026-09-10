@@ -125,7 +125,7 @@ class ExportDlg(QDialog):
             self._anchors.apply(self.width(), self.height())
 
     def _pick_file(self):
-        path = pick_file(self, tr("export_file", "Zip 文件"), "*.zip")
+        path = pick_file(self, tr("export_file", "Zip file"), "*.zip")
         if path:
             self.file_edit.setText(path)
 

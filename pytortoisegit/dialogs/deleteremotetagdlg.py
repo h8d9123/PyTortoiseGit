@@ -112,7 +112,7 @@ class DeleteRemoteTagDlg(QDialog):
             return
         menu = QMenu(self)
         act_del = menu.addAction(tr("deletetag_delete", "&Delete"))
-        act_copy = menu.addAction(tr("menu_copy_tag", "复制标签名"))
+        act_copy = menu.addAction(tr("menu_copy_tag", "Copy tag name"))
         chosen = menu.exec(self.tags_list.viewport().mapToGlobal(pos))
         if chosen is None:
             return

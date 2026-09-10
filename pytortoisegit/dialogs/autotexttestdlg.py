@@ -77,8 +77,8 @@ class AutoTextTestDlg(QDialog):
             m = re.search(pat, text)
             if m:
                 self.result_edit.setText(text[max(0, m.start()-30):m.end()+30])
-                self.timing_label.setText(tr("autotext_match", "匹配：{}").format(m.group(0)))
+                self.timing_label.setText(tr("autotext_match", "Match: {}").format(m.group(0)))
             else:
-                self.result_edit.setText(tr("autotext_nomatch", "无匹配"))
+                self.result_edit.setText(tr("autotext_nomatch", "No match"))
         except re.error as exc:
             self.result_edit.setText(str(exc))

@@ -44,16 +44,16 @@ class AboutDlg(QDialog):
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
-        self.setWindowTitle(tr("about_title", "关于 {}").format(__appname__))
+        self.setWindowTitle(tr("about_title", "About {}").format(__appname__))
         self._ctl: dict = {}
 
         self.contrib_label = QLabel(
-            tr("about_contrib", "Significant contributions by (Git 仓库):"), self)
+            tr("about_contrib", "Significant contributions by (Git repository):"), self)
         self.contrib_text = QLabel(
             tr("about_authors",
                "PyTortoiseGit contributors\n"
-               "基于 TortoiseGit (GPLv2, tortoisegit.org)\n"
-               "图标经 TortoiseSVN (tortoisesvn.net) 授权使用"), self)
+               "Based on TortoiseGit (GPLv2, tortoisegit.org)\n"
+               "Icons licensed from TortoiseSVN (tortoisesvn.net)"), self)
         self.contrib_text.setWordWrap(True)
         self.website_link = QLabel(
             '<a href="https://tortoisegit.org">Visit our website</a>', self)
@@ -99,8 +99,8 @@ class AboutDlg(QDialog):
             pass
         return (f"{__appname__} {__version__}\n"
                 f"Git: {git}\n"
-                f"GPLv2 · 基于 TortoiseGit 复刻\n"
-                f"图标源自 TortoiseSVN（tortoisesvn.net）")
+                f"GPLv2 · {tr('about_reimpl', 'reimplementation based on TortoiseGit')}\n"
+                f"{tr('about_icons', 'Icons from TortoiseSVN (tortoisesvn.net)')}")
 
     def _on_check_updates(self):
         from .checkforupdatesdlg import CheckForUpdatesDlg

@@ -42,14 +42,14 @@ class RevisionGraphDlg(QDialog):
 
         self.tree = QTreeWidget(self)
         self.tree.setColumnCount(1)
-        self.tree.setHeaderLabels([tr("revgraph_graph", "图 / 提交")])
+        self.tree.setHeaderLabels([tr("revgraph_graph", "Graph / Commit")])
         self.tree.setUniformRowHeights(True)
         mono = self.tree.font()
         mono.setFamily("Consolas")
         self.tree.setFont(mono)
         self.tree.setGeometry(0, 0, 720, 470)
 
-        self.btn_stats = QPushButton(tr("revgraph_stats", "统计"), self)
+        self.btn_stats = QPushButton(tr("revgraph_stats", "Statistics"), self)
         self.btn_stats.setGeometry(560, 480, 150, 30)
         self.btn_stats.clicked.connect(self._open_stats)
         self._load()

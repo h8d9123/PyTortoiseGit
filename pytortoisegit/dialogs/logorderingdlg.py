@@ -31,7 +31,12 @@ from ..ui.rc import DialogUnits
 
 class LogOrderingDlg(QDialog):
     ORDERINGS = ["topo-order", "date-order", "author-date-order", "default"]
-    LABELS = ["按拓扑顺序", "按日期", "按作者日期", "默认"]
+    LABELS = [
+        ("logorder_topo", "Topological order"),
+        ("logorder_date", "Date order"),
+        ("logorder_author_date", "Author date order"),
+        ("logorder_default", "Default"),
+    ]
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.WindowType.Window)
@@ -44,7 +49,7 @@ class LogOrderingDlg(QDialog):
 
         self.label = QLabel(tr("logorder_label", "Commit Ordering:"), self)
         self.combo = QComboBox(self)
-        self.combo.addItems(self.LABELS)
+        self.combo.addItems([tr(k, d) for k, d in self.LABELS])
         self.btn_ok = QPushButton(tr("ok"), self)
         self.btn_ok.setDefault(True)
         self.btn_ok.clicked.connect(lambda: self._accept())

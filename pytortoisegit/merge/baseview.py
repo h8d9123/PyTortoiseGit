@@ -109,6 +109,14 @@ class BaseView(QPlainTextEdit):
         self.line_endings = EOL.AutoLine
         self.text_type = UnicodeType.AUTOTYPE
         self.word_separators = DEFAULT_WORD_SEPARATORS
+        # 查找 / 标记词
+        self.marked_word = ""
+        self.find_text = ""
+        self.match_case = False
+        self.limit_to_diff = True
+        self.marked_word_lines: List[int] = []
+        self.find_string_lines: List[int] = []
+        self.marked_word_count = 0
 
     def line_number_width(self) -> int:
         return 62
@@ -588,6 +596,70 @@ class BaseView(QPlainTextEdit):
                 continue
             i += 1
         return removed
+
+    # ---- 隐藏行（对齐 IsViewLineHidden）----
+    def is_view_line_hidden(self, n_view_line: int) -> bool:
+        if not (0 <= n_view_line < len(self.view_data)):
+            return False
+        return (self.collapsed
+                and self.view_data[n_view_line].hidestate != HideState.Shown)
+
+    # ---- 标记词 / 查找（对齐 BuildMarkedWordArray/BuildFindStringArray）----
+    def _char_group_at(self, line: str, i: int) -> CharGroup:
+        if 0 <= i < len(line):
+            return self.get_char_group(line[i])
+        return CharGroup.UNKNOWN
+
+    def set_marked_word(self, word: str):
+        self.marked_word = word or ""
+        self.build_marked_word_array()
+
+    def build_marked_word_array(self):
+        self.marked_word_lines = []
+        self.marked_word_count = 0
+        doit = bool(self.marked_word)
+        for vd in self.view_data:
+            if not doit or not vd.line:
+                self.marked_word_lines.append(0)
+                continue
+            line = vd.line
+            found = 0
+            start = 0
+            while True:
+                idx = line.find(self.marked_word, start)
+                if idx < 0:
+                    break
+                n_mark_end = idx + len(self.marked_word)
+                e_left = self._char_group_at(line, idx - 1)
+                e_start = self._char_group_at(line, idx)
+                if e_left != e_start:
+                    e_right = self._char_group_at(line, n_mark_end)
+                    e_end = self._char_group_at(line, n_mark_end - 1)
+                    if e_right != e_end:
+                        found = 1
+                        self.marked_word_count += 1
+                        break
+                start = idx + 1
+            self.marked_word_lines.append(found)
+
+    def build_find_string_array(self):
+        self.find_string_lines = []
+        doit = bool(self.find_text)
+        for vd in self.view_data:
+            if not doit or not vd.line:
+                self.find_string_lines.append(0)
+                continue
+            state = vd.state
+            if state == DiffState.Empty:
+                self.find_string_lines.append(0)
+                continue
+            if (state in (DiffState.Unknown, DiffState.Normal,
+                          DiffState.FilteredDiff) and self.limit_to_diff):
+                self.find_string_lines.append(0)
+                continue
+            hay = vd.line if self.match_case else vd.line.lower()
+            needle = self.find_text if self.match_case else self.find_text.lower()
+            self.find_string_lines.append(hay.count(needle))
 
     def _emit_line(self, *_):
         self.line_moved.emit(self.current_view_line())

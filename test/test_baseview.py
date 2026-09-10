@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 
 from pytortoisegit.merge.baseview import BaseView
-from pytortoisegit.merge.viewdata import DiffState, EOL, ViewData
+from pytortoisegit.merge.viewdata import DiffState, EOL, HideState, ViewData
 from pytortoisegit.merge.filetextlines import UnicodeType
 
 
@@ -138,3 +138,34 @@ def test_line_length_with_tabs(qapp):
     # 3 字符 + 1 tab → 3 + 1*(4-1) = 6
     assert v.get_line_length_with_tabs_converted(0) == 6
     assert v.get_view_line_length(0) == 3
+
+
+def test_marked_word_array(qapp):
+    v = _view(["foo bar foo", "foobar", "foo"])
+    v.set_marked_word("foo")
+    # 仅整词匹配：第 1、3 行命中，第 2 行("foobar")不命中
+    assert v.marked_word_lines == [1, 0, 1]
+    assert v.marked_word_count == 2
+
+
+def test_find_string_array(qapp):
+    v = _view(["test test", "no"])
+    v.view_data[0].state = DiffState.Removed
+    v.view_data[1].state = DiffState.Normal
+    v.find_text = "test"
+    v.limit_to_diff = True
+    v.build_find_string_array()
+    assert v.find_string_lines == [2, 0]  # Normal 行被 limit_to_diff 排除
+    v.limit_to_diff = False
+    v.build_find_string_array()
+    assert v.find_string_lines[0] == 2
+
+
+def test_is_view_line_hidden(qapp):
+    v = _view(["a", "b"])
+    v.view_data[1].hidestate = HideState.Hidden
+    v.collapsed = False
+    assert not v.is_view_line_hidden(1)
+    v.collapsed = True
+    assert v.is_view_line_hidden(1)
+    assert not v.is_view_line_hidden(0)

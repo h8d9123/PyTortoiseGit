@@ -283,6 +283,9 @@ class MergeFrm(QMainWindow):
         dd.ignore_eol = self.ignore_eol
         dd.ignore_case = self.ignore_case
         dd.ignore_comments = self.ignore_comments
+        if self.ignore_comments:
+            from .diffdata import default_comment_tokens
+            dd.set_comment_tokens(*default_comment_tokens(self.path))
         return dd
 
     def _apply_view_flags(self):

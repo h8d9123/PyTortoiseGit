@@ -48,6 +48,65 @@ def _vd(text: str, state: DiffState, linenumber: int = -1) -> ViewData:
     return ViewData(text, state, linenumber, hidestate=hidden)
 
 
+# 扩展名 → (行注释, 块注释起, 块注释止)，对齐 Resources/ignorecomments.txt
+_IGNORE_COMMENTS_MAP = {
+    "js": ("//", "/*", "*/"), "c": ("//", "/*", "*/"), "cc": ("//", "/*", "*/"),
+    "cpp": ("//", "/*", "*/"), "cxx": ("//", "/*", "*/"), "h": ("//", "/*", "*/"),
+    "hh": ("//", "/*", "*/"), "hpp": ("//", "/*", "*/"), "hxx": ("//", "/*", "*/"),
+    "cs": ("//", "/*", "*/"), "java": ("//", "/*", "*/"), "go": ("//", "/*", "*/"),
+    "m": ("//", "/*", "*/"), "mm": ("//", "/*", "*/"), "rs": ("//", "/*", "*/"),
+    "idl": ("//", "/*", "*/"), "vala": ("//", "/*", "*/"), "pike": ("//", "/*", "*/"),
+    "php": ("//", "/*", "*/"), "phtml": ("//", "/*", "*/"), "as": ("//", "/*", "*/"),
+    "html": ("", "<!--", "-->"), "htm": ("", "<!--", "-->"), "xml": ("", "<!--", "-->"),
+    "xsl": ("", "<!--", "-->"), "xslt": ("", "<!--", "-->"), "svg": ("", "<!--", "-->"),
+    "py": ("#", "", ""), "pyw": ("#", "", ""), "pl": ("#", "", ""), "pm": ("#", "", ""),
+    "rb": ("#", "", ""), "sh": ("#", "", ""), "bash": ("#", "", ""), "yaml": ("#", "", ""),
+    "yml": ("#", "", ""), "ini": ("#", "", ""), "conf": ("#", "", ""), "cfg": ("#", "", ""),
+    "makefile": ("#", "", ""), "cmake": ("#", "", ""), "tcl": ("#", "", ""),
+    "pas": ("", "(*", "*)"), "dfm": ("", "(*", "*)"),
+    "lua": ("--", "--[[", "]]"), "sql": ("-- ", "/*", "*/"), "hs": ("--", "{-", "-}"),
+    "f": ("!", "", ""), "for": ("!", "", ""), "ada": ("--", "", ""), "adb": ("--", "", ""),
+    "lisp": (";", ";;", ";;"), "el": (";", ";;", ";;"), "asm": (";", "", ""),
+    "css": ("", "/*", "*/"), "ps1": ("#", "", ""),
+}
+
+
+def default_comment_tokens(path: str):
+    """按扩展名返回 (行注释, 块注释起, 块注释止)。对齐 MainFrm 的 ignorecomments 查找。"""
+    name = os.path.basename(path or "").lower()
+    if name == "makefile":
+        ext = "makefile"
+    else:
+        ext = name.rsplit(".", 1)[-1] if "." in name else ""
+    return _IGNORE_COMMENTS_MAP.get(ext, ("", "", ""))
+
+
+def _strip_comments_line(text: str, line_tok: str, blk_start: str, blk_end: str,
+                         in_block: bool):
+    """去除单行的注释内容，返回 (文本, 是否仍在块注释内)。"""
+    if not line_tok and not blk_start:
+        return text, in_block
+    out: List[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        if in_block:
+            j = text.find(blk_end, i) if blk_end else -1
+            if j < 0:
+                return "".join(out), True
+            i = j + len(blk_end)
+            in_block = False
+            continue
+        if line_tok and text.startswith(line_tok, i):
+            break
+        if blk_start and text.startswith(blk_start, i):
+            i += len(blk_start)
+            in_block = True
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out), in_block
+
+
 def _split_lines_eol(text: str) -> Tuple[List[str], List[EOL]]:
     """按 CRLF/CR/LF 拆分文本，并记录每行行尾（对齐 splitlines 的行数）。"""
     lines: List[str] = []
@@ -417,14 +476,66 @@ class DiffData:
         self.ignore_eol = False
         self.ignore_case = False
         self.ignore_comments = False
+        self.comment_line = ""
+        self.comment_block_start = ""
+        self.comment_block_end = ""
+        self.regex = None
+        self.regex_replacement = ""
+
+    def set_comment_tokens(self, line: str, block_start: str, block_end: str):
+        """对齐 CDiffData::SetCommentTokens。"""
+        self.comment_line = line or ""
+        self.comment_block_start = block_start or ""
+        self.comment_block_end = block_end or ""
+
+    def set_regex_tokens(self, regex, replacement: str = ""):
+        """对齐 CDiffData::SetRegexTokens。"""
+        self.regex = regex
+        self.regex_replacement = replacement or ""
+
+    def _preprocess_lines(self, lines: List[str]) -> List[str]:
+        """按忽略设置预处理（正则替换 → 去注释 → 大小写 → 空白 → 行尾）。"""
+        out: List[str] = []
+        in_block = False
+        for s in lines:
+            t = s
+            if self.regex is not None:
+                try:
+                    t = self.regex.sub(self.regex_replacement, t)
+                except Exception:  # noqa: BLE001
+                    pass
+            if self.ignore_comments and (self.comment_line or self.comment_block_start):
+                t, in_block = _strip_comments_line(
+                    t, self.comment_line, self.comment_block_start,
+                    self.comment_block_end, in_block)
+            if self.ignore_case:
+                t = t.lower()
+            if self.ignore_eol:
+                t = t.replace("\r", "")
+            if self.ignore_ws == IgnoreWS.AllWhiteSpaces:
+                t = "".join(t.split())
+            elif self.ignore_ws == IgnoreWS.WhiteSpaces:
+                t = t.strip()
+            out.append(t)
+        return out
 
     def _match_copies(self, lines: List[str]) -> List[str] | None:
         if (self.ignore_ws == IgnoreWS.None_ and not self.ignore_eol
-                and not self.ignore_case and not self.ignore_comments):
+                and not self.ignore_case and not self.ignore_comments
+                and self.regex is None):
             return None
-        return [_normalize(s, self.ignore_ws, self.ignore_eol,
-                           self.ignore_case, self.ignore_comments)
-                for s in lines]
+        return self._preprocess_lines(lines)
+
+    def _mark_filtered_lines(self, left: List[ViewData], right: List[ViewData]):
+        """对齐后：原始文本不同但预处理后相同的行 → FilteredDiff。"""
+        if not (self.ignore_comments or self.ignore_case or self.regex is not None):
+            return
+        nl = self._preprocess_lines([vd.line for vd in left])
+        nr = self._preprocess_lines([vd.line for vd in right])
+        for lv, rv, a, b in zip(left, right, nl, nr):
+            if lv.state == DiffState.Normal and rv.state == DiffState.Normal:
+                if lv.line != rv.line and a == b:
+                    lv.state = rv.state = DiffState.FilteredDiff
 
     def load(self, path: str, rev1: str | None, rev2: str | None):
         """读两版本内容并 diff 出对齐行。返回 (left_rows, right_rows)。
@@ -441,6 +552,7 @@ class DiffData:
             old_lines, new_lines, "", path,
             match_old=self._match_copies(old_lines),
             match_new=self._match_copies(new_lines))
+        self._mark_filtered_lines(left, right)
         apply_ignore_filters(left, right, self.ignore_ws, self.ignore_eol,
                              self.ignore_case, self.ignore_comments)
         self._apply_endings(left, right, old_eols, new_eols)

@@ -145,3 +145,41 @@ def test_diffdata_load_direction_not_reversed(tmp_path_factory):
     left2, right2 = dd.load("a.txt", "HEAD", None)
     assert [v.line for v in left2] == ["HEAD-line"]
     assert [v.line for v in right2] == ["WORKTREE-line"]
+
+
+def test_ignore_comments_marks_filtered(tmp_path_factory):
+    """忽略注释：仅注释不同的行标记为 FilteredDiff（对齐 DoTwoWayDiff）。"""
+    import re
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.git.repo import Repository
+    from pytortoisegit.merge.diffdata import DiffData, default_comment_tokens
+    from pytortoisegit.merge.viewdata import DiffState
+    root = tmp_path_factory.mktemp("dd_comments")
+    runner = GitRunner(cwd=str(root))
+    runner.init(str(root), initial_branch="main")
+    runner.run("config", "user.email", "t@x.com")
+    runner.run("config", "user.name", "T")
+    (root / "a.py").write_bytes(b"x = 1  # old\nkeep\n")
+    runner.run("add", "-A")
+    runner.run("commit", "-m", "init")
+    (root / "a.py").write_bytes(b"x = 1  # new\nkeep\n")
+    repo = Repository.open(str(root))
+
+    dd = DiffData(repo)
+    dd.ignore_comments = True
+    dd.set_comment_tokens(*default_comment_tokens("a.py"))
+    left, right = dd.load("a.py", "HEAD", None)
+    assert left[0].state == DiffState.FilteredDiff
+    assert right[0].state == DiffState.FilteredDiff
+    assert left[1].state == DiffState.Normal
+
+    # 正则过滤（去掉 # 注释后相同）
+    dd2 = DiffData(repo)
+    dd2.set_regex_tokens(re.compile(r"#.*"), "")
+    left2, right2 = dd2.load("a.py", "HEAD", None)
+    assert left2[0].state == DiffState.FilteredDiff
+
+    # 默认扩展名映射
+    assert default_comment_tokens("x.cpp") == ("//", "/*", "*/")
+    assert default_comment_tokens("x.html") == ("", "<!--", "-->")
+    assert default_comment_tokens("x.py") == ("#", "", "")

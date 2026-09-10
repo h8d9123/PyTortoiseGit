@@ -29,19 +29,25 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
 from .repo import Repository
+from ..res.strings import tr
 
-# porcelain v1 状态字母 → 含义
+# porcelain v1 状态字母 → (i18n key, 英文默认)
 _STATUS_NAMES = {
-    "?": "未跟踪",
-    "M": "已修改",
-    "A": "已暂存",
-    "D": "已删除",
-    "R": "已重命名",
-    "C": "已复制",
-    "U": "未合并",
-    "T": "类型变化",
-    "!": "被忽略",
+    "?": ("status_untracked", "Untracked"),
+    "M": ("status_modified", "Modified"),
+    "A": ("status_added", "Added"),
+    "D": ("status_deleted", "Deleted"),
+    "R": ("status_renamed", "Renamed"),
+    "C": ("status_copied", "Copied"),
+    "U": ("status_unmerged", "Unmerged"),
+    "T": ("status_typechange", "Type changed"),
+    "!": ("status_ignored", "Ignored"),
 }
+
+
+def _status_name(code: str) -> str:
+    key, default = _STATUS_NAMES.get(code, (code, code))
+    return tr(key, default)
 
 STATUS_INDEX = "index"
 STATUS_WORKTREE = "worktree"
@@ -82,12 +88,12 @@ class GitStatusEntry:
     @property
     def status_text(self) -> str:
         if self.is_untracked:
-            return "未跟踪"
+            return tr("status_untracked", "Untracked")
         parts = []
         if self.is_staged:
-            parts.append("index:" + _STATUS_NAMES.get(self.index_status, self.index_status))
+            parts.append("index:" + _status_name(self.index_status))
         if self.worktree_status and self.worktree_status not in " ":
-            parts.append("worktree:" + _STATUS_NAMES.get(self.worktree_status, self.worktree_status))
+            parts.append("worktree:" + _status_name(self.worktree_status))
         return " ".join(parts) or "?"
 
     @property

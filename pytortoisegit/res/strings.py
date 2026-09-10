@@ -529,6 +529,21 @@ STRINGS: Dict[str, str] = {
     # ---- 差异对话框（diffdlg）----
     "diff_summary": "{files} 个文件，+{lines} 行改动",
     "diff_working_tree": "工作区",
+    # ---- 文件状态（git/status）----
+    "status_untracked": "未跟踪",
+    "status_modified": "已修改",
+    "status_added": "已暂存",
+    "status_deleted": "已删除",
+    "status_renamed": "已重命名",
+    "status_copied": "已复制",
+    "status_unmerged": "未合并",
+    "status_typechange": "类型变化",
+    "status_ignored": "被忽略",
+    # ---- 子模块状态（git/submodule）----
+    "submodule_ok": "正常",
+    "submodule_notinit": "未初始化",
+    "submodule_mismatch": "提交不一致",
+    "submodule_conflict": "冲突",
 }
 
 

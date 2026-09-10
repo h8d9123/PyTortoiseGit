@@ -108,25 +108,25 @@ class MainMenuDlg(QMainWindow):
 
     # 菜单栏“命令(&C)”分组：组名 → 该组包含的命令
     MENU_GROUPS = [
-        ("menu_grp_changes", "本地更改",
+        ("menu_grp_changes", "Local Changes",
          ["commit", "revert", "cleanup", "add", "remove", "ignore",
           "unignore", "rename", "resolve", "conflicteditor"]),
-        ("menu_grp_inspect", "查看/比较",
+        ("menu_grp_inspect", "Inspect/Compare",
          ["log", "diff", "prevdiff", "review", "blame", "repostatus",
           "revisiongraph", "repobrowser", "cat", "reflog"]),
-        ("menu_grp_syncing", "获取/发布",
+        ("menu_grp_syncing", "Sync/Publish",
          ["sync", "pull", "push", "fetch", "requestpull", "sendmail",
           "subsync"]),
-        ("menu_grp_branch", "分支/合并",
+        ("menu_grp_branch", "Branch/Merge",
          ["branch", "merge", "merge3", "mergeabort", "rebase", "switch",
           "bisect", "reset", "stash", "stashsave", "stashpop", "stashapply",
           "stashlist", "worktreelist", "worktreecreate", "newworktree"]),
-        ("menu_grp_clone", "仓库",
+        ("menu_grp_clone", "Repository",
          ["clone", "addremote", "submodule", "repocreate", "lfslock",
           "lfslocks", "lfsunlock"]),
-        ("menu_grp_format", "补丁/导出",
+        ("menu_grp_format", "Patch/Export",
          ["export", "formatpatch", "importpatch", "showcompare"]),
-        ("menu_grp_utils", "工具/其他",
+        ("menu_grp_utils", "Tools/Other",
          ["settings", "firststart", "updatecheck", "help", "shell",
           "daemon", "rtfm", "changed", "revision"]),
     ]
@@ -898,7 +898,7 @@ class MainMenuDlg(QMainWindow):
             self.status.setText(
                 format_string(tr("command_failed"), name=name, message=exc))
             from ..utils.logging_utils import get_logger
-            get_logger().exception("menu 命令失败: %s", name)
+            get_logger().exception("menu command failed: %s", name)
 
     def _on_about(self):
         from .aboutdlg import AboutDlg

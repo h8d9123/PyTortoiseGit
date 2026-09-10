@@ -29,13 +29,14 @@ from dataclasses import dataclass
 from typing import List
 
 from .repo import Repository
+from ..res.strings import tr
 
-# 状态字符含义
+# 状态字符含义 → (i18n key, 英文默认)
 _STATUS_NAMES = {
-    " ": "正常",
-    "-": "未初始化",
-    "+": "提交不一致",
-    "U": "冲突",
+    " ": ("submodule_ok", "Up to date"),
+    "-": ("submodule_notinit", "Not initialized"),
+    "+": ("submodule_mismatch", "Commit mismatch"),
+    "U": ("submodule_conflict", "Conflict"),
 }
 
 
@@ -54,7 +55,8 @@ class SubmoduleEntry:
 
     @property
     def status_text(self) -> str:
-        return _STATUS_NAMES.get(self.status_char, self.status_char)
+        key, default = _STATUS_NAMES.get(self.status_char, (self.status_char, self.status_char))
+        return tr(key, default)
 
 
 def _parse_submodule_status(out: str) -> List[SubmoduleEntry]:

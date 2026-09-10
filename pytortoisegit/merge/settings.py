@@ -53,36 +53,82 @@ class _BasePage(QWidget):
 
 
 class _MainPage(_BasePage):
-    """SetMainPage：字体/字号/忽略空白/备份/字数统计等。"""
+    """SetMainPage：字体/字号/制表/忽略/换行/显示等（对齐 SetMainPage.h 字段）。"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        from PySide6.QtWidgets import QSpinBox
         form = QFormLayout(self)
         self.font_combo = QComboBox(self)
         self.font_combo.addItems(["Consolas", "Courier New", "Lucida Console"])
         self.size_edit = QLineEdit(self)
         self.size_edit.setText("10")
+        self.tab_mode_combo = QComboBox(self)
+        self.tab_mode_combo.addItems([
+            tr("tabmode_tab", "使用制表符"),
+            tr("tabmode_spaces", "使用空格"),
+            tr("tabmode_smart", "智能制表")])
+        self.tab_size_spin = QSpinBox(self)
+        self.tab_size_spin.setRange(1, 64)
+        self.tab_size_spin.setValue(4)
+        self.context_spin = QSpinBox(self)
+        self.context_spin.setRange(0, 100)
+        self.context_spin.setValue(3)
+        self.max_inline_spin = QSpinBox(self)
+        self.max_inline_spin.setRange(0, 100000)
+        self.max_inline_spin.setValue(5000)
+
         self.chk_backup = QCheckBox(tr("settings_backup", "合并时备份文件"), self)
+        self.chk_first_diff = QCheckBox(tr("settings_firstdiff", "加载后跳到首个差异"), self)
+        self.chk_first_conflict = QCheckBox(tr("settings_firstconflict", "加载后跳到首个冲突"), self)
         self.chk_ignore_ws = QCheckBox(tr("settings_ignorews", "忽略空白差异"), self)
+        self.chk_ignore_eol = QCheckBox(tr("settings_ignoreeol", "忽略换行符差异"), self)
         self.chk_ignore_case = QCheckBox(tr("settings_ignorecase", "忽略大小写"), self)
+        self.chk_one_pane = QCheckBox(tr("settings_onepane", "单栏视图"), self)
+        self.chk_line_numbers = QCheckBox(tr("settings_linenumbers", "显示行号"), self)
+        self.chk_utf8 = QCheckBox(tr("settings_utf8", "默认以 UTF-8 保存"), self)
+        self.chk_auto_add = QCheckBox(tr("settings_autoadd", "自动添加新文件"), self)
+        self.chk_editorconfig = QCheckBox(tr("settings_editorconfig", "启用 EditorConfig"), self)
+
         form.addRow(tr("settings_font", "字体:"), self.font_combo)
         form.addRow(tr("settings_fontsize", "字号:"), self.size_edit)
-        form.addRow("", self.chk_backup)
-        form.addRow("", self.chk_ignore_ws)
-        form.addRow("", self.chk_ignore_case)
+        form.addRow(tr("settings_tabmode", "制表模式:"), self.tab_mode_combo)
+        form.addRow(tr("settings_tabsize", "制表宽度:"), self.tab_size_spin)
+        form.addRow(tr("settings_context", "上下文行数:"), self.context_spin)
+        form.addRow(tr("settings_maxinline", "最大行内差异长度:"), self.max_inline_spin)
+        for chk in (self.chk_backup, self.chk_first_diff, self.chk_first_conflict,
+                    self.chk_ignore_ws, self.chk_ignore_eol, self.chk_ignore_case,
+                    self.chk_one_pane, self.chk_line_numbers, self.chk_utf8,
+                    self.chk_auto_add, self.chk_editorconfig):
+            form.addRow("", chk)
 
     def save(self):
         try:
             n = int(self.size_edit.text())
         except ValueError:
             n = 10
-        self._saved = {"font": self.font_combo.currentText(), "size": n,
-                       "backup": self.chk_backup.isChecked(),
-                       "ignorews": self.chk_ignore_ws.isChecked(),
-                       "ignorecase": self.chk_ignore_case.isChecked()}
+        self._saved = {
+            "font": self.font_combo.currentText(), "size": n,
+            "tab_mode": self.tab_mode_combo.currentIndex(),
+            "tab_size": self.tab_size_spin.value(),
+            "context_lines": self.context_spin.value(),
+            "max_inline": self.max_inline_spin.value(),
+            "backup": self.chk_backup.isChecked(),
+            "first_diff": self.chk_first_diff.isChecked(),
+            "first_conflict": self.chk_first_conflict.isChecked(),
+            "ignorews": self.chk_ignore_ws.isChecked(),
+            "ignoreeol": self.chk_ignore_eol.isChecked(),
+            "ignorecase": self.chk_ignore_case.isChecked(),
+            "one_pane": self.chk_one_pane.isChecked(),
+            "line_numbers": self.chk_line_numbers.isChecked(),
+            "utf8": self.chk_utf8.isChecked(),
+            "auto_add": self.chk_auto_add.isChecked(),
+            "editorconfig": self.chk_editorconfig.isChecked(),
+        }
 
     def load(self):
         self.chk_backup.setChecked(True)
+        self.chk_line_numbers.setChecked(True)
 
 
 class _ColorPage(_BasePage):

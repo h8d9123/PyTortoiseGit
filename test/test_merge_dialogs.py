@@ -102,3 +102,17 @@ def test_filepatchesdlg(qapp):
     dlg.tree.setCurrentItem(dlg.tree.topLevelItem(0))
     dlg.patch_selected()
     assert called  # 回调被调用
+
+
+def test_settings_dialog(qapp):
+    from pytortoisegit.merge.settings import Settings
+    dlg = Settings()
+    assert dlg.tabs.count() == 2
+    dlg.main_page.tab_size_spin.setValue(8)
+    dlg.main_page.chk_ignore_eol.setChecked(True)
+    dlg.main_page.chk_one_pane.setChecked(True)
+    dlg._save_and_accept()
+    opts = dlg.main_options
+    assert opts["tab_size"] == 8
+    assert opts["ignoreeol"] is True
+    assert opts["one_pane"] is True

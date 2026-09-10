@@ -27,6 +27,8 @@
 
 from __future__ import annotations
 
+from ..res.strings import tr
+
 import locale
 import os
 from dataclasses import dataclass
@@ -314,7 +316,7 @@ class FileTextLines(CStdArray):
         self.remove_all()
         self.error_string = ""
         if os.path.isdir(path):
-            self.error_string = f"不是文件: {path}"
+            self.error_string = tr("filetextlines_not_file", "Not a file: {path}").format(path=path)
             return False
         if not os.path.isfile(path):
             return True  # 文件不存在视为成功（对齐 C++）
@@ -331,7 +333,7 @@ class FileTextLines(CStdArray):
         if not data:
             return True
         if self.unicode_type == UnicodeType.BINARY:
-            self.error_string = f"二进制文件: {path}"
+            self.error_string = tr("filetextlines_binary", "Binary file: {path}").format(path=path)
             return False
         enc, bom = _ENCODING.get(self.unicode_type, (None, b""))
         if enc is None:

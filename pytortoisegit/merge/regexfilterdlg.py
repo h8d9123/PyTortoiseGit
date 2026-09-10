@@ -38,7 +38,7 @@ class RegexFilterDlg(QDialog):
     def __init__(self, parent=None, name: str = "", regex: str = "",
                  replace: str = ""):
         super().__init__(parent, Qt.WindowType.Window)
-        self.setWindowTitle(tr("regex_filter_title", "正则过滤"))
+        self.setWindowTitle(tr("regex_filter_title", "Regex filter"))
         self.resize(420, 140)
         self.m_sName = name
         self.m_sRegex = regex
@@ -54,9 +54,9 @@ class RegexFilterDlg(QDialog):
         self.regex_edit.setText(self.m_sRegex)
         self.replace_edit = QLineEdit(self)
         self.replace_edit.setText(self.m_sReplace)
-        form.addRow(tr("regex_name", "名称:"), self.name_edit)
-        form.addRow(tr("regex_expr", "正则:"), self.regex_edit)
-        form.addRow(tr("regex_replace", "替换为:"), self.replace_edit)
+        form.addRow(tr("regex_name", "Name:"), self.name_edit)
+        form.addRow(tr("regex_expr", "Regex:"), self.regex_edit)
+        form.addRow(tr("regex_replace", "Replace with:"), self.replace_edit)
         lay.addLayout(form)
         box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                QDialogButtonBox.StandardButton.Cancel, self)

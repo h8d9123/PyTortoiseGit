@@ -39,7 +39,7 @@ class EncodingDlg(QDialog):
     def __init__(self, parent=None, texttype: int = 0,
                  eol: EOL = EOL.AutoLine):
         super().__init__(parent, Qt.WindowType.Window)
-        self.setWindowTitle(tr("encoding_title", "编码 / 行尾"))
+        self.setWindowTitle(tr("encoding_title", "Encoding / EOL"))
         self.resize(320, 140)
         self.texttype = texttype
         self.lineendings = eol
@@ -48,15 +48,15 @@ class EncodingDlg(QDialog):
 
     def _build_ui(self):
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel(tr("encoding_label", "编码:"), self))
+        lay.addWidget(QLabel(tr("encoding_label", "Encoding:"), self))
         self.encoding_combo = QComboBox(self)
         self.encoding_combo.addItems(UNICODE_NAMES)
         self.encoding_combo.setCurrentIndex(max(0, self.texttype))
         lay.addWidget(self.encoding_combo)
-        lay.addWidget(QLabel(tr("eol_label", "行尾:"), self))
+        lay.addWidget(QLabel(tr("eol_label", "EOL:"), self))
         self.eol_combo = QComboBox(self)
         for e in [EOL.AutoLine, EOL.LF, EOL.CRLF, EOL.CR]:
-            self.eol_combo.addItem(_EOL_LABEL[e], e)
+            self.eol_combo.addItem(_eol_label(e), e)
         self.eol_combo.setCurrentIndex(
             list(_EOL_LABEL.keys()).index(self.lineendings)
             if self.lineendings in _EOL_LABEL else 0)
@@ -75,8 +75,13 @@ class EncodingDlg(QDialog):
 
 
 _EOL_LABEL = {
-    EOL.AutoLine: "自动",
-    EOL.LF: "LF",
-    EOL.CRLF: "CRLF",
-    EOL.CR: "CR",
+    EOL.AutoLine: ("eol_auto", "Auto"),
+    EOL.LF: ("eol_lf", "LF"),
+    EOL.CRLF: ("eol_crlf", "CRLF"),
+    EOL.CR: ("eol_cr", "CR"),
 }
+
+
+def _eol_label(e) -> str:
+    key, default = _EOL_LABEL[e]
+    return tr(key, default)

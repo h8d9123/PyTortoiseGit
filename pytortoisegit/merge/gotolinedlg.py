@@ -34,13 +34,13 @@ class GotoLineDlg(QDialog):
 
     def __init__(self, parent=None, line_count: int = 1):
         super().__init__(parent, Qt.WindowType.Window)
-        self.setWindowTitle(tr("gotoline_title", "跳转到行"))
+        self.setWindowTitle(tr("gotoline_title", "Go to line"))
         self.resize(280, 110)
         self._build_ui(line_count)
 
     def _build_ui(self, line_count: int):
         lay = QVBoxLayout(self)
-        self.label = QLabel(tr("gotoline_label", "行号:"), self)
+        self.label = QLabel(tr("gotoline_label", "Line number:"), self)
         lay.addWidget(self.label)
         self.spin = QSpinBox(self)
         self.spin.setRange(1, max(1, line_count))

@@ -49,7 +49,7 @@ class FindDlg(QDialog):
 
     def __init__(self, parent=None, replace_mode: bool = True):
         super().__init__(parent)
-        self.setWindowTitle(tr("find_title", "查找/替换"))
+        self.setWindowTitle(tr("find_title", "Find/Replace"))
         self.resize(420, 190)
         self.replace_mode = replace_mode
         self._build_ui(replace_mode)
@@ -74,21 +74,21 @@ class FindDlg(QDialog):
 
         left = QVBoxLayout()
         form = QGridLayout()
-        form.addWidget(QLabel(tr("find_label", "查找内容:"), self), 0, 0)
+        form.addWidget(QLabel(tr("find_label", "Find what:"), self), 0, 0)
         self.find_combo = QComboBox(self)
         self.find_combo.setEditable(True)
         form.addWidget(self.find_combo, 0, 1)
-        form.addWidget(QLabel(tr("replace_label", "替换为:"), self), 1, 0)
+        form.addWidget(QLabel(tr("replace_label", "Replace with:"), self), 1, 0)
         self.replace_combo = QComboBox(self)
         self.replace_combo.setEditable(True)
         form.addWidget(self.replace_combo, 1, 1)
         left.addLayout(form)
 
         # 复选框：一行一个（对齐原版 IDD_FIND 顺序）
-        self.chk_case = QCheckBox(tr("find_case", "区分大小写"), self)
-        self.chk_limit = QCheckBox(tr("find_limit", "仅在修改的行中查找"), self)
-        self.chk_up = QCheckBox(tr("find_up", "向上搜索"), self)
-        self.chk_whole = QCheckBox(tr("find_whole", "全词匹配"), self)
+        self.chk_case = QCheckBox(tr("find_case", "Match case"), self)
+        self.chk_limit = QCheckBox(tr("find_limit", "Search only in modified lines"), self)
+        self.chk_up = QCheckBox(tr("find_up", "Search up"), self)
+        self.chk_whole = QCheckBox(tr("find_whole", "Match whole word"), self)
         for chk in (self.chk_case, self.chk_limit, self.chk_up, self.chk_whole):
             left.addWidget(chk)
         left.addStretch(1)
@@ -96,11 +96,11 @@ class FindDlg(QDialog):
 
         # 按钮：同一列（对齐原版 IDD_FIND）
         right = QVBoxLayout()
-        self._btn_find = QPushButton(tr("find_find", "查找"), self)
-        self._btn_replace = QPushButton(tr("find_replace", "替换"), self)
-        self._btn_replace_all = QPushButton(tr("find_replace_all", "全部替换"), self)
-        self._btn_count = QPushButton(tr("find_count", "计数"), self)
-        self._btn_cancel = QPushButton(tr("cancel", "取消"), self)
+        self._btn_find = QPushButton(tr("find_find", "Find"), self)
+        self._btn_replace = QPushButton(tr("find_replace", "Replace"), self)
+        self._btn_replace_all = QPushButton(tr("find_replace_all", "Replace All"), self)
+        self._btn_count = QPushButton(tr("find_count", "Count"), self)
+        self._btn_cancel = QPushButton(tr("cancel", "Cancel"), self)
         for b in (self._btn_find, self._btn_replace, self._btn_replace_all,
                   self._btn_count, self._btn_cancel):
             right.addWidget(b)

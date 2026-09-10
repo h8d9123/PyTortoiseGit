@@ -25,6 +25,8 @@
 
 from __future__ import annotations
 
+from ..res.strings import tr
+
 import os
 import re
 from typing import List, Optional, Tuple
@@ -110,7 +112,7 @@ class Patch:
             fd.revision2 = ""
             self._file_diffs.append(fd)
         if not self._file_diffs:
-            self._error = "没有解析到补丁"
+            self._error = tr("patch_no_diff", "No patch could be parsed")
         return bool(self._file_diffs)
 
     # ---- 路径检查 / 匹配计数（对齐 CheckPatchPath/CountMatches/CountDirMatches）----

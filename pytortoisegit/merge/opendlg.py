@@ -43,7 +43,7 @@ class _FileRow(QLineEdit):
         super().__init__(parent)
         from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
         # 用 QWidget 组合 + 外部方法不值得；此处仅使用 QLineEdit 路径
-        self.setPlaceholderText(tr("open_path_hint", "选择文件…"))
+        self.setPlaceholderText(tr("open_path_hint", "Choose file…"))
 
 
 class OpenDlg(QDialog):
@@ -51,7 +51,7 @@ class OpenDlg(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.WindowType.Window)
-        self.setWindowTitle(tr("open_title", "打开 "))
+        self.setWindowTitle(tr("open_title", "Open "))
         self.resize(520, 260)
         self.base_file = ""
         self.their_file = ""
@@ -76,30 +76,30 @@ class OpenDlg(QDialog):
             h.addWidget(btn)
             return edit, btn, h
 
-        e, b, h = row(tr("open_base", "基础文件(base):"))
+        e, b, h = row(tr("open_base", "Base file (base):"))
         self.base_edit = e
         b.clicked.connect(lambda: self._pick(self.base_edit))
         form.addRow(h)
-        e, b, h = row(tr("open_their", "对方文件(their):"))
+        e, b, h = row(tr("open_their", "Their file (their):"))
         self.their_edit = e
         b.clicked.connect(lambda: self._pick(self.their_edit))
         form.addRow(h)
-        e, b, h = row(tr("open_your", "我方文件(your):"))
+        e, b, h = row(tr("open_your", "Your file (your):"))
         self.your_edit = e
         b.clicked.connect(lambda: self._pick(self.your_edit))
         form.addRow(h)
-        e, b, h = row(tr("open_diff", "统一 diff 文件:"))
+        e, b, h = row(tr("open_diff", "Unified diff file:"))
         self.diff_edit = e
         b.clicked.connect(lambda: self._pick(self.diff_edit))
         form.addRow(h)
-        e, b, h = row(tr("open_patchdir", "补丁目录:"))
+        e, b, h = row(tr("open_patchdir", "Patch directory:"))
         self.dir_edit = e
         b.clicked.connect(lambda: self._pick_dir(self.dir_edit))
         form.addRow(h)
         lay.addLayout(form)
         from PySide6.QtWidgets import QCheckBox
         self.clip_check = QCheckBox(
-            tr("open_from_clipboard", "从剪贴板获取补丁"), self)
+            tr("open_from_clipboard", "Get patch from clipboard"), self)
         lay.addWidget(self.clip_check)
         box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                QDialogButtonBox.StandardButton.Cancel, self)
@@ -108,12 +108,12 @@ class OpenDlg(QDialog):
         lay.addWidget(box)
 
     def _pick(self, edit: QLineEdit):
-        p = pick_open_file(self, tr("open_title", "选择文件"), "")
+        p = pick_open_file(self, tr("open_title", "Choose file"), "")
         if p:
             edit.setText(p)
 
     def _pick_dir(self, edit: QLineEdit):
-        d = pick_dir(self, tr("open_title", "选择目录"), "")
+        d = pick_dir(self, tr("open_title", "Choose directory"), "")
         if d:
             edit.setText(d)
 

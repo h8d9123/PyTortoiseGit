@@ -43,7 +43,7 @@ class RegexFiltersDlg(QDialog):
 
     def __init__(self, parent=None, filters=None):
         super().__init__(parent, Qt.WindowType.Window)
-        self.setWindowTitle(tr("regex_filters_title", "正则过滤列表"))
+        self.setWindowTitle(tr("regex_filters_title", "Regex filter list"))
         self.resize(520, 320)
         self._ini_file = None
         if filters is None:
@@ -80,9 +80,9 @@ class RegexFiltersDlg(QDialog):
         self.list = QTreeWidget(self)
         self.list.setColumnCount(3)
         self.list.setHeaderLabels([
-            tr("regex_name", "名称"),
-            tr("regex_expr", "正则表达式"),
-            tr("regex_replace", "替换为"),
+            tr("regex_name", "Name"),
+            tr("regex_expr", "Regular expression"),
+            tr("regex_replace", "Replace with"),
         ])
         self._fill()
         self.list.itemDoubleClicked.connect(lambda *_: self._edit())

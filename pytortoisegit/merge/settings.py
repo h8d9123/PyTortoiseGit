@@ -65,9 +65,9 @@ class _MainPage(_BasePage):
         self.size_edit.setText("10")
         self.tab_mode_combo = QComboBox(self)
         self.tab_mode_combo.addItems([
-            tr("tabmode_tab", "使用制表符"),
-            tr("tabmode_spaces", "使用空格"),
-            tr("tabmode_smart", "智能制表")])
+            tr("tabmode_tab", "Use tabs"),
+            tr("tabmode_spaces", "Use spaces"),
+            tr("tabmode_smart", "Smart tabs")])
         self.tab_size_spin = QSpinBox(self)
         self.tab_size_spin.setRange(1, 64)
         self.tab_size_spin.setValue(4)
@@ -78,24 +78,24 @@ class _MainPage(_BasePage):
         self.max_inline_spin.setRange(0, 100000)
         self.max_inline_spin.setValue(5000)
 
-        self.chk_backup = QCheckBox(tr("settings_backup", "合并时备份文件"), self)
-        self.chk_first_diff = QCheckBox(tr("settings_firstdiff", "加载后跳到首个差异"), self)
-        self.chk_first_conflict = QCheckBox(tr("settings_firstconflict", "加载后跳到首个冲突"), self)
-        self.chk_ignore_ws = QCheckBox(tr("settings_ignorews", "忽略空白差异"), self)
-        self.chk_ignore_eol = QCheckBox(tr("settings_ignoreeol", "忽略换行符差异"), self)
-        self.chk_ignore_case = QCheckBox(tr("settings_ignorecase", "忽略大小写"), self)
-        self.chk_one_pane = QCheckBox(tr("settings_onepane", "单栏视图"), self)
-        self.chk_line_numbers = QCheckBox(tr("settings_linenumbers", "显示行号"), self)
-        self.chk_utf8 = QCheckBox(tr("settings_utf8", "默认以 UTF-8 保存"), self)
-        self.chk_auto_add = QCheckBox(tr("settings_autoadd", "自动添加新文件"), self)
-        self.chk_editorconfig = QCheckBox(tr("settings_editorconfig", "启用 EditorConfig"), self)
+        self.chk_backup = QCheckBox(tr("settings_backup", "Backup files on merge"), self)
+        self.chk_first_diff = QCheckBox(tr("settings_firstdiff", "Jump to first difference after load"), self)
+        self.chk_first_conflict = QCheckBox(tr("settings_firstconflict", "Jump to first conflict after load"), self)
+        self.chk_ignore_ws = QCheckBox(tr("settings_ignorews", "Ignore whitespace differences"), self)
+        self.chk_ignore_eol = QCheckBox(tr("settings_ignoreeol", "Ignore line-ending differences"), self)
+        self.chk_ignore_case = QCheckBox(tr("settings_ignorecase", "Ignore case"), self)
+        self.chk_one_pane = QCheckBox(tr("settings_onepane", "Single-pane view"), self)
+        self.chk_line_numbers = QCheckBox(tr("settings_linenumbers", "Show line numbers"), self)
+        self.chk_utf8 = QCheckBox(tr("settings_utf8", "Save as UTF-8 by default"), self)
+        self.chk_auto_add = QCheckBox(tr("settings_autoadd", "Auto-add new files"), self)
+        self.chk_editorconfig = QCheckBox(tr("settings_editorconfig", "Enable EditorConfig"), self)
 
-        form.addRow(tr("settings_font", "字体:"), self.font_combo)
-        form.addRow(tr("settings_fontsize", "字号:"), self.size_edit)
-        form.addRow(tr("settings_tabmode", "制表模式:"), self.tab_mode_combo)
-        form.addRow(tr("settings_tabsize", "制表宽度:"), self.tab_size_spin)
-        form.addRow(tr("settings_context", "上下文行数:"), self.context_spin)
-        form.addRow(tr("settings_maxinline", "最大行内差异长度:"), self.max_inline_spin)
+        form.addRow(tr("settings_font", "Font:"), self.font_combo)
+        form.addRow(tr("settings_fontsize", "Font size:"), self.size_edit)
+        form.addRow(tr("settings_tabmode", "Tab mode:"), self.tab_mode_combo)
+        form.addRow(tr("settings_tabsize", "Tab size:"), self.tab_size_spin)
+        form.addRow(tr("settings_context", "Context lines:"), self.context_spin)
+        form.addRow(tr("settings_maxinline", "Max inline diff length:"), self.max_inline_spin)
         for chk in (self.chk_backup, self.chk_first_diff, self.chk_first_conflict,
                     self.chk_ignore_ws, self.chk_ignore_eol, self.chk_ignore_case,
                     self.chk_one_pane, self.chk_line_numbers, self.chk_utf8,
@@ -135,10 +135,10 @@ class _ColorPage(_BasePage):
     """SetColorPage：各 DiffState 颜色编辑。"""
 
     _STATE_LABELS = {
-        DiffState.Removed: "删除行",
-        DiffState.Added: "新增行",
-        DiffState.Edited: "修改行",
-        DiffState.Conflict: "冲突行",
+        DiffState.Removed: ("color_state_removed", "Removed lines"),
+        DiffState.Added: ("color_state_added", "Added lines"),
+        DiffState.Edited: ("color_state_edited", "Modified lines"),
+        DiffState.Conflict: ("color_state_conflict", "Conflict lines"),
     }
 
     def __init__(self, parent=None):
@@ -146,16 +146,16 @@ class _ColorPage(_BasePage):
         self.colors = {s: c for s, c in DiffColors()._LIGHT_BG.items() if s in self._STATE_LABELS}
         form = QFormLayout(self)
         self._buttons: Dict[DiffState, QPushButton] = {}
-        for s, label in self._STATE_LABELS.items():
+        for s, (key, default) in self._STATE_LABELS.items():
             btn = QPushButton(self)
             btn.clicked.connect(lambda _=False, st=s: self._pick(st))
             self._buttons[s] = btn
-            form.addRow(label, btn)
+            form.addRow(tr(key, default), btn)
         self._refresh()
 
     def _pick(self, state: DiffState):
         c = self.colors.get(state, QColor(255, 255, 255))
-        picked = QColorDialog.getColor(c, self, tr("color_pick", "选择颜色"))
+        picked = QColorDialog.getColor(c, self, tr("color_pick", "Pick color"))
         if picked.isValid():
             self.colors[state] = picked
             self._refresh()
@@ -175,7 +175,7 @@ class Settings(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.WindowType.Window)
-        self.setWindowTitle(tr("merge_settings_title", "TortoiseMerge 设置"))
+        self.setWindowTitle(tr("merge_settings_title", "TortoiseMerge Settings"))
         self.resize(460, 340)
         self._build_ui()
 
@@ -185,8 +185,8 @@ class Settings(QDialog):
         self.tabs = QTabWidget(self)
         self.main_page = _MainPage(self)
         self.color_page = _ColorPage(self)
-        self.tabs.addTab(self.main_page, tr("merge_settings_main", "常规"))
-        self.tabs.addTab(self.color_page, tr("merge_settings_colors", "颜色"))
+        self.tabs.addTab(self.main_page, tr("merge_settings_main", "General"))
+        self.tabs.addTab(self.color_page, tr("merge_settings_colors", "Colors"))
         lay.addWidget(self.tabs, 1)
         btns = QHBoxLayout()
         btns.addStretch(1)

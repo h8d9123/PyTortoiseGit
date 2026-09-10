@@ -24,6 +24,8 @@
 
 from __future__ import annotations
 
+from ..res.strings import tr
+
 from enum import Enum
 
 
@@ -42,22 +44,26 @@ class EOL(Enum):
 
 
 _EOL_NAME = {
-    EOL.AutoLine: "自动",
-    EOL.CRLF: "CRLF",
-    EOL.LF: "LF",
-    EOL.CR: "CR",
-    EOL.LFCR: "LFCR",
-    EOL.VT: "VT",
-    EOL.FF: "FF",
-    EOL.NEL: "NEL",
-    EOL.LS: "LS",
-    EOL.PS: "PS",
-    EOL.NoEnding: "无",
+    EOL.AutoLine: ("eol_auto", "Auto"),
+    EOL.CRLF: ("eol_crlf", "CRLF"),
+    EOL.LF: ("eol_lf", "LF"),
+    EOL.CR: ("eol_cr", "CR"),
+    EOL.LFCR: ("eol_lfcr", "LFCR"),
+    EOL.VT: ("eol_vt", "VT"),
+    EOL.FF: ("eol_ff", "FF"),
+    EOL.NEL: ("eol_nel", "NEL"),
+    EOL.LS: ("eol_ls", "LS"),
+    EOL.PS: ("eol_ps", "PS"),
+    EOL.NoEnding: ("eol_none", "None"),
 }
 
 
 def get_eol_name(eol: EOL) -> str:
-    return _EOL_NAME.get(eol, str(eol))
+    entry = _EOL_NAME.get(eol)
+    if entry is None:
+        return str(eol)
+    key, default = entry
+    return tr(key, default)
 
 
 def detect_eol(text: str) -> EOL:

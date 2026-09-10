@@ -34,7 +34,7 @@ from ..res.strings import tr
 class AboutDlg(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent, Qt.WindowType.Window)
-        self.setWindowTitle(tr("about_title", "关于"))
+        self.setWindowTitle(tr("about_title", "About"))
         self.resize(360, 180)
         lay = QVBoxLayout(self)
         title = QLabel(tr("merge_about_title", "TortoiseMerge (PyTortoiseGit)"), self)
@@ -42,7 +42,7 @@ class AboutDlg(QDialog):
         title.setFont(f)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(title)
-        ver = QLabel(f"版本 {__version__} · 基于 TortoiseGit 复刻", self)
+        ver = QLabel(tr("merge_about_version", "Version {ver} · reimplementation based on TortoiseGit").format(ver=__version__), self)
         ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(ver)
         link = QLabel('<a href="https://tortoisegit.org">tortoisegit.org</a>', self)

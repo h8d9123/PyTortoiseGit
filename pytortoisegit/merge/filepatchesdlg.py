@@ -57,7 +57,7 @@ class FilePatchesDlg(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.WindowType.Window)
-        self.setWindowTitle(tr("filepatches_title", "补丁文件"))
+        self.setWindowTitle(tr("filepatches_title", "Patch files"))
         self.resize(620, 420)
         self._entries: List[_PatchEntry] = []
         self._file_states: List[int] = []
@@ -73,17 +73,17 @@ class FilePatchesDlg(QDialog):
         self.tree = QTreeWidget(self)
         self.tree.setColumnCount(3)
         self.tree.setHeaderLabels([
-            tr("filepatches_path", "文件"),
-            tr("filepatches_content", "内容"),
-            tr("filepatches_version", "版本")])
+            tr("filepatches_path", "File"),
+            tr("filepatches_content", "Content"),
+            tr("filepatches_version", "Version")])
         self.tree.setRootIsDecorated(False)
         self.tree.setIndentation(0)
         self.tree.itemDoubleClicked.connect(self._on_double_click)
         lay.addWidget(self.tree, 1)
         btns = QHBoxLayout()
-        self.btn_patch_all = QPushButton(tr("filepatches_patchall", "全部应用"), self)
+        self.btn_patch_all = QPushButton(tr("filepatches_patchall", "Apply All"), self)
         self.btn_patch_all.clicked.connect(self.patch_all)
-        self.btn_patch_sel = QPushButton(tr("filepatches_patchsel", "应用选中"), self)
+        self.btn_patch_sel = QPushButton(tr("filepatches_patchsel", "Apply Selected"), self)
         self.btn_patch_sel.clicked.connect(self.patch_selected)
         btns.addWidget(self.btn_patch_all)
         btns.addWidget(self.btn_patch_sel)

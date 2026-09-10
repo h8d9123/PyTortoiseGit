@@ -227,11 +227,11 @@ class MergeRibbon(QWidget):
         h.setSpacing(0)
         file_btn = QToolButton(row)
         file_btn.setObjectName("RibbonFile")
-        file_btn.setText(tr("tm_file_tab", "文件"))
+        file_btn.setText(tr("tm_file_tab", "File"))
         file_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         file_btn.setMenu(self._file_menu())
         h.addWidget(file_btn)
-        tab = QLabel(tr("tm_edit_tab", "编辑"), row)
+        tab = QLabel(tr("tm_edit_tab", "Edit"), row)
         tab.setObjectName("RibbonTab")
         h.addWidget(tab)
         h.addStretch(1)
@@ -280,7 +280,7 @@ class MergeRibbon(QWidget):
         h.setContentsMargins(0, 0, 0, 4)
         h.setSpacing(0)
 
-        g = _Group(tr("tm_group_edit", "编辑"), strip)
+        g = _Group(tr("tm_group_edit", "Edit"), strip)
         # 对齐原版：Save | Reload+[Undo/Redo/EnableEdit] | Copy/Paste(列) |
         #           Find+[Find Previous/Find Next] | Goto | Mark as resolved
         g.add(_tool(a["save"], True))
@@ -293,28 +293,28 @@ class MergeRibbon(QWidget):
         g.add(_tool(a["mark"], True))
         h.addWidget(g)
 
-        g = _Group(tr("tm_group_nav", "导航"), strip)
+        g = _Group(tr("tm_group_nav", "Navigate"), strip)
         # 三列：前/后 差异、前/后 冲突、前/后 行内差异
         g.add_col([_tool(a["prev_diff"]), _tool(a["next_diff"])])
         g.add_col([_tool(a["prev_conf"]), _tool(a["next_conf"])])
         g.add_col([_tool(a["prev_inline"]), _tool(a["next_inline"])])
         h.addWidget(g)
 
-        g = _Group(tr("tm_group_blocks", "块"), strip)
+        g = _Group(tr("tm_group_blocks", "Blocks"), strip)
         g.add(self._split(a["use_left_block"], [
             a["use_left_file"], a["use_left_before"], a["use_right_before"]]))
         g.add(self._split(a["use_theirs"], [
             a["use_mine"], a["use_theirs_then"], a["use_mine_then"]]))
         h.addWidget(g)
 
-        g = _Group(tr("tm_group_ws", "空白"), strip)
+        g = _Group(tr("tm_group_ws", "Whitespaces"), strip)
         # Show Whitespaces 大按钮 + 右侧三项小按钮
         g.add(_tool(a["show_ws"], True))
         g.add_col([_tool(a["cmp_ws"]), _tool(a["ign_ws"]),
                    _tool(a["ign_all_ws"])])
         h.addWidget(g)
 
-        g = _Group(tr("tm_group_diff", "差异"), strip)
+        g = _Group(tr("tm_group_diff", "Diff"), strip)
         # Inline diff / Inline diff word-wise / Regex Filter 大按钮 + 右侧两项小按钮
         g.add(_tool(a["inline"], True))
         g.add(_tool(a["inline_word"], True))
@@ -322,7 +322,7 @@ class MergeRibbon(QWidget):
         g.add_col([_tool(a["ignore_comments"]), _tool(a["ignore_eol"])])
         h.addWidget(g)
 
-        g = _Group(tr("tm_group_view", "视图"), strip)
+        g = _Group(tr("tm_group_view", "View"), strip)
         bars = _tool(a["view_bars"], True)
         bars.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         bars_menu = QMenu(bars)

@@ -106,3 +106,42 @@ def test_inline_spans_char_and_word():
     l2, r2 = inline_spans("abc", "axc", word_wise=False)
     assert l2 == [(1, 2)]
     assert r2 == [(1, 2)]
+
+
+def test_normalize_revs_matches_git_diff_semantics():
+    """修订号归一：单个修订视为基准 old，另一端为工作区。"""
+    from pytortoisegit.merge.diffdata import normalize_revs
+    assert normalize_revs("A", "B") == ("A", "B")
+    # 只给一个（无论 rev1 还是 rev2）都作为基准 old
+    assert normalize_revs("HEAD", None) == ("HEAD", None)
+    assert normalize_revs(None, "HEAD") == ("HEAD", None)
+    assert normalize_revs(None, None) == (None, None)
+
+
+def test_diffdata_load_direction_not_reversed(tmp_path_factory):
+    """回归：双击并排比较方向必须与 git diff 一致（old=修订，new=工作区）。"""
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.git.repo import Repository
+    from pytortoisegit.merge.diffdata import DiffData
+    parent = tmp_path_factory.mktemp("diffdir")
+    root = parent / "repo"
+    root.mkdir()
+    runner = GitRunner(cwd=str(root))
+    runner.init(str(root), initial_branch="main")
+    runner.run("config", "user.email", "t@x.com")
+    runner.run("config", "user.name", "T")
+    (root / "a.txt").write_text("HEAD-line\n", encoding="utf-8")
+    runner.run("add", "-A")
+    runner.run("commit", "-m", "init")
+    (root / "a.txt").write_text("WORKTREE-line\n", encoding="utf-8")
+    repo = Repository.open(str(root))
+    dd = DiffData(repo)
+
+    # 等价于 git diff HEAD：old=HEAD, new=工作区
+    left, right = dd.load("a.txt", None, "HEAD")
+    assert [v.line for v in left] == ["HEAD-line"]
+    assert [v.line for v in right] == ["WORKTREE-line"]
+    # 只给 rev1 也应得到相同方向
+    left2, right2 = dd.load("a.txt", "HEAD", None)
+    assert [v.line for v in left2] == ["HEAD-line"]
+    assert [v.line for v in right2] == ["WORKTREE-line"]

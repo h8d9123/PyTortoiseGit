@@ -48,6 +48,22 @@ def _vd(text: str, state: DiffState, linenumber: int = -1) -> ViewData:
     return ViewData(text, state, linenumber, hidestate=hidden)
 
 
+def normalize_revs(rev1: str | None, rev2: str | None):
+    """把 (rev1, rev2) 规范成 (old, new)，与 `git diff` 语义一致。
+
+    * 两个都给定：old=rev1, new=rev2
+    * 只给 rev1 或只给 rev2：该修订为基准 old，new=None（表示工作区）
+    * 都不给：old=None, new=None
+    """
+    if rev1 and rev2:
+        return rev1, rev2
+    if rev1:
+        return rev1, None
+    if rev2:
+        return rev2, None
+    return None, None
+
+
 def _pick_patch(patches: Sequence[FilePatch], path: str | None) -> Optional[FilePatch]:
     if not patches:
         return None
@@ -386,9 +402,16 @@ class DiffData:
                 for s in lines]
 
     def load(self, path: str, rev1: str | None, rev2: str | None):
-        """读两版本内容并 diff 出对齐行。返回 (left_rows, right_rows)。"""
-        old_lines = self._read(path, rev1)
-        new_lines = self._read(path, rev2)
+        """读两版本内容并 diff 出对齐行。返回 (left_rows, right_rows)。
+
+        修订号语义与 `git diff` 一致：
+          * 两个都给定 → old=rev1, new=rev2（git diff rev1 rev2）
+          * 只给一个     → 该修订为基准 old，另一端为工作区（git diff rev）
+          * 都不给       → 工作区与工作区（无差异）
+        """
+        old_rev, new_rev = normalize_revs(rev1, rev2)
+        old_lines = self._read(path, old_rev)
+        new_lines = self._read(path, new_rev)
         left, right = align_lines(
             old_lines, new_lines, "", path,
             match_old=self._match_copies(old_lines),

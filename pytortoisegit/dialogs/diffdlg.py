@@ -132,11 +132,13 @@ class DiffDlg(QDialog):
 
     def _build_patch(self) -> tuple:
         from ..udiff import parse_diff
+        from ..merge.diffdata import normalize_revs
+        old_rev, new_rev = normalize_revs(self.rev1, self.rev2)
         args: List[str] = ["diff", "--no-color", "-U3"]
-        if self.rev1 and self.rev2:
-            args += [self.rev1, self.rev2]
-        elif self.rev2:
-            args += [self.rev2]
+        if old_rev and new_rev:
+            args += [old_rev, new_rev]
+        elif old_rev:
+            args += [old_rev]
         if self.paths:
             args += ["--", *self.paths]
         else:
@@ -147,11 +149,13 @@ class DiffDlg(QDialog):
         return patches, total
 
     def _on_loaded(self, payload):
+        from ..merge.diffdata import normalize_revs
         patches, total = payload
         self.patches = patches
+        old_rev, new_rev = normalize_revs(self.rev1, self.rev2)
         self._header.setText(
             f" {len(patches)} 个文件，+{total} 行改动"
-            f"  {self.rev1 or 'HEAD'} … {self.rev2 or '工作区'}")
+            f"  {old_rev or 'HEAD'} … {new_rev or '工作区'}")
         self.file_tree.clear()
         align_r = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         for p in patches:

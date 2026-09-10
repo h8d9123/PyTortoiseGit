@@ -115,6 +115,30 @@ def test_eol_difference_shown(tmp_path_factory, qapp):
     assert "LF" in frm.left_view.document().findBlockByNumber(0).text()
 
 
+def test_scroll_sync(tmp_path_factory, qapp):
+    """滚轮/滚动条应同步左右视图（垂直与水平）。"""
+    from pytortoisegit.merge.mergefrm import MergeFrm
+    root = tmp_path_factory.mktemp("mergeview_scroll")
+    before = "\n".join(f"line{i}" for i in range(200)) + "\n"
+    after = "\n".join(f"LONG{i}" + "x" * 200 for i in range(200)) + "\n"
+    repo = _make_repo(root, before, after)
+    frm = MergeFrm(repo, "a.txt", "HEAD", None)
+    frm.resize(500, 300)
+    frm.show()
+    qapp.processEvents()
+    lb = frm.left_view.verticalScrollBar()
+    rb = frm.right_view.verticalScrollBar()
+    lb.setValue(40)
+    qapp.processEvents()
+    assert rb.value() == 40
+    lh = frm.left_view.horizontalScrollBar()
+    rh = frm.right_view.horizontalScrollBar()
+    if lh.maximum() > 0:
+        lh.setValue(min(10, lh.maximum()))
+        qapp.processEvents()
+        assert rh.value() == lh.value()
+
+
 def test_locatorbar_stripes(qapp):
     """LocatorBar 支持左/右/底三条 stripe（对齐 CLocatorBar）。"""
     from pytortoisegit.merge.locatorbar import LocatorBar

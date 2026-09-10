@@ -147,6 +147,7 @@ class MergeFrm(QMainWindow):
         for v in self._views():
             v.line_moved.connect(self._on_view_line)
             v.verticalScrollBar().valueChanged.connect(self._sync_from)
+            v.horizontalScrollBar().valueChanged.connect(self._sync_h_from)
 
     def _build_statusbar(self):
         self._status = QLabel("")
@@ -406,6 +407,18 @@ class MergeFrm(QMainWindow):
                 bar.setValue(value)
                 bar.blockSignals(False)
         self._update_locator_viewport()
+
+    def _sync_h_from(self, value: int):
+        """水平滚动同步（对齐 CBaseView::ScrollAllSide）。"""
+        sender = self.sender()
+        for v in self._views():
+            bar = v.horizontalScrollBar()
+            if bar is sender:
+                continue
+            if bar.value() != value:
+                bar.blockSignals(True)
+                bar.setValue(value)
+                bar.blockSignals(False)
 
     def _update_locator_viewport(self):
         bar = self.left_view.verticalScrollBar()

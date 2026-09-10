@@ -69,7 +69,7 @@ class SyncDlg(QDialog):
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
-        self.setWindowTitle(spec.caption or tr("sync_title", "同步"))
+        self.setWindowTitle(spec.caption or tr("sync_title", "Sync"))
         font = self.font()
         font.setPointSize(spec.font_size or 9)
         self.setFont(font)
@@ -110,9 +110,9 @@ class SyncDlg(QDialog):
         self.log_view = QPlainTextEdit(self.tab)
         self.log_view.setReadOnly(True)
         self.incoming_tree = QTreeWidget(self.tab)
-        self.incoming_tree.setHeaderLabels([tr("sync_in", "待拉取")])
+        self.incoming_tree.setHeaderLabels([tr("sync_in", "Incoming")])
         self.outgoing_tree = QTreeWidget(self.tab)
-        self.outgoing_tree.setHeaderLabels([tr("sync_out", "待推送")])
+        self.outgoing_tree.setHeaderLabels([tr("sync_out", "Outgoing")])
         self.tab.addTab(self.log_view, tr("log"))
         self.tab.addTab(self.incoming_tree, tr("sync_incoming", "Incoming"))
         self.tab.addTab(self.outgoing_tree, tr("sync_outgoing", "Outgoing"))
@@ -157,8 +157,7 @@ class SyncDlg(QDialog):
         self.btn_close.clicked.connect(self.reject)
         self.btn_help = QPushButton(tr("help"), self)
         self.btn_help.clicked.connect(lambda: QMessageBox.information(
-            self, tr("help"), tr("sync_help",
-                                 "选择本地/远程分支与远程 URL，执行拉取或推送。")))
+            self, tr("help"), tr("sync_help", "Choose the local/remote branch and remote URL, then pull or push.")))
         self._animate = QLabel("", self)
         self._animate.setObjectName("IDC_ANIMATE_SYNC")
 
@@ -267,7 +266,7 @@ class SyncDlg(QDialog):
             self.url_combo.setCurrentText(url)
         self.remote_combo.blockSignals(False)
         if not rm:
-            self.status_label.setText(tr("sync_no_remote", "没有配置远程"))
+            self.status_label.setText(tr("sync_no_remote", "No remote configured"))
             return
         self._populate_inout(rm, br)
         lines: List[str] = []
@@ -276,9 +275,9 @@ class SyncDlg(QDialog):
             ahead, behind = self._ahead_behind(rm, rbr)
             if ahead or behind:
                 lines.append(format_string(
-                    tr("sync_ab", "{branch}: 领先 {ahead}，落后 {behind}"),
+                    tr("sync_ab", "{branch}: ahead {ahead}, behind {behind}"),
                     branch=rbr, ahead=ahead, behind=behind))
-        self.status_label.setText("\n".join(lines) or tr("sync_in_sync", "与远程一致"))
+        self.status_label.setText("\n".join(lines) or tr("sync_in_sync", "Up to date with remote"))
 
     def _ahead_behind(self, remote: str, branch: str) -> Tuple[int, int]:
         head = self.local_combo.currentText().strip() or self.repo.current_branch()
@@ -317,7 +316,7 @@ class SyncDlg(QDialog):
         rm = self.remote_combo.currentText().strip()
         br = self.local_combo.currentText().strip()
         if not rm:
-            QMessageBox.warning(self, tr("warning"), tr("sync_no_remote", "没有配置远程"))
+            QMessageBox.warning(self, tr("warning"), tr("sync_no_remote", "No remote configured"))
             return
         rbr = self.remote_combo.currentText().strip()
         if rbr == rm:
@@ -353,8 +352,8 @@ class SyncDlg(QDialog):
         if dlg.exec():
             names = self._remote_names()
             QMessageBox.information(self, tr("sync_manage_remote", "Manage Remotes"),
-                                    (tr("sync_remote_list", "远端列表：\n") + "\n".join(names))
-                                    if names else tr("sync_no_remote", "没有配置远端"))
+                                    (tr("sync_remote_list", "Remotes:\n") + "\n".join(names))
+                                    if names else tr("sync_no_remote", "No remote configured"))
             self._refresh_remotes()
 
     def _open_commit(self):
@@ -437,5 +436,5 @@ def _run_reporter(dlg, repo, args, log=None) -> bool:
     if result.returncode == 0:
         return True
     if result.returncode and not result.stderr:
-        dlg.log(tr("sync_failed", "同步失败"))
+        dlg.log(tr("sync_failed", "Sync failed"))
     return result.returncode == 0

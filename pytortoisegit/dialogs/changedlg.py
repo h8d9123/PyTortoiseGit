@@ -319,10 +319,10 @@ class ChangedDlg(QDialog):
             else:
                 buckets["modified"].append(r)
         labels = (
-            ("modified", tr("log_file_group", "已修改的文件")),
-            ("unversioned", tr("status_group_unversioned", "未版本控制的文件")),
-            ("ignored", tr("status_group_ignored", "已忽略的文件")),
-            ("localignore", tr("status_group_localignore", "忽略本地更改的文件")),
+            ("modified", tr("log_file_group", "Modified files")),
+            ("unversioned", tr("status_group_unversioned", "Unversioned files")),
+            ("ignored", tr("status_group_ignored", "Ignored files")),
+            ("localignore", tr("status_group_localignore", "Files with local changes ignored")),
         )
         # 有未跟踪/忽略等才分组（与 PrepareGroups 的 bHasGroups 一致）
         has_groups = bool(buckets["unversioned"] or buckets["ignored"]
@@ -410,7 +410,7 @@ class ChangedDlg(QDialog):
         if chosen is act_save:
             ok = self.stash.create(include_untracked=self.chk_unversioned.isChecked())
             if not ok:
-                QMessageBox.warning(self, tr("error"), tr("changes_stash_failed", "暂存失败"))
+                QMessageBox.warning(self, tr("error"), tr("changes_stash_failed", "Stash failed"))
         elif chosen is act_pop:
             latest = self.stash.latest()
             if latest:
@@ -439,16 +439,16 @@ class ChangedDlg(QDialog):
         e = r.entry
         menu = QMenu(self)
         if e.is_staged:
-            act_unstage = menu.addAction(tr("changes_unstage", "取消暂存"))
+            act_unstage = menu.addAction(tr("changes_unstage", "Unstage"))
         else:
-            act_stage = menu.addAction(tr("changes_stage", "加入暂存"))
-        act_diff_head = menu.addAction(tr("changes_diff_head", "与 HEAD 比较"))
-        act_revert = menu.addAction(tr("changes_revert", "撤消更改…"))
+            act_stage = menu.addAction(tr("changes_stage", "Stage"))
+        act_diff_head = menu.addAction(tr("changes_diff_head", "Compare with HEAD"))
+        act_revert = menu.addAction(tr("changes_revert", "Revert changes…"))
         menu.addSeparator()
-        act_open = menu.addAction(tr("menu_open", "在编辑器打开"))
-        act_copy = menu.addAction(tr("menu_copy_path", "复制路径"))
-        act_blame = menu.addAction(tr("menu_blame", "在此文件上运行 Blame"))
-        act_patch = menu.addAction(tr("changes_save_unified", "显示该文件补丁"))
+        act_open = menu.addAction(tr("menu_open", "Open in editor"))
+        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
+        act_blame = menu.addAction(tr("menu_blame", "Blame this file"))
+        act_patch = menu.addAction(tr("changes_save_unified", "Show patch for this file"))
         chosen = menu.exec(self.status_tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return
@@ -482,7 +482,7 @@ class ChangedDlg(QDialog):
         elif chosen is act_revert:
             resp = QMessageBox.question(
                 self, tr("confirm"),
-                format_string(tr("changes_revert_q", "撤销对 {path} 的修改？"), path=e.path),
+                format_string(tr("changes_revert_q", "Revert changes to {path}?"), path=e.path),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if resp == QMessageBox.StandardButton.Yes:
                 self.repo.runner.run("checkout", "--", e.path)

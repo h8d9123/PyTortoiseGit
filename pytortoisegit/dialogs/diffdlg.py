@@ -89,11 +89,11 @@ class DiffDlg(QDialog):
         self.file_tree = QTreeWidget(splitter)
         self.file_tree.setColumnCount(5)
         self.file_tree.setHeaderLabels([
-            tr("filediff_file", "文件"),
-            tr("filediff_ext", "扩展名"),
-            tr("filediff_action", "动作"),
-            tr("filediff_add", "增加"),
-            tr("filediff_del", "删除"),
+            tr("filediff_file", "File"),
+            tr("filediff_ext", "Extension"),
+            tr("filediff_action", "Action"),
+            tr("filediff_add", "Added"),
+            tr("filediff_del", "Deleted"),
         ])
         self.file_tree.setRootIsDecorated(False)
         self.file_tree.setIndentation(0)
@@ -154,8 +154,9 @@ class DiffDlg(QDialog):
         self.patches = patches
         old_rev, new_rev = normalize_revs(self.rev1, self.rev2)
         self._header.setText(
-            f" {len(patches)} 个文件，+{total} 行改动"
-            f"  {old_rev or 'HEAD'} … {new_rev or '工作区'}")
+            " " + tr("diff_summary", "{files} files, +{lines} lines").format(
+                files=len(patches), lines=total)
+            + f"  {old_rev or 'HEAD'} … {new_rev or tr('diff_working_tree', 'Working tree')}")
         self.file_tree.clear()
         align_r = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         for p in patches:
@@ -220,13 +221,13 @@ class DiffDlg(QDialog):
             return
         path = p.git_path
         menu = QMenu(self)
-        act_cmp = menu.addAction(tr("log_compare_two", "比较两个修订"))
-        act_gnu = menu.addAction(tr("log_gnudiff", "显示统一差异"))
+        act_cmp = menu.addAction(tr("log_compare_two", "Compare two revisions"))
+        act_gnu = menu.addAction(tr("log_gnudiff", "Show unified diff"))
         menu.addSeparator()
-        act_log = menu.addAction(tr("log_show_log", "显示日志"))
+        act_log = menu.addAction(tr("log_show_log", "Show log"))
         act_blame = menu.addAction(tr("log_blame", "Blame"))
         menu.addSeparator()
-        act_copy = menu.addAction(tr("log_copy_rel", "相对路径"))
+        act_copy = menu.addAction(tr("log_copy_rel", "Relative path"))
         chosen = menu.exec(self.file_tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return

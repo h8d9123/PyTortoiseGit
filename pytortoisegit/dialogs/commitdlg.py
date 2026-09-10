@@ -153,36 +153,36 @@ class CommitDlg(QDialog):
         add(QLabel(tr("commit_bugid_label", "Bug-ID/Issue-Nr:"), self),
             "IDC_BUGIDLABEL")
         self.bugid_edit = add(QLineEdit(self), "IDC_BUGID")
-        self.bugtraq_btn = add(QPushButton(tr("browse", "浏览..."), self),
+        self.bugtraq_btn = add(QPushButton(tr("browse", "Browse..."), self),
                                "IDC_BUGTRAQBUTTON")
 
         # 消息区（Scintilla → QPlainTextEdit）
         self.message_edit = add(QPlainTextEdit(self), "IDC_LOGMESSAGE")
         self.message_edit.setPlaceholderText(
-            tr("commit_hint", "第一行是标题，空行后是正文"))
+            tr("commit_hint", "First line is the subject, blank line then the body"))
         self.message_edit.textChanged.connect(self._update_stats)
         self.amend_box = add(QCheckBox(self), "IDC_COMMIT_AMEND")
-        self.amend_box.setText(tr("commit_amend", "修订上一次提交"))
+        self.amend_box.setText(tr("commit_amend", "Amend last commit"))
         self.amend_box.toggled.connect(self._on_amend_toggled)
         self.amend_diff_btn = add(
-            QPushButton(tr("commit_amend_diff", "显示到上次提交的改动"), self),
+            QPushButton(tr("commit_amend_diff", "Show changes to last commit"), self),
             "IDC_COMMIT_AMENDDIFF")
         self.amend_diff_btn.clicked.connect(self._on_amend_diff)
         self.chk_set_date = add(QCheckBox(self), "IDC_COMMIT_SETDATETIME")
-        self.chk_set_date.setText(tr("commit_set_date", "设置作者日期"))
+        self.chk_set_date.setText(tr("commit_set_date", "Set author date"))
         self.chk_set_date.toggled.connect(self._on_set_date_toggled)
         self.date_picker = add(QDateTimeEdit(self), "IDC_COMMIT_DATEPICKER")
         self.time_picker = add(QDateTimeEdit(self), "IDC_COMMIT_TIMEPICKER")
         self.reset_date_btn = add(
-            QPushButton(tr("commit_reset_date", "重置"), self),
+            QPushButton(tr("commit_reset_date", "Reset"), self),
             "IDC_COMMIT_AS_COMMIT_DATE")
         self.reset_date_btn.clicked.connect(self._on_reset_date)
         self.chk_set_author = add(QCheckBox(self), "IDC_COMMIT_SETAUTHOR")
-        self.chk_set_author.setText(tr("commit_set_author", "设置作者"))
+        self.chk_set_author.setText(tr("commit_set_author", "Set author"))
         self.chk_set_author.toggled.connect(self._on_set_author_toggled)
         self.author_edit = add(QLineEdit(self), "IDC_COMMIT_AUTHORDATA")
         self.signoff_btn = add(
-            QPushButton(tr("commit_signoff", "添加 Signed-off-by"), self),
+            QPushButton(tr("commit_signoff", "Add Signed-off-by"), self),
             "IDC_SIGNOFF")
         self.signoff_btn.clicked.connect(self._on_signoff)
         self.text_info = add(QLabel("", self), "IDC_TEXT_INFO")
@@ -388,8 +388,7 @@ class CommitDlg(QDialog):
     def _on_help(self):
         QMessageBox.information(
             self, tr("help"),
-            tr("commit_help",
-               "第一行是标题，空一行后写正文。勾选左侧复选框来控制提交哪些文件。"))
+            tr("commit_help", "The first line is the subject, followed by a blank line then the body. Use the checkboxes on the left to choose which files to commit."))
 
     # ---- Check 链接 ----
 
@@ -397,8 +396,8 @@ class CommitDlg(QDialog):
         # 取消确认：有未提交内容时询问（对齐 TGit）
         if self.message_edit.toPlainText().strip() or self._checked_paths():
             resp = QMessageBox.question(
-                self, tr("confirm", "确认"),
-                tr("commit_cancel_confirm", "真的想取消吗？未提交的内容将丢失。"),
+                self, tr("confirm", "Confirm"),
+                tr("commit_cancel_confirm", "Really cancel? Uncommitted changes will be lost."),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if resp != QMessageBox.StandardButton.Yes:
                 event.ignore()
@@ -511,12 +510,12 @@ class CommitDlg(QDialog):
             return
         path = row.path
         menu = QMenu(self)
-        act_open = menu.addAction(tr("menu_open", "在编辑器打开"))
-        act_copy = menu.addAction(tr("menu_copy_path", "复制路径"))
+        act_open = menu.addAction(tr("menu_open", "Open in editor"))
+        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
         menu.addSeparator()
-        act_diff = menu.addAction(tr("menu_diff_file", "查看 diff"))
-        act_viewpatch = menu.addAction(tr("commit_view_patch", "查看补丁"))
-        act_blame = menu.addAction(tr("menu_blame", "在此文件上运行 Blame"))
+        act_diff = menu.addAction(tr("menu_diff_file", "View diff"))
+        act_viewpatch = menu.addAction(tr("commit_view_patch", "View patch"))
+        act_blame = menu.addAction(tr("menu_blame", "Blame this file"))
         chosen = menu.exec(self.status_tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return
@@ -565,7 +564,7 @@ class CommitDlg(QDialog):
         if hasattr(self, "text_info"):
             words = len(msg.split()) if msg.strip() else 0
             self.text_info.setText(format_string(
-                tr("commit_text_info", "{chars} 字符 / {lines} 行"),
+                tr("commit_text_info", "{chars} chars / {lines} lines"),
                 chars=len(msg), lines=len(msg.splitlines())))
         total = self.status_tree.topLevelItemCount()
         if not total:
@@ -585,21 +584,21 @@ class CommitDlg(QDialog):
         msg = self.message_edit.toPlainText().strip()
         paths = self._checked_paths()
         if not paths and not self.amend_box.isChecked() and not self.chk_message_only.isChecked():
-            QMessageBox.warning(self, tr("warning"), tr("commit_nothing", "没有选中要提交的文件"))
+            QMessageBox.warning(self, tr("warning"), tr("commit_nothing", "No files selected to commit"))
             return
         if not msg and not self.chk_message_only.isChecked():
-            QMessageBox.warning(self, tr("warning"), tr("commit_empty_msg", "请填写提交信息"))
+            QMessageBox.warning(self, tr("warning"), tr("commit_empty_msg", "Please enter a commit message"))
             return
 
         brand_new = self.chk_new_branch.isChecked()
         if brand_new:
             branch = self.newbranch_edit.text().strip()
             if not branch:
-                QMessageBox.warning(self, tr("warning"), tr("commit_newname", "请输入新分支名"))
+                QMessageBox.warning(self, tr("warning"), tr("commit_newname", "Please enter a new branch name"))
                 return
             if self.repo.runner.run("branch", "--list", branch).stdout.strip():
                 QMessageBox.warning(self, tr("warning"),
-                                    format_string(tr("commit_branch_exists", "分支 {name} 已存在"),
+                                    format_string(tr("commit_branch_exists", "Branch {name} already exists"),
                                                   name=branch))
                 return
             self.repo.runner.run("checkout", "-b", branch)
@@ -618,7 +617,7 @@ class CommitDlg(QDialog):
             allow_empty=self.chk_message_only.isChecked(),
         )
         if result.returncode != 0:
-            QMessageBox.warning(self, tr("commit_failed", "提交失败"), result.stderr)
+            QMessageBox.warning(self, tr("commit_failed", "Commit failed"), result.stderr)
             return
         if push:
             from .pushdlg import do_push_after_commit

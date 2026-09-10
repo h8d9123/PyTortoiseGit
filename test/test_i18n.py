@@ -16,6 +16,18 @@ def test_language_switch():
     strings.set_language("zh")
 
 
+def test_set_language_variants():
+    strings.set_language("zh_CN")
+    assert strings.get_language() == "zh"
+    strings.set_language("English")
+    assert strings.get_language() == "en"
+    strings.set_language("Deutsch")
+    assert strings.get_language() == "en"
+    strings.set_language("zh_TW")
+    assert strings.get_language() == "zh"
+    strings.set_language("zh")
+
+
 def test_tr_missing_key_falls_back():
     strings.set_language("zh")
     # 未登记的 key：中文回退 default

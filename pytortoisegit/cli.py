@@ -42,7 +42,7 @@ def _print_help():
     print("  python pytortoisegit/app.py /command:clone /url:https://github.com/user/repo.git")
 
 def main(argv: list | None = None) -> int:
-    from .res.strings import format_string, tr
+    from .res.strings import format_string, set_language, tr
     from .commands.dispatcher import CommandContext, UnknownCommandError, dispatch
 
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -53,6 +53,11 @@ def main(argv: list | None = None) -> int:
     from PySide6.QtWidgets import QApplication
 
     qapp = QApplication.instance() or QApplication([])
+    try:
+        from .dialogs.settingsdlg import general_settings
+        set_language(general_settings().value("language", "zh_CN"))
+    except Exception:
+        pass
     qapp.setApplicationDisplayName(tr("app_name"))
     qapp.setApplicationVersion(__version__)
     try:

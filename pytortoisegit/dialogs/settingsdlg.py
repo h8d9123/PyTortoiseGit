@@ -52,7 +52,7 @@ from PySide6.QtWidgets import (
 
 from ..git.git import GitRunner
 from ..git.repo import Repository
-from ..res.strings import tr
+from ..res.strings import set_language, tr
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
 
@@ -293,7 +293,9 @@ class _GeneralPage(_SettingPage):
         s = general_settings()
         combo = self.language_combo
         if combo is not None:
-            s.setValue("language", combo.currentData() or combo.currentText())
+            lang = combo.currentData() or combo.currentText()
+            s.setValue("language", lang)
+            set_language(lang)
         if cb := self.check_newer_checkbox:
             s.setValue("checkNewer", cb.isChecked())
         if self.git_path_edit is not None:

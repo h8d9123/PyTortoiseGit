@@ -35,6 +35,27 @@ def test_opendlg_mode_apply(qapp):
     assert dlg.from_clipboard
 
 
+def test_finddlg_layout(qapp):
+    """对齐 IDD_FIND：复选框一行一个；按钮同一列。"""
+    from pytortoisegit.merge.finddlg import FindDlg
+    dlg = FindDlg()
+    dlg.resize(500, 220)
+    dlg.show()
+    qapp.processEvents()
+    chks = [dlg.chk_case, dlg.chk_limit, dlg.chk_up, dlg.chk_whole]
+    ys = [c.y() for c in chks]
+    assert len(set(ys)) == 4 and ys == sorted(ys)  # 一行一个，纵向递增
+    btns = [dlg._btn_find, dlg._btn_replace, dlg._btn_replace_all,
+            dlg._btn_count, dlg._btn_cancel]
+    xs = [b.x() for b in btns]
+    bys = [b.y() for b in btns]
+    assert len(set(xs)) == 1                      # 同一列
+    assert len(set(bys)) == 5 and bys == sorted(bys)
+    # 复选框在左列、按钮在右列
+    assert max(c.x() for c in chks) < min(b.x() for b in btns)
+    dlg.reject()
+
+
 def test_finddlg(qapp):
     from pytortoisegit.merge.finddlg import FindDlg, FindType
     dlg = FindDlg(replace_mode=True)

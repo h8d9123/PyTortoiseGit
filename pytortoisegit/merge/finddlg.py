@@ -66,61 +66,65 @@ class FindDlg(QDialog):
         self._load_history()
 
     def _build_ui(self, replace_mode: bool):
-        lay = QVBoxLayout(self)
-        lay.addWidget(QLabel(tr("find_label", "查找内容:"), self))
+        """布局对齐 IDD_FIND：左列 查找/替换 + 复选框（一行一个）；
+        右列 Find/Replace/ReplaceAll/Count/Cancel 同一列；底部状态行。"""
+        from PySide6.QtWidgets import QGridLayout, QPushButton
+        outer = QVBoxLayout(self)
+        body = QHBoxLayout()
+
+        left = QVBoxLayout()
+        form = QGridLayout()
+        form.addWidget(QLabel(tr("find_label", "查找内容:"), self), 0, 0)
         self.find_combo = QComboBox(self)
         self.find_combo.setEditable(True)
-        lay.addWidget(self.find_combo)
-        if replace_mode:
-            lay.addWidget(QLabel(tr("replace_label", "替换为:"), self))
-            self.replace_combo = QComboBox(self)
-            self.replace_combo.setEditable(True)
-            lay.addWidget(self.replace_combo)
-        else:
-            self.replace_combo = QComboBox(self)
-            self.replace_combo.setEditable(True)
-            self.replace_combo.hide()
+        form.addWidget(self.find_combo, 0, 1)
+        form.addWidget(QLabel(tr("replace_label", "替换为:"), self), 1, 0)
+        self.replace_combo = QComboBox(self)
+        self.replace_combo.setEditable(True)
+        form.addWidget(self.replace_combo, 1, 1)
+        left.addLayout(form)
 
-        opts = QHBoxLayout()
-        self.chk_down = QCheckBox(tr("find_down", "向下搜索"), self)
-        self.chk_down.setChecked(True)
+        # 复选框：一行一个（对齐原版 IDD_FIND 顺序）
         self.chk_case = QCheckBox(tr("find_case", "区分大小写"), self)
+        self.chk_limit = QCheckBox(tr("find_limit", "仅在修改的行中查找"), self)
+        self.chk_up = QCheckBox(tr("find_up", "向上搜索"), self)
         self.chk_whole = QCheckBox(tr("find_whole", "全词匹配"), self)
-        self.chk_regex = QCheckBox(tr("find_regex", "正则表达式"), self)
-        self.chk_limit = QCheckBox(tr("find_limit", "仅在差异处"), self)
-        opts.addWidget(self.chk_down)
-        opts.addWidget(self.chk_case)
-        opts.addWidget(self.chk_whole)
-        opts.addWidget(self.chk_regex)
-        opts.addWidget(self.chk_limit)
-        lay.addLayout(opts)
+        for chk in (self.chk_case, self.chk_limit, self.chk_up, self.chk_whole):
+            left.addWidget(chk)
+        left.addStretch(1)
+        body.addLayout(left, 1)
 
-        btns = QDialogButtonBox(self)
-        self._btn_btns = btns
-        self._btn_find = btns.addButton(tr("find_next", "查找下一个"), QDialogButtonBox.ButtonRole.AcceptRole)
-        if replace_mode:
-            self._btn_replace = btns.addButton(tr("replace", "替换"), QDialogButtonBox.ButtonRole.ActionRole)
-            self._btn_replace_all = btns.addButton(tr("replace_all", "全部替换"), QDialogButtonBox.ButtonRole.ActionRole)
-            self._btn_count = btns.addButton(tr("find_count", "计数"), QDialogButtonBox.ButtonRole.ActionRole)
-        btns.addButton(QDialogButtonBox.StandardButton.Close)
-        btns.rejected.connect(self.reject)
-        lay.addWidget(btns)
+        # 按钮：同一列（对齐原版 IDD_FIND）
+        right = QVBoxLayout()
+        self._btn_find = QPushButton(tr("find_find", "查找"), self)
+        self._btn_replace = QPushButton(tr("find_replace", "替换"), self)
+        self._btn_replace_all = QPushButton(tr("find_replace_all", "全部替换"), self)
+        self._btn_count = QPushButton(tr("find_count", "计数"), self)
+        self._btn_cancel = QPushButton(tr("cancel", "取消"), self)
+        for b in (self._btn_find, self._btn_replace, self._btn_replace_all,
+                  self._btn_count, self._btn_cancel):
+            right.addWidget(b)
+        right.addStretch(1)
+        body.addLayout(right)
+        outer.addLayout(body)
+
+        self.status_label = QLabel("", self)
+        outer.addWidget(self.status_label)
 
         self._btn_find.clicked.connect(lambda: self._accept_find(FindType.Find))
-        if replace_mode:
-            self._btn_count.clicked.connect(lambda: self._accept_find(FindType.Count))
-            self._btn_replace.clicked.connect(lambda: self._accept_find(FindType.Replace))
-            self._btn_replace_all.clicked.connect(
-                lambda: self._accept_find(FindType.ReplaceAll))
+        self._btn_replace.clicked.connect(lambda: self._accept_find(FindType.Replace))
+        self._btn_replace_all.clicked.connect(
+            lambda: self._accept_find(FindType.ReplaceAll))
+        self._btn_count.clicked.connect(lambda: self._accept_find(FindType.Count))
+        self._btn_cancel.clicked.connect(self.reject)
 
     def _accept_find(self, find_type: FindType = FindType.Find):
         self.find_type = find_type
         self.find_string = self.find_combo.currentText()
         self.replace_string = self.replace_combo.currentText() if self.replace_mode else ""
-        self.search_down = self.chk_down.isChecked()
+        self.search_down = not self.chk_up.isChecked()
         self.case_sensitive = self.chk_case.isChecked()
         self.match_whole_word = self.chk_whole.isChecked()
-        self.regex = self.chk_regex.isChecked()
         self.limit_to_diffs = self.chk_limit.isChecked()
         self._save_history()
         self.accept()
@@ -178,7 +182,10 @@ class FindDlg(QDialog):
         return self.replace_string
 
     def set_status_text(self, text: str):
-        self.setWindowTitle(text)
+        if hasattr(self, "status_label"):
+            self.status_label.setText(text)
+        else:
+            self.setWindowTitle(text)
 
     def set_readonly(self, ro: bool):
         self.find_combo.setEnabled(not ro)

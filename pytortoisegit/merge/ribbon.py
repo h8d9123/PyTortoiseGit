@@ -16,14 +16,79 @@
 
 from __future__ import annotations
 
+import os
+
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QMenu, QScrollArea, QSizePolicy, QToolButton,
     QVBoxLayout, QWidget,
 )
 
 from ..res.strings import tr
+
+# 命令键 → 原版 ribbon/*.bmp 图标名（对齐 TortoiseGitMergeRibbon.xml）
+_RIBBON_ICON = {
+    "open": "Open", "save": "Save", "saveas": "SaveAs", "patch": "UniDiff",
+    "filelist": "FileList", "settings": "Settings", "about": "About",
+    "exit": "Exit", "help": "Help", "reload": "Refresh", "undo": "Undo",
+    "redo": "Redo", "enable_edit": "EditEnabled", "copy": "Copy",
+    "paste": "Paste", "find": "Search", "find_next": "Search",
+    "find_prev": "Search", "goto": "Goto", "mark": "Check",
+    "prev_diff": "UpGreen", "next_diff": "DownGreen",
+    "prev_conf": "UpRed", "next_conf": "DownRed",
+    "prev_inline": "LeftGreenDots", "next_inline": "RightGreenDots",
+    "use_left_block": "UseLeftBlock", "use_left_file": "UseLeftFile",
+    "use_left_before": "UseLeftRight", "use_right_before": "UseRightLeft",
+    "use_theirs": "UseTheirs", "use_mine": "UseMine",
+    "use_theirs_then": "UseTheirsMine", "use_mine_then": "UseMineTheirs",
+    "show_ws": "Pilcrow", "cmp_ws": "WhiteSpace1",
+    "ign_ws": "WhiteSpace2", "ign_all_ws": "WhiteSpace3",
+    "inline": "InlineDiff", "inline_word": "InlineDiffWord",
+    "regex": "FilterConfig16", "ignore_comments": "Comment",
+    "ignore_eol": "EOL", "view_bars": "ViewBars", "wrap": "WrapLines",
+    "oneway": "OneWayDiff", "switch": "Switch", "collapse": "Collapse",
+}
+
+_RIBBON_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "res", "ribbon"))
+_ribbon_cache: dict = {}
+
+
+def ribbon_icon(name: str):
+    """加载原版 ribbon/*.bmp（32 位含 alpha；Qt 的 BMP 加载器忽略 alpha，
+    这里手动按 BGRA 构造 ARGB32 图像）。"""
+    if not name:
+        return None
+    if name in _ribbon_cache:
+        return _ribbon_cache[name]
+    ic = None
+    try:
+        path = os.path.join(_RIBBON_DIR, name + ".bmp")
+        with open(path, "rb") as fh:
+            data = fh.read()
+        off = int.from_bytes(data[10:14], "little")
+        w = int.from_bytes(data[18:22], "little")
+        h = int.from_bytes(data[22:26], "little")
+        bpp = int.from_bytes(data[28:30], "little")
+        if bpp == 32 and w > 0 and h > 0:
+            row = w * 4
+            buf = bytearray(w * h * 4)
+            for y in range(h):
+                src = off + (h - 1 - y) * row  # BMP 自下而上
+                buf[y * row:(y + 1) * row] = data[src:src + row]
+            img = QImage(bytes(buf), w, h,
+                         QImage.Format.Format_ARGB32).copy()
+            ic = QIcon(QPixmap.fromImage(img))
+    except Exception:  # noqa: BLE001
+        ic = None
+    _ribbon_cache[name] = ic
+    return ic
+
+
+def _tool_icon(act: QAction):
+    key = act.property("ribbonKey")
+    return ribbon_icon(_RIBBON_ICON.get(key, "")) if key else None
 
 
 def _icon(name: str):
@@ -38,6 +103,9 @@ def _icon(name: str):
 
 
 def _tool(act: QAction, large: bool = False) -> QToolButton:
+    ic = _tool_icon(act)
+    if ic is not None and not ic.isNull():
+        act.setIcon(ic)  # 设在 action 上，避免 setDefaultAction/setMenu 重置按钮图标
     btn = QToolButton()
     btn.setDefaultAction(act)
     btn.setAutoRaise(True)
@@ -124,6 +192,18 @@ class MergeRibbon(QWidget):
         root.addWidget(self._qat())
         root.addWidget(self._tabs())
         root.addWidget(self._edit_tab())
+        self._apply_all_icons()
+
+    def _apply_all_icons(self):
+        """最后统一应用原版 ribbon 图标（避免被 setDefaultAction/setMenu 重置）。"""
+        from PySide6.QtWidgets import QToolButton
+        for btn in self.findChildren(QToolButton):
+            act = btn.defaultAction()
+            if act is None:
+                continue
+            ic = _tool_icon(act)
+            if ic is not None and not ic.isNull():
+                btn.setIcon(ic)
 
     def _qat(self) -> QWidget:
         bar = QFrame(self)
@@ -187,6 +267,10 @@ class MergeRibbon(QWidget):
         for a in extras:
             menu.addAction(a)
         btn.setMenu(menu)
+        # setMenu 会把图标重置为 action 的图标（此处为空），需在之后重新设置
+        ic = _tool_icon(main)
+        if ic is not None and not ic.isNull():
+            btn.setIcon(ic)
         return btn
 
     def _edit_tab(self) -> QWidget:

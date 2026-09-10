@@ -311,6 +311,9 @@ class MergeFrm(QMainWindow):
         a["help"] = self._act(tr("tm_help_topics", "帮助主题"), self._help, "F1")
         self._act_moved = self._act(tr("tm_moved", "移动块"), self._toggle_moved,
                                     checkable=True, checked=True)
+        # 供 Ribbon 按原版 ribbon/*.bmp 设置图标
+        for key, act in a.items():
+            act.setProperty("ribbonKey", key)
         self._acts = a
 
     # ---- 数据加载 ----

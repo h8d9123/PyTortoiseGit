@@ -17,6 +17,12 @@ if _icons_dir.is_dir():
     datas += [(_path, "pytortoisegit/res/icons")
               for _path in sorted(str(p) for p in _icons_dir.glob("*.ico"))]
 
+# 加入原版 TortoiseGitMerge Ribbon 位图（ribbon/*.bmp）
+_ribbon_dir = Path("pytortoisegit/res/ribbon")
+if _ribbon_dir.is_dir():
+    datas += [(_path, "pytortoisegit/res/ribbon")
+              for _path in sorted(str(p) for p in _ribbon_dir.glob("*.bmp"))]
+
 # 加入许可与归属文件
 for _lic in ("LICENSE", "NOTICE"):
     if Path(_lic).is_file():

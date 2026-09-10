@@ -139,6 +139,20 @@ def test_settings_dialog(qapp):
     assert opts["one_pane"] is True
 
 
+def test_ribbon_icons(qapp):
+    """Ribbon 按钮使用原版 ribbon/*.bmp 图标（含 alpha）。"""
+    from pytortoisegit.merge.ribbon import ribbon_icon, _RIBBON_ICON
+    ic = ribbon_icon("Save")
+    assert not ic.isNull()
+    pm = ic.pixmap(48, 48)
+    assert pm.hasAlphaChannel()
+    assert pm.toImage().pixelColor(0, 0).alpha() == 0  # 透明背景
+    # 关键命令都有映射
+    for key in ("save", "open", "undo", "find", "prev_diff", "use_theirs",
+                "show_ws", "inline", "ignore_eol", "switch", "collapse"):
+        assert key in _RIBBON_ICON
+
+
 def test_apputils_helpers(qapp):
     from pytortoisegit.merge.apputils import intense_color, has_clipboard_format
     from PySide6.QtGui import QColor

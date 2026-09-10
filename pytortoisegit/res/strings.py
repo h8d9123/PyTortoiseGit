@@ -482,6 +482,11 @@ STRINGS: Dict[str, str] = {
     "menu_not_repo": "不是 Git 仓库：{msg}",
     "menu_select_first": "请先选择仓库路径。",
     "menu_done": "完成：{name}",
+    # ---- 日志对话框（logdlg）----
+    "log_msg_hint": "提交信息…",
+    "log_filter": "过滤…",
+    "log_help": "搜索语法：author:xxx / grep:yyy，回车刷新。\n双击提交可与上一版本比较。",
+    "log_commits": "个提交",
 }
 
 

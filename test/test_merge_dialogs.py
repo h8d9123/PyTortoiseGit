@@ -158,6 +158,22 @@ def test_mergefiles_command(qapp, tmp_path):
     assert [vd.line for vd in f.right_view.view_data] == ["y"]
 
 
+def test_xsplitter(qapp):
+    from pytortoisegit.merge.xsplitter import XSplitter
+    from PySide6.QtWidgets import QWidget
+    sp = XSplitter()
+    sp.addWidget(QWidget())
+    sp.addWidget(QWidget())
+    assert sp.count() == 2
+    sp.lock_bar(True)
+    assert sp.is_bar_locked()
+    sp.hide_column(1)
+    assert sp.is_column_hidden(1)
+    sp.show_column(1)
+    assert not sp.is_column_hidden(1)
+    sp.center_splitter()
+
+
 def test_editorconfig(tmp_path):
     from pytortoisegit.merge.editorconfigwrapper import EditorConfigWrapper
     from pytortoisegit.merge.eol import EOL

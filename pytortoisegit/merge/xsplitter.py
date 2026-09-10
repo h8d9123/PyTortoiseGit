@@ -36,6 +36,8 @@ class XSplitter(QSplitter):
                  parent=None):
         super().__init__(orientation, parent)
         self._bar_locked = False
+        self._hidden_col = -1
+        self._hidden_row = -1
 
     def is_bar_locked(self) -> bool:
         return self._bar_locked
@@ -45,9 +47,11 @@ class XSplitter(QSplitter):
         self.setHandleWidth(0 if state else (self.handleWidth() or 6))
 
     def show_column(self, index: int):
+        self._hidden_col = -1
         self.widget(index).show()
 
     def hide_column(self, index: int):
+        self._hidden_col = index
         self.widget(index).hide()
 
     def replace_view(self, index: int, new_widget: QWidget):
@@ -57,4 +61,28 @@ class XSplitter(QSplitter):
             old.deleteLater()
 
     def is_column_visible(self, index: int) -> bool:
-        return self.widget(index).isVisible()
+        return self._hidden_col != index
+
+    def is_column_hidden(self, index: int) -> bool:
+        return self._hidden_col == index
+
+    def show_row(self, index: int):
+        self._hidden_row = -1
+        self.widget(index).show()
+
+    def hide_row(self, index: int):
+        self._hidden_row = index
+        self.widget(index).hide()
+
+    def is_row_hidden(self, index: int) -> bool:
+        return self._hidden_row == index
+
+    def center_splitter(self):
+        """把各栏均分（对齐 CXSplitter::CenterSplitter）。"""
+        n = self.count()
+        if n <= 0:
+            return
+        total = (self.width() if self.orientation() == Qt.Orientation.Horizontal
+                 else self.height())
+        each = max(1, total // n)
+        self.setSizes([each] * n)

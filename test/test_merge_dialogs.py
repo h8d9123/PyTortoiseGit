@@ -56,3 +56,23 @@ def test_finddlg_find_mode(qapp):
     dlg._accept_find(FindType.Find)
     assert dlg.find_next() is True
     assert dlg.search_up() is False
+
+
+def test_regexfiltersdlg(qapp):
+    from pytortoisegit.merge.regexfiltersdlg import RegexFiltersDlg
+    dlg = RegexFiltersDlg(filters=[("a", "x", "y"), ("b", "p", "q")])
+    assert dlg.filters == [("a", "x", "y"), ("b", "p", "q")]
+    # 列表有三列
+    assert dlg.list.columnCount() == 3
+    assert dlg.list.topLevelItemCount() == 2
+    # 持久化接口可调用
+    dlg.save_filters()
+
+
+def test_gotolinedlg(qapp):
+    from pytortoisegit.merge.gotolinedlg import GotoLineDlg
+    dlg = GotoLineDlg(line_count=100)
+    dlg.set_limits(1, 50)
+    dlg.set_label("行号:")
+    dlg.spin.setValue(7)
+    assert dlg.get_line_number() == 7

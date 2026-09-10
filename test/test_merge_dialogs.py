@@ -156,3 +156,26 @@ def test_mergefiles_command(qapp, tmp_path):
     assert f._local_right == str(b)
     assert [vd.line for vd in f.left_view.view_data] == ["x"]
     assert [vd.line for vd in f.right_view.view_data] == ["y"]
+
+
+def test_editorconfig(tmp_path):
+    from pytortoisegit.merge.editorconfigwrapper import EditorConfigWrapper
+    from pytortoisegit.merge.eol import EOL
+    from pytortoisegit.merge.filetextlines import UnicodeType
+    (tmp_path / ".editorconfig").write_text(
+        "root = true\n\n[*.txt]\nindent_style = space\nindent_size = 4\n"
+        "end_of_line = crlf\ncharset = utf-8\n", encoding="utf-8")
+    f = tmp_path / "a.txt"
+    f.write_text("x", encoding="utf-8")
+    w = EditorConfigWrapper()
+    assert w.load(str(f))
+    assert w.indent_style.get() is True
+    assert w.indent_size.get() == 4
+    assert w.end_of_line.get() == EOL.CRLF
+    assert w.charset.get() == UnicodeType.UTF8
+    # 扩展名不匹配 → 不应用
+    f2 = tmp_path / "b.py"
+    f2.write_text("x", encoding="utf-8")
+    w2 = EditorConfigWrapper()
+    w2.load(str(f2))
+    assert w2.indent_size.is_null()

@@ -25,8 +25,13 @@
 
 from __future__ import annotations
 
+import fnmatch
 import os
+import re
 from typing import Optional, Tuple
+
+from .eol import EOL
+from .filetextlines import UnicodeType
 
 
 class Nullable:
@@ -49,6 +54,33 @@ class Nullable:
         return self._value == other
 
 
+_EOL_MAP = {"lf": EOL.LF, "crlf": EOL.CRLF, "cr": EOL.CR}
+_CHARSET_MAP = {
+    "utf-8": UnicodeType.UTF8, "utf-8-bom": UnicodeType.UTF8BOM,
+    "utf-16le": UnicodeType.UTF16_LE, "utf-16be": UnicodeType.UTF16_BE,
+    "latin1": UnicodeType.ASCII,
+}
+
+
+def _match_section(pattern: str, rel: str) -> bool:
+    """editorconfig section 匹配（支持 {a,b} 与 **）。"""
+    if pattern == "*":
+        return True
+    pat = pattern
+    # {a,b} → (a|b) 正则
+    if "{" in pat and "}" in pat:
+        rx = re.escape(pat)
+        rx = rx.replace(r"\{", "(").replace(r"\}", ")")
+        rx = rx.replace(r"\,", "|").replace(r"\*", "[^/]*").replace(r"\*\*", ".*")
+        try:
+            if re.fullmatch(rx, rel) or re.fullmatch(rx, os.path.basename(rel)):
+                return True
+        except re.error:
+            pass
+    return (fnmatch.fnmatch(rel, pat)
+            or fnmatch.fnmatch(os.path.basename(rel), pat))
+
+
 class EditorConfigWrapper:
     """读取文件所在目录的 .editorconfig 设置。"""
 
@@ -56,7 +88,8 @@ class EditorConfigWrapper:
         self.indent_style: Nullable = Nullable()
         self.indent_size: Nullable = Nullable()
         self.tab_width: Nullable = Nullable()
-        self.end_of_line: Nullable = Nullable()      # lf/crlf/cr
+        self.end_of_line: Nullable = Nullable()      # EOL
+        self.charset: Nullable = Nullable()          # UnicodeType
         self.trim_trailing_ws: Nullable = Nullable()
         self.insert_final_newline: Nullable = Nullable()
 
@@ -69,43 +102,73 @@ class EditorConfigWrapper:
         elif key == "tab_width":
             self.tab_width = Nullable(_to_int(v))
         elif key == "end_of_line":
-            self.end_of_line = Nullable(v)
+            if v in _EOL_MAP:
+                self.end_of_line = Nullable(_EOL_MAP[v])
+        elif key == "charset":
+            if v in _CHARSET_MAP:
+                self.charset = Nullable(_CHARSET_MAP[v])
         elif key == "trim_trailing_whitespace":
             self.trim_trailing_ws = Nullable(v in ("true", "yes"))
         elif key == "insert_final_newline":
             self.insert_final_newline = Nullable(v in ("true", "yes"))
 
     def load(self, filename: str) -> bool:
-        """自文件所在目录向上查找合并 .editorconfig（简化：只读本目录/向上）。"""
+        """自文件所在目录向上合并 .editorconfig（对齐 editorconfig-core 语义）。"""
         d = os.path.dirname(os.path.abspath(filename))
-        # 从当前目录向上直到根，逐个应用 .editorconfig（后者覆盖前者）
         chain = []
         cur = d
         while True:
             cfg = os.path.join(cur, ".editorconfig")
             if os.path.isfile(cfg):
-                chain.append(cfg)
+                chain.append((cfg, cur))
             parent = os.path.dirname(cur)
             if parent == cur:
                 break
             cur = parent
         found = False
-        for cfg in reversed(chain):  # 根 → 近 顺序应用
-            if self._read_config(cfg):
-                found = True
+        for cfg, base in reversed(chain):  # 根 → 近 顺序应用（近者覆盖）
+            self._read_config(cfg, base, filename)
+            found = True
+            if self._is_root(cfg):
+                break
         return found
 
-    def _read_config(self, path: str) -> bool:
+    def _is_root(self, path: str) -> bool:
         try:
             with open(path, encoding="utf-8", errors="replace") as fh:
                 for line in fh:
+                    line = line.strip().lower()
+                    if line.startswith("root") and "=" in line:
+                        k, _, v = line.partition("=")
+                        if k.strip() == "root" and v.strip() in ("true", "yes"):
+                            return True
+        except OSError:
+            pass
+        return False
+
+    def _read_config(self, path: str, base: str, filename: str) -> bool:
+        try:
+            rel = os.path.relpath(os.path.abspath(filename), base).replace("\\", "/")
+        except ValueError:
+            rel = os.path.basename(filename)
+        try:
+            section_matches = False
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
                     line = line.strip()
-                    if not line or line.startswith(("#", ";", "[")):
+                    if not line or line.startswith(("#", ";")):
+                        continue
+                    if line.startswith("[") and line.endswith("]"):
+                        section_matches = _match_section(line[1:-1].strip(), rel)
                         continue
                     if "=" not in line:
                         continue
                     k, _, v = line.partition("=")
-                    self._parse_value(k.strip(), v)
+                    k = k.strip().lower()
+                    if k == "root":
+                        continue
+                    if section_matches:
+                        self._parse_value(k, v)
             return True
         except OSError:
             return False

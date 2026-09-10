@@ -160,3 +160,45 @@ def test_changed_dialog_branch_link(qapp, repo):
     from pytortoisegit.dialogs.changedlg import ChangedDlg
     dlg = _run_dialog(qapp, lambda: ChangedDlg(repo))
     assert "main" in dlg.branch_link.text()
+
+
+def test_changed_dialog_double_click_opens_merge(qapp, repo):
+    """双击文件行应对齐 CGitStatusListCtrl::StartDiff，打开 TortoiseGitMerge 并排比较。"""
+    from PySide6.QtCore import Qt
+    from pytortoisegit.dialogs.changedlg import ChangedDlg
+    from pytortoisegit.merge.mergefrm import MergeFrm
+    dlg = _run_dialog(qapp, lambda: ChangedDlg(repo))
+
+    target = None
+
+    def walk(it):
+        nonlocal target
+        r = it.data(0, Qt.ItemDataRole.UserRole + 1)
+        if r is not None and getattr(r, "path", None) == "mod.txt":
+            target = it
+        for i in range(it.childCount()):
+            walk(it.child(i))
+
+    for i in range(dlg.status_tree.topLevelItemCount()):
+        walk(dlg.status_tree.topLevelItem(i))
+    assert target is not None
+
+    opened = {}
+    orig_show = MergeFrm.show
+
+    def fake_show(self):
+        opened["frm"] = self
+
+    MergeFrm.show = fake_show
+    try:
+        dlg._on_file_double_clicked(target, 0)
+    finally:
+        MergeFrm.show = orig_show
+
+    frm = opened.get("frm")
+    assert frm is not None, "双击应打开 MergeFrm 窗口"
+    # 方向：左=HEAD(old)，右=工作区(new)；新增行左侧补空行
+    left = [v.line for v in frm.left_view.view_data]
+    right = [v.line for v in frm.right_view.view_data]
+    assert left == ["l1", "changed", "l3", "l4", ""]
+    assert right == ["l1", "changed", "l3", "l4", "work"]

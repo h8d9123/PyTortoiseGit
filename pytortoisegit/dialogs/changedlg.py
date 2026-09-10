@@ -477,8 +477,8 @@ class ChangedDlg(QDialog):
                 self.index.add([e.path])
             self.refresh()
         elif chosen is act_diff_head:
-            from .diffdlg import DiffDlg
-            DiffDlg(self.repo, rev2="HEAD", paths=[e.path], parent=self).exec()
+            from ..merge.mergefrm import MergeFrm
+            MergeFrm(self.repo, str(e.path), "HEAD", None, parent=self).show()
         elif chosen is act_revert:
             resp = QMessageBox.question(
                 self, tr("confirm"),
@@ -489,12 +489,12 @@ class ChangedDlg(QDialog):
                 self.refresh()
 
     def _on_file_double_clicked(self, item, _col):
-        """双击文件行：打开该文件 diff。"""
+        """双击文件行：对齐 CGitStatusListCtrl::StartDiff，打开 TortoiseGitMerge 并排比较。"""
         r = item.data(0, Qt.ItemDataRole.UserRole + 1)
         if not isinstance(r, StatusRow):
             return
-        from .diffdlg import DiffDlg
-        DiffDlg(self.repo, rev2="HEAD", paths=[r.path], parent=self).exec()
+        from ..merge.mergefrm import MergeFrm
+        MergeFrm(self.repo, r.path, "HEAD", None, parent=self).show()
 
     def _open_commit(self):
         from .commitdlg import CommitDlg

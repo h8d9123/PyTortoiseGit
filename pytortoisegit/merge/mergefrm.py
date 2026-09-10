@@ -82,6 +82,9 @@ class MergeFrm(QMainWindow):
         self._case = False
         self.setWindowTitle(tr("tm_title", "TortoiseGitMerge - {}").format(path or ""))
         self.resize(1100, 720 if not three_way else 820)
+        self.setAcceptDrops(True)
+        self._recent_files: List[str] = []
+        self._load_recent_files()
         try:
             from ..res import icons
             self.setWindowIcon(icons.app_icon())
@@ -1066,6 +1069,57 @@ class MergeFrm(QMainWindow):
                 self._save_view_as(self.left_view)
                 view = self._target_view()
         self._save_view_as(view)
+
+    # ---- 拖放（对齐 MainFrm 文件拖放）----
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        paths = [u.toLocalFile() for u in event.mimeData().urls()
+                 if u.isLocalFile()]
+        paths = [p for p in paths if p]
+        if len(paths) >= 2:
+            self._local_left = paths[0]
+            self._local_right = paths[1]
+            self.path = paths[1]
+            self.three_way = False
+            self._load()
+            self.add_recent_file(paths[1])
+        elif len(paths) == 1:
+            self.add_recent_file(paths[0])
+        event.acceptProposedAction()
+
+    # ---- 最近文件（对齐 MainFrm 最近文件列表）----
+    _RECENT_KEY = "TortoiseGitMerge/RecentFiles"
+
+    def _load_recent_files(self):
+        try:
+            from PySide6.QtCore import QSettings
+            s = QSettings("TortoiseGit", "TortoiseGitMerge")
+            self._recent_files = list(s.value(self._RECENT_KEY, [], type=list) or [])
+        except Exception:  # noqa: BLE001
+            self._recent_files = []
+
+    def _save_recent_files(self):
+        try:
+            from PySide6.QtCore import QSettings
+            s = QSettings("TortoiseGit", "TortoiseGitMerge")
+            s.setValue(self._RECENT_KEY, self._recent_files[:10])
+        except Exception:  # noqa: BLE001
+            pass
+
+    def add_recent_file(self, path: str):
+        if not path:
+            return
+        if path in self._recent_files:
+            self._recent_files.remove(path)
+        self._recent_files.insert(0, path)
+        self._recent_files = self._recent_files[:10]
+        self._save_recent_files()
+
+    def recent_files(self) -> List[str]:
+        return list(self._recent_files)
 
     def exec(self):
         self.show()

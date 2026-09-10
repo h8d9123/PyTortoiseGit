@@ -139,3 +139,16 @@ def test_mergefrm_statusbar_encoding(tmp_path_factory, qapp):
     assert frm._eol_lab.text() == "CRLF"
     assert frm._enc_lab.text() == "UTF-8"
 
+
+def test_mergefrm_recent_files(tmp_path_factory, qapp):
+    from pytortoisegit.merge.mergefrm import MergeFrm
+    root = tmp_path_factory.mktemp("mergeview_recent")
+    repo = _make_repo(root, "a\n", "a\n")
+    frm = MergeFrm(repo, "a.txt", "HEAD", None)
+    assert frm.acceptDrops()
+    frm.add_recent_file("/tmp/one.txt")
+    frm.add_recent_file("/tmp/two.txt")
+    rf = frm.recent_files()
+    assert rf[0] == "/tmp/two.txt"
+    assert rf[1] == "/tmp/one.txt"
+

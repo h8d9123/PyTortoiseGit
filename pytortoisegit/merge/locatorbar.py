@@ -32,7 +32,7 @@ class LocatorBar(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._marks: List[Tuple[int, int, QColor]] = []
+        self._stripes: List[List[Tuple[int, int, QColor]]] = []
         self._total = 1
         self._view_start = 0
         self._view_end = 0
@@ -41,23 +41,34 @@ class LocatorBar(QWidget):
         self.setMaximumWidth(self.WIDTH)
         self.setMouseTracking(True)
 
-    def set_states(self, states: List):
-        self._total = max(1, len(states))
-        self._marks = []
+    @staticmethod
+    def _marks_for(states: List) -> List[Tuple[int, int, QColor]]:
+        marks: List[Tuple[int, int, QColor]] = []
         for i, s in enumerate(states):
             if s in (DiffState.Removed, DiffState.MovedFrom,
                      DiffState.TheirsRemoved, DiffState.YoursRemoved,
                      DiffState.IdenticalRemoved):
-                self._marks.append((i, i + 1, COLOR_REMOVED))
+                marks.append((i, i + 1, COLOR_REMOVED))
             elif s in (DiffState.Added, DiffState.MovedTo,
                        DiffState.TheirsAdded, DiffState.YoursAdded,
                        DiffState.IdenticalAdded):
-                self._marks.append((i, i + 1, COLOR_ADDED))
+                marks.append((i, i + 1, COLOR_ADDED))
             elif s == DiffState.Edited:
-                self._marks.append((i, i + 1, COLOR_MODIFIED))
+                marks.append((i, i + 1, COLOR_MODIFIED))
             elif s in (DiffState.Conflict, DiffState.ConflictAdded,
                        DiffState.ConflictEmpty, DiffState.ConflictIgnored):
-                self._marks.append((i, i + 1, COLOR_CONFLICT))
+                marks.append((i, i + 1, COLOR_CONFLICT))
+        return marks
+
+    def set_states(self, states: List, right_states: List | None = None,
+                   bottom_states: List | None = None):
+        """对齐 CLocatorBar：最多三条 stripe（左/右/底）。"""
+        self._total = max(1, len(states))
+        self._stripes = [self._marks_for(states)]
+        if right_states is not None:
+            self._stripes.append(self._marks_for(right_states))
+        if bottom_states is not None:
+            self._stripes.append(self._marks_for(bottom_states))
         self.update()
 
     def set_viewport(self, start: int, end: int):
@@ -73,10 +84,14 @@ class LocatorBar(QWidget):
         w = self.width()
         h = self.height()
         p.fillRect(self.rect(), QColor(235, 235, 235))
-        for start, end, color in self._marks:
-            y0 = int(start / self._total * h)
-            y1 = max(y0 + 2, int(end / self._total * h))
-            p.fillRect(QRect(1, y0, w - 2, y1 - y0), color)
+        n = max(1, len(self._stripes))
+        stripe_w = max(1, (w - 2) // n)
+        for idx, marks in enumerate(self._stripes):
+            x0 = 1 + idx * stripe_w
+            for start, end, color in marks:
+                y0 = int(start / self._total * h)
+                y1 = max(y0 + 2, int(end / self._total * h))
+                p.fillRect(QRect(x0, y0, stripe_w, y1 - y0), color)
         if self._view_end > self._view_start:
             y0 = int(self._view_start / self._total * h)
             y1 = max(y0 + 4, int(self._view_end / self._total * h))

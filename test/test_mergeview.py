@@ -107,3 +107,18 @@ def test_eol_difference_shown(tmp_path_factory, qapp):
     assert "CRLF" in frm.right_view.document().findBlockByNumber(0).text()
     assert "LF" in frm.left_view.document().findBlockByNumber(0).text()
 
+
+def test_locatorbar_stripes(qapp):
+    """LocatorBar 支持左/右/底三条 stripe（对齐 CLocatorBar）。"""
+    from pytortoisegit.merge.locatorbar import LocatorBar
+    from pytortoisegit.merge.viewdata import DiffState
+    lb = LocatorBar()
+    lb.set_states([DiffState.Normal, DiffState.Removed],
+                  [DiffState.Normal, DiffState.Added],
+                  [DiffState.Normal, DiffState.Conflict])
+    assert len(lb._stripes) == 3
+    assert lb._total == 2
+    # 只给左侧时仅一条
+    lb.set_states([DiffState.Normal, DiffState.Added])
+    assert len(lb._stripes) == 1
+

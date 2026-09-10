@@ -319,7 +319,9 @@ class MergeFrm(QMainWindow):
             self._reset_edit_flags()
             self._undo_stack = get_undo()
             self._undo_stack.clear()
-            self.locator.set_states([vd.state for vd in left])
+            self.locator.set_states(
+                [vd.state for vd in left], [vd.state for vd in right],
+                [vd.state for vd in bottom])
             self._sync_scrolls()
             conflicts = sum(1 for vd in bottom if vd.is_conflict)
             self._header.setText(
@@ -341,7 +343,8 @@ class MergeFrm(QMainWindow):
         self._reset_edit_flags()
         self._undo_stack = get_undo()
         self._undo_stack.clear()
-        self.locator.set_states([vd.state for vd in left])
+        self.locator.set_states([vd.state for vd in left],
+                                [vd.state for vd in right])
         self._sync_scrolls()
         added = sum(1 for vd in right if vd.is_added)
         removed = sum(1 for vd in left if vd.is_removed)
@@ -439,7 +442,11 @@ class MergeFrm(QMainWindow):
     def _rebuild_views(self):
         for v in self._views():
             v._rebuild()
-        self.locator.set_states([vd.state for vd in self.left_view.view_data])
+        self.locator.set_states(
+            [vd.state for vd in self.left_view.view_data],
+            [vd.state for vd in self.right_view.view_data],
+            ([vd.state for vd in self.bottom_view.view_data]
+             if self.bottom_view is not None else None))
         self._update_header()
         self._refresh_linebar()
         self._update_command_ui()

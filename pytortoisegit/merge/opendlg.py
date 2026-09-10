@@ -58,6 +58,8 @@ class OpenDlg(QDialog):
         self.your_file = ""
         self.unified_diff_file = ""
         self.patch_dir = ""
+        self.from_clipboard = False
+        self.mode = "merge"  # "merge" | "apply"
         self._build_ui()
 
     def _build_ui(self):
@@ -95,6 +97,10 @@ class OpenDlg(QDialog):
         b.clicked.connect(lambda: self._pick_dir(self.dir_edit))
         form.addRow(h)
         lay.addLayout(form)
+        from PySide6.QtWidgets import QCheckBox
+        self.clip_check = QCheckBox(
+            tr("open_from_clipboard", "从剪贴板获取补丁"), self)
+        lay.addWidget(self.clip_check)
         box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                QDialogButtonBox.StandardButton.Cancel, self)
         box.accepted.connect(self.accept)
@@ -117,4 +123,8 @@ class OpenDlg(QDialog):
         self.your_file = self.your_edit.text().strip()
         self.unified_diff_file = self.diff_edit.text().strip()
         self.patch_dir = self.dir_edit.text().strip()
+        self.from_clipboard = self.clip_check.isChecked()
+        # apply 模式：给了 diff 或补丁目录；否则 merge 模式
+        self.mode = ("apply" if (self.unified_diff_file or self.patch_dir)
+                     else "merge")
         super().accept()

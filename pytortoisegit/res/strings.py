@@ -29,6 +29,9 @@ from typing import Callable, Dict, Optional
 # 缓存自实现，若启用 Qt QTranslator 可替换 _current_gettext
 _translator: Optional[Callable[[str], str]] = None
 
+# 当前界面语言："zh"（中文，默认）或 "en"（英文）
+_current_lang: str = "zh"
+
 STRINGS: Dict[str, str] = {
     # ---- 通用 ----
     "app_name": "PyTortoiseGit",
@@ -472,12 +475,29 @@ STRINGS: Dict[str, str] = {
 
 
 def tr(key: str, default: str | None = None) -> str:
-    """取界面文案。缺 key 时返回 default 或原 key。"""
+    """取界面文案。
+
+    约定：`default` 为**英文**文案，`STRINGS` 为**中文**文案。
+      * 英文界面：返回 default（英文），缺失时回退 STRINGS。
+      * 中文界面：返回 STRINGS（中文），缺失时回退 default。
+    """
     if _translator is not None:
         translated = _translator(key)
         if translated:
             return translated
+    if _current_lang == "en":
+        return default or STRINGS.get(key) or key
     return STRINGS.get(key, default or key)
+
+
+def set_language(lang: str) -> None:
+    """切换界面语言："zh"（中文）/ "en"（英文）。"""
+    global _current_lang
+    _current_lang = "en" if str(lang or "").lower().startswith("en") else "zh"
+
+
+def get_language() -> str:
+    return _current_lang
 
 
 def set_translator(func: Optional[Callable[[str], str]]) -> None:

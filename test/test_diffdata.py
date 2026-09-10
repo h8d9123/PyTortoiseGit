@@ -183,3 +183,29 @@ def test_ignore_comments_marks_filtered(tmp_path_factory):
     assert default_comment_tokens("x.cpp") == ("//", "/*", "*/")
     assert default_comment_tokens("x.html") == ("", "<!--", "-->")
     assert default_comment_tokens("x.py") == ("#", "", "")
+
+
+def test_load_one_pane(tmp_path_factory):
+    """单栏视图：相同行一行，差异行分列 Removed/Added（对齐 m_YourBaseBoth）。"""
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.git.repo import Repository
+    from pytortoisegit.merge.diffdata import DiffData
+    from pytortoisegit.merge.viewdata import DiffState
+    root = tmp_path_factory.mktemp("dd_onepane")
+    runner = GitRunner(cwd=str(root))
+    runner.init(str(root), initial_branch="main")
+    runner.run("config", "user.email", "t@x.com")
+    runner.run("config", "user.name", "T")
+    runner.run("config", "core.autocrlf", "false")
+    (root / "a.txt").write_bytes(b"same\nold\n")
+    runner.run("add", "-A")
+    runner.run("commit", "-m", "init")
+    (root / "a.txt").write_bytes(b"same\nnew\n")
+    repo = Repository.open(str(root))
+    dd = DiffData(repo)
+    rows = dd.load_one_pane("a.txt", "HEAD", None)
+    lines = [vd.line for vd in rows]
+    assert "same" in lines and "old" in lines and "new" in lines
+    states = [vd.state for vd in rows]
+    assert DiffState.Removed in states
+    assert DiffState.Added in states

@@ -558,6 +558,21 @@ class DiffData:
         self._apply_endings(left, right, old_eols, new_eols)
         return left, right
 
+    def load_one_pane(self, path: str, rev1: str | None, rev2: str | None):
+        """单栏视图（对齐 m_YourBaseBoth）：相同行一行，差异行分列 Removed/Added。"""
+        left, right = self.load(path, rev1, rev2)
+        out: List[ViewData] = []
+        for lv, rv in zip(left, right):
+            if (lv.state == DiffState.Normal and rv.state == DiffState.Normal
+                    and not lv.is_empty):
+                out.append(lv)
+            else:
+                if not lv.is_empty:
+                    out.append(lv)
+                if not rv.is_empty:
+                    out.append(rv)
+        return out
+
     def _apply_endings(self, left: List[ViewData], right: List[ViewData],
                        old_eols: List[EOL], new_eols: List[EOL]):
         """填充每行行尾，并把「仅行尾不同」的行标成行尾差异（可见）。"""

@@ -191,6 +191,35 @@ def test_scroll_sync(tmp_path_factory, qapp):
         assert rh.value() == lh.value()
 
 
+def test_ribbon_edit_group_columns(tmp_path_factory, qapp):
+    """Ribbon Edit 组按原版分栏：Copy/Paste 一列；Find/FindNext 同一列。"""
+    from PySide6.QtWidgets import QToolButton
+    from pytortoisegit.merge.mergefrm import MergeFrm
+    root = tmp_path_factory.mktemp("mergeview_ribbon")
+    repo = _make_repo(root, "a\n", "a\n")
+    frm = MergeFrm(repo, "a.txt", "HEAD", None)
+    frm.resize(1500, 700)
+    frm.show()
+    qapp.processEvents()
+
+    def pos(key):
+        for b in frm.ribbon.findChildren(QToolButton):
+            a = b.defaultAction()
+            if a is not None and a.property("ribbonKey") == key:
+                p = b.mapTo(frm.ribbon, b.rect().topLeft())
+                return (p.x(), p.y())
+        return None
+
+    cx, cy = pos("copy")
+    px, py = pos("paste")
+    assert cx == px and cy < py            # Copy/Paste 同一列（纵向）
+    fx, fy = pos("find")
+    nx, ny = pos("find_next")
+    assert fx == nx and fy < ny            # Find/FindNext 同一列
+    gx, gy = pos("goto")
+    assert gx == fx and gy > ny            # Goto 与 Find 同列且在下方
+
+
 def test_locatorbar_stripes(qapp):
     """LocatorBar 支持左/右/底三条 stripe（对齐 CLocatorBar）。"""
     from pytortoisegit.merge.locatorbar import LocatorBar

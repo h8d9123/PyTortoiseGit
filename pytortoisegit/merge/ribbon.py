@@ -281,14 +281,14 @@ class MergeRibbon(QWidget):
         h.setSpacing(0)
 
         g = _Group(tr("tm_group_edit", "编辑"), strip)
+        # 对齐 XML 的 GroupSizeDefinition 分栏：
+        #   Save | Reload/Undo/Redo/EditEnabled | Copy/Paste | Find/FindPrev/FindNext/Goto | Mark
         g.add(_tool(a["save"], True))
-        g.add(_tool(a["reload"], True))
-        g.add_col([_tool(a["undo"]), _tool(a["redo"]), _tool(a["enable_edit"])])
-        g.add(_tool(a["copy"], True))
-        g.add(_tool(a["paste"], True))
-        g.add(_tool(a["find"], True))
-        g.add_col([_tool(a["find_prev"]), _tool(a["find_next"])])
-        g.add(_tool(a["goto"], True))
+        g.add_col([_tool(a["reload"], True), _tool(a["undo"]),
+                   _tool(a["redo"]), _tool(a["enable_edit"])])
+        g.add_col([_tool(a["copy"], True), _tool(a["paste"], True)])
+        g.add_col([_tool(a["find"], True), _tool(a["find_prev"]),
+                   _tool(a["find_next"]), _tool(a["goto"], True)])
         g.add(_tool(a["mark"], True))
         h.addWidget(g)
 

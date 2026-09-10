@@ -118,6 +118,17 @@ def test_settings_dialog(qapp):
     assert opts["one_pane"] is True
 
 
+def test_apputils_helpers(qapp):
+    from pytortoisegit.merge.apputils import intense_color, has_clipboard_format
+    from PySide6.QtGui import QColor
+    # scale 0 → 颜色不变
+    assert intense_color(0, QColor(200, 200, 200)) == QColor(200, 200, 200)
+    # 浅色变暗
+    darker = intense_color(255, QColor(200, 200, 200))
+    assert darker.red() < 200
+    assert isinstance(has_clipboard_format("text/plain"), bool)
+
+
 def test_mergefiles_command(qapp, tmp_path):
     """独立文件合并：/theirs /mine → MergeFrm 本地两栏（对齐 TortoiseMerge）。"""
     from pytortoisegit.cmdline import CommandLine

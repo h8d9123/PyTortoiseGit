@@ -115,6 +115,24 @@ def test_eol_difference_shown(tmp_path_factory, qapp):
     assert "LF" in frm.left_view.document().findBlockByNumber(0).text()
 
 
+def test_caret_line_sync(tmp_path_factory, qapp):
+    """点击某一行 → 两个视图同步高亮该行。"""
+    from pytortoisegit.merge.mergefrm import MergeFrm
+    root = tmp_path_factory.mktemp("mergeview_caret")
+    repo = _make_repo(root, "a\nb\nc\nd\ne\n", "A\nb\nC\nd\ne\n")
+    frm = MergeFrm(repo, "a.txt", "HEAD", None)
+    frm.show()
+    qapp.processEvents()
+    lv = frm.left_view
+    blk = lv.document().findBlockByNumber(2)
+    cur = lv.textCursor()
+    cur.setPosition(blk.position())
+    lv.setTextCursor(cur)
+    qapp.processEvents()
+    assert frm.left_view._current_line == 2
+    assert frm.right_view._current_line == 2
+
+
 def test_scroll_sync(tmp_path_factory, qapp):
     """滚轮/滚动条应同步左右视图（垂直与水平）。"""
     from pytortoisegit.merge.mergefrm import MergeFrm

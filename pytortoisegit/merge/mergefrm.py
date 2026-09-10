@@ -146,6 +146,7 @@ class MergeFrm(QMainWindow):
 
         for v in self._views():
             v.line_moved.connect(self._on_view_line)
+            v.caret_line_changed.connect(self._on_caret_line)
             v.verticalScrollBar().valueChanged.connect(self._sync_from)
             v.horizontalScrollBar().valueChanged.connect(self._sync_h_from)
 
@@ -440,6 +441,11 @@ class MergeFrm(QMainWindow):
         for v in self._views():
             v.set_current_block(first, last)
 
+    def _on_caret_line(self, view_line: int):
+        """光标行跨视图同步高亮（对齐 CBaseView 的 caret 同步）。"""
+        for v in self._views():
+            v.set_current_line(view_line)
+
     def _refresh_linebar(self):
         line = self.left_view.current_view_line()
         lt = self.left_view.view_data[line].line if 0 <= line < len(self.left_view.view_data) else ""
@@ -721,7 +727,8 @@ class MergeFrm(QMainWindow):
                     fmt.setBackground(QColor(255, 255, 0))
                     sel.format = fmt
                     extra.append(sel)
-            view.setExtraSelections(extra)
+            view._find_selections = extra
+            view._apply_extra_selections()
 
     def _find_step(self, direction: int):
         if not self._search:

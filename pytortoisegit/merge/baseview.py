@@ -76,6 +76,7 @@ class BaseView(QPlainTextEdit):
     """一个并排 diff 视图（对应 CBaseView）。"""
 
     line_moved = Signal(int)
+    caret_line_changed = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -98,6 +99,7 @@ class BaseView(QPlainTextEdit):
         self.blockCountChanged.connect(self._update_line_area_width)
         self.updateRequest.connect(self._update_line_area)
         self.cursorPositionChanged.connect(self._emit_line)
+        self.cursorPositionChanged.connect(self._on_cursor_moved)
         self.verticalScrollBar().valueChanged.connect(self._emit_line)
         self._update_line_area_width(0)
         self._on_line_clicked = None
@@ -119,6 +121,8 @@ class BaseView(QPlainTextEdit):
         self.marked_word_count = 0
         self._cur_block = (-1, -1)
         self.show_eol_diff = False
+        self._current_line = -1
+        self._find_selections: list = []
 
     def line_number_width(self) -> int:
         return 62
@@ -669,6 +673,37 @@ class BaseView(QPlainTextEdit):
 
     def _emit_line(self, *_):
         self.line_moved.emit(self.current_view_line())
+
+    def _on_cursor_moved(self, *_):
+        self.caret_line_changed.emit(self.current_view_line())
+
+    def _screen_for_view(self, view_line: int) -> int:
+        for s, v in enumerate(self._screen_to_view):
+            if v == view_line:
+                return s
+        return -1
+
+    def set_current_line(self, view_line: int):
+        """高亮当前行（ExtraSelection），供跨视图同步。"""
+        self._current_line = view_line
+        self._apply_extra_selections()
+
+    def _apply_extra_selections(self):
+        from PySide6.QtWidgets import QTextEdit
+        sels = list(self._find_selections)
+        screen = (self._screen_for_view(self._current_line)
+                  if self._current_line >= 0 else -1)
+        if screen >= 0:
+            block = self.document().findBlockByNumber(screen)
+            if block.isValid():
+                sel = QTextEdit.ExtraSelection()
+                sel.cursor = QTextCursor(block)
+                sel.cursor.select(QTextCursor.SelectionType.LineUnderCursor)
+                fmt = QTextCharFormat()
+                fmt.setBackground(QColor(230, 230, 255))
+                sel.format = fmt
+                sels.append(sel)
+        self.setExtraSelections(sels)
 
     def scroll_to_line(self, line: int):
         if line < 0 or line >= len(self.view_data):

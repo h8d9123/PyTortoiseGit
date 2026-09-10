@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..cmdline import CommandLine
 from ..git.repo import NotARepositoryError, Repository
+from ..res.strings import tr
 
 
 def repo_from_cl(cl: CommandLine | None) -> Repository:
@@ -28,7 +29,7 @@ def repo_from_cl(cl: CommandLine | None) -> Repository:
 #
 # This program is derived from and mirrors the TortoiseGit project.
     if cl is None or not cl.path:
-        raise NotARepositoryError("(未提供 /path)")
+        raise NotARepositoryError(tr("no_path_provided", "(no /path provided)"))
     return Repository.open(cl.path)
 
 

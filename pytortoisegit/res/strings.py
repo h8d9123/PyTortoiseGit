@@ -818,6 +818,13 @@ STRINGS: Dict[str, str] = {
     "filetextlines_not_file": "不是文件: {path}",
     "filetextlines_binary": "二进制文件: {path}",
     "patch_no_diff": "没有解析到补丁",
+    # ---- 命令补充 ----
+    "merge3_need_path": "需要 /path:<文件>",
+    "not_set": "(未设置)",
+    "sync_fetch": "抓取",
+    "sync_pull": "拉取",
+    "sync_push": "推送",
+    "no_path_provided": "(未提供 /path)",
 }
 
 

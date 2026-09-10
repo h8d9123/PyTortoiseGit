@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..dialogs.sync import SyncDlg
 from ._util import repo_from_cl
+from ..res.strings import tr
 from .dispatcher import CommandContext, register
 
 
@@ -19,7 +20,7 @@ def sync(ctx: CommandContext):
 def fetch(ctx: CommandContext):
     repo = repo_from_cl(ctx.cl)
     dlg = SyncDlg(repo, parent=None)
-    dlg.setWindowTitle(f"{repo.name} — 抓取")
+    dlg.setWindowTitle(f"{repo.name} — {tr('sync_fetch', 'Fetch')}")
     dlg.exec()
     return "ok"
 
@@ -28,7 +29,7 @@ def fetch(ctx: CommandContext):
 def pull(ctx: CommandContext):
     repo = repo_from_cl(ctx.cl)
     dlg = SyncDlg(repo, parent=None)
-    dlg.setWindowTitle(f"{repo.name} — 拉取")
+    dlg.setWindowTitle(f"{repo.name} — {tr('sync_pull', 'Pull')}")
     dlg.exec()
     return "ok"
 
@@ -37,7 +38,7 @@ def pull(ctx: CommandContext):
 def push(ctx: CommandContext):
     repo = repo_from_cl(ctx.cl)
     dlg = SyncDlg(repo, parent=None)
-    dlg.setWindowTitle(f"{repo.name} — 推送")
+    dlg.setWindowTitle(f"{repo.name} — {tr('sync_push', 'Push')}")
     dlg.exec()
     return "ok"
 

@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 from ..merge.mergefrm import MergeFrm
+from ..res.strings import tr
 from ._util import repo_from_cl
 from .dispatcher import CommandContext, register
 
@@ -37,7 +38,7 @@ def merge3(ctx: CommandContext):
     path = ctx.cl.value("path") if ctx.cl and ctx.cl.value("path") else ""
     if not path:
         from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(None, "merge3", "需要 /path:<文件>")
+        QMessageBox.information(None, "merge3", tr("merge3_need_path", "Requires /path:<file>"))
         return "cancel"
     frm = MergeFrm(repo, path, their or "HEAD", our, three_way=True)
     frm.exec()

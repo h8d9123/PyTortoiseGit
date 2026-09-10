@@ -11,7 +11,7 @@ def pgpfp(ctx: CommandContext):
     repo = repo_from_cl(ctx.cl)
     out = repo.runner.run("config", "--get", "user.signingkey").stdout or ""
     QMessageBox.information(None, tr("pgpfp_title", "GPG Fingerprint"),
-                            tr("pgpfp_text", "Signing key: {}").format(out.strip() or "(未设置)"))
+                            tr("pgpfp_text", "Signing key: {}").format(out.strip() or tr("not_set", "(not set)")))
     return "ok"
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.

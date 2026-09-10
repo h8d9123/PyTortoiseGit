@@ -12,7 +12,7 @@ def help(ctx: CommandContext):
     cmds = ", ".join(available_commands())
     QMessageBox.information(
         None, tr("help_title", "Help"),
-        format_string(tr("help_text", "用法：app.py /command:&lt;名称&gt; [/path:&lt;路径&gt;]\\n\\n可用命令：\\n{cmds}"),
+        format_string(tr("help_text", "Usage: app.py /command:&lt;name&gt; [/path:&lt;path&gt;]\n\nAvailable commands:\n{cmds}"),
                       cmds=cmds))
     return "ok"
 

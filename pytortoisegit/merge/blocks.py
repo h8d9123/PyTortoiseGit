@@ -207,3 +207,44 @@ def first_conflict_index(data: Sequence[ViewData]) -> int:
         if vd.is_conflict:
             return i
     return -1
+
+
+def mark_block(dest: List[ViewData], marked: bool, first: int, last: int) -> None:
+    """对齐 CBaseView::MarkBlock。"""
+    for i in range(first, last + 1):
+        if 0 <= i < len(dest):
+            dest[i].marked = marked
+
+
+def use_view_block_skip(dest: List[ViewData], src: Sequence[ViewData],
+                        first: int, last: int, skip_fn) -> None:
+    """对齐 CBaseView::UseViewBlock(..., fnSkip)：skip_fn 为真的行跳过并清除标记。"""
+    for i in range(first, last + 1):
+        if skip_fn(i):
+            if 0 <= i < len(dest):
+                dest[i].marked = False
+            continue
+        if i >= len(dest) or i >= len(src):
+            continue
+        dest[i] = _copy_for_use(src[i])
+
+
+def leave_only_marked_blocks(dest: List[ViewData], src: Sequence[ViewData]) -> None:
+    """对齐 LeaveOnlyMarkedBlocks：只保留标记块（其余用 src 覆盖）。"""
+    use_view_block_skip(
+        dest, src, 0, len(dest) - 1,
+        lambda i: dest[i].marked or dest[i].state == DiffState.Edited)
+
+
+def use_view_file_of_marked(dest: List[ViewData], src: Sequence[ViewData]) -> None:
+    """对齐 UseViewFileOfMarked：仅用 src 覆盖标记块。"""
+    use_view_block_skip(
+        dest, src, 0, len(dest) - 1,
+        lambda i: (not dest[i].marked) or dest[i].state == DiffState.Edited)
+
+
+def use_view_file_except_edited(dest: List[ViewData], src: Sequence[ViewData]) -> None:
+    """对齐 UseViewFileExceptEdited：除手动编辑行外都用 src 覆盖。"""
+    use_view_block_skip(
+        dest, src, 0, len(dest) - 1,
+        lambda i: dest[i].state == DiffState.Edited)

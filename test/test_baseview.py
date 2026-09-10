@@ -169,3 +169,25 @@ def test_is_view_line_hidden(qapp):
     v.collapsed = True
     assert v.is_view_line_hidden(1)
     assert not v.is_view_line_hidden(0)
+
+
+def test_mark_and_leave_only_marked(qapp):
+    a = _view(["x1", "x2", "x3"])
+    b = _view(["y1", "y2", "y3"])
+    for vd in b.view_data:
+        vd.state = DiffState.Added
+    a.mark_block(True, 0, 0)
+    a.leave_only_marked_blocks(b)
+    # 标记行保留，其余用 b 覆盖
+    assert a.view_data[0].line == "x1"
+    assert a.view_data[1].line == "y2"
+    assert a.view_data[2].line == "y3"
+
+
+def test_use_view_file_of_marked(qapp):
+    a = _view(["x1", "x2"])
+    b = _view(["y1", "y2"])
+    a.mark_block(True, 1, 1)
+    a.use_view_file_of_marked(b)
+    assert a.view_data[0].line == "x1"  # 未标记 → 保留
+    assert a.view_data[1].line == "y2"  # 标记 → 用 b 覆盖

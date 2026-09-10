@@ -820,6 +820,31 @@ class BaseView(QPlainTextEdit):
         self.set_modified()
         self._rebuild()
 
+    # ---- 标记块操作（对齐 MarkBlock/LeaveOnlyMarkedBlocks 等）----
+    def mark_block(self, marked: bool, first: int, last: int):
+        from .blocks import mark_block
+        mark_block(self.view_data, marked, first, last)
+        self.set_modified()
+        self._rebuild()
+
+    def leave_only_marked_blocks(self, other: "BaseView"):
+        from .blocks import leave_only_marked_blocks
+        leave_only_marked_blocks(self.view_data, other.view_data)
+        self.set_modified()
+        self._rebuild()
+
+    def use_view_file_of_marked(self, other: "BaseView"):
+        from .blocks import use_view_file_of_marked
+        use_view_file_of_marked(self.view_data, other.view_data)
+        self.set_modified()
+        self._rebuild()
+
+    def use_view_file_except_edited(self, other: "BaseView"):
+        from .blocks import use_view_file_except_edited
+        use_view_file_except_edited(self.view_data, other.view_data)
+        self.set_modified()
+        self._rebuild()
+
     def use_resolved_block(self, from_other: "BaseView", first: int, last: int):
         from .blocks import use_resolved_block
         if last < first:

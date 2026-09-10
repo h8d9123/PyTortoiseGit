@@ -8,7 +8,7 @@ from .dispatcher import CommandContext, register
 @register("crash")
 def crash(ctx: CommandContext):
     QMessageBox.information(None, tr("crash_title", "Crash"),
-                            tr("crash_text", "crash 调试命令：已捕获为信息框（未真正崩溃）。"))
+                            tr("crash_text", "crash debug command: captured as a message box (no real crash)."))
     return "ok"
 
 

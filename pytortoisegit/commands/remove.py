@@ -12,8 +12,8 @@ def remove(ctx: CommandContext):
     paths = ctx.cl.all_values("path") if ctx.cl else []
     if not paths:
         return "cancel"
-    resp = QMessageBox.question(None, tr("remove_title", "移除"),
-                                tr("remove_confirm", "从 git 移除选中的文件？"),
+    resp = QMessageBox.question(None, tr("remove_title", "Remove"),
+                                tr("remove_confirm", "Remove selected files from git?"),
                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
     if resp != QMessageBox.StandardButton.Yes:
         return "cancel"

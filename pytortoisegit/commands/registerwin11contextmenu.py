@@ -10,8 +10,8 @@ from .dispatcher import CommandContext, register
 def registerwin11contextmenu(ctx: CommandContext):
     try:
         _install_shell()
-        QMessageBox.information(None, tr("ctx_title", "右键菜单"),
-                                tr("ctx_installed", "Win11 右键菜单已安装。"))
+        QMessageBox.information(None, tr("ctx_title", "Context menu"),
+                                tr("ctx_installed", "Windows 11 context menu installed."))
     except Exception as exc:  # noqa: BLE001
         QMessageBox.warning(None, tr("error"), str(exc))
     return "ok"

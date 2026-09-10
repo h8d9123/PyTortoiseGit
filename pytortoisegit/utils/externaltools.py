@@ -104,7 +104,7 @@ def _run_blocking(cmd: list[str]) -> bool:
         subprocess.Popen(cmd, close_fds=True)
         return True
     except OSError as exc:  # noqa: BLE001
-        print(f"externaltools: 启动失败 {cmd}: {exc}", flush=True)
+        print(f"externaltools: failed to start {cmd}: {exc}", flush=True)
         return False
 
 

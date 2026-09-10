@@ -9,8 +9,8 @@ from .dispatcher import CommandContext, register
 @register("rtfm")
 def rtfm(ctx: CommandContext):
     url = "https://tortoisegit.org/docs/tortoisegit/"
-    QMessageBox.information(None, tr("rtfm_title", "文档"),
-                            tr("rtfm_text", "打开文档：{}").format(url))
+    QMessageBox.information(None, tr("rtfm_title", "Documentation"),
+                            tr("rtfm_text", "Open documentation: {}").format(url))
     webbrowser.open(url)
     return "ok"
 

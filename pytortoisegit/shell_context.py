@@ -32,6 +32,8 @@ import shutil
 import sys
 from typing import Dict, List, Optional
 
+from .res.strings import tr
+
 WIN32 = sys.platform == "win32"
 
 # (注册表基路径, 变量) —— HKCU\Software\Classes\...
@@ -45,16 +47,16 @@ _TARGETS = (
 # verb -> (标签, 适用 target 判定)；
 # _TARGETS 顺序固定，files 仅心 `*` 上注册
 _COMMON_VERBS = (
-    ("commit", "提交 (PyTortoiseGit)"),
-    ("log", "日志 (PyTortoiseGit)"),
-    ("changed", "检查修改 (PyTortoiseGit)"),
-    ("sync", "同步 (PyTortoiseGit)"),
-    ("browse", "分支与标签 (PyTortoiseGit)"),
-    ("settings", "设置 (PyTortoiseGit)"),
+    ("commit", "shell_commit", "Commit (PyTortoiseGit)"),
+    ("log", "shell_log", "Log (PyTortoiseGit)"),
+    ("changed", "shell_changed", "Check for Modifications (PyTortoiseGit)"),
+    ("sync", "shell_sync", "Sync (PyTortoiseGit)"),
+    ("browse", "shell_browse", "Branches and tags (PyTortoiseGit)"),
+    ("settings", "shell_settings", "Settings (PyTortoiseGit)"),
 )
 _FILE_VERBS = (
-    ("blame", "标注此文件 (Blame)"),
-    ("diff", "与 HEAD 比较…"),
+    ("blame", "shell_blame", "Blame this file"),
+    ("diff", "shell_diff", "Compare with HEAD…"),
 )
 
 _ROOT = r"Software\Classes"
@@ -80,16 +82,16 @@ def _command(verb: str, path_var: str) -> str:
 
 def _verb_names(target: str) -> List[str]:
     """某 target 上注册的 verb 列表。"""
-    verbs = [v for v, _ in _COMMON_VERBS]
+    verbs = [v for v, _k, _d in _COMMON_VERBS]
     if target == "*":
-        verbs += [v for v, _ in _FILE_VERBS]
+        verbs += [v for v, _k, _d in _FILE_VERBS]
     return verbs
 
 
 def _label_of(verb: str) -> str:
-    for v, label in _COMMON_VERBS + _FILE_VERBS:
+    for v, key, default in _COMMON_VERBS + _FILE_VERBS:
         if v == verb:
-            return label
+            return tr(key, default)
     return verb
 
 
@@ -155,14 +157,13 @@ def is_installed() -> bool:
 
 def status_text() -> str:
     if not WIN32:
-        return "Shell 集成仅支持 Windows。"
-    mode = "已安装" if is_installed() else "未安装"
+        return tr("shell_windows_only", "Shell integration is only supported on Windows.")
+    mode = tr("shell_state_installed", "Installed") if is_installed() \
+        else tr("shell_state_not_installed", "Not installed")
     py = _pythonw()
     app = _app_script()
-    return (
-        f"右键菜单状态：{mode}\n"
-        f"可执行：{py}\n"
-        f"入口：{app}\n\n"
-        "安装到 文件 / 文件夹 / 文件夹空白处 三类右键菜单。"
-        "修改注册表后，通常需要重新打开资源管理器才生效。"
-    )
+    return tr("shell_status",
+              "Context menu status: {mode}\nExecutable: {py}\nEntry: {app}\n\n"
+              "Registers entries for files / folders / folder background. "
+              "After modifying the registry, you usually need to reopen Explorer."
+              ).format(mode=mode, py=py, app=app)

@@ -24,6 +24,8 @@
 
 from __future__ import annotations
 
+from ..res.strings import tr
+
 import os
 from pathlib import Path
 from typing import List, Optional
@@ -38,7 +40,7 @@ from .admin import is_git_repo  # re-export 便于旧代码兼容
 class NotARepositoryError(Exception):
     def __init__(self, path: str):
         self.path = path
-        super().__init__(f"不是 git 仓库：{path}")
+        super().__init__(tr("not_a_repository", "Not a git repository: {path}").format(path=path))
 
 
 class Repository:
@@ -116,7 +118,7 @@ class Repository:
         if result.returncode == 0:
             return result.stdout.strip()
         result = self.run("rev-parse", "--short", "HEAD")
-        return result.stdout.strip() or "(无提交)"
+        return result.stdout.strip() or tr("no_commits", "(no commits)")
 
     def get_remotes(self) -> List[str]:
         result = self.run("remote")

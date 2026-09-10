@@ -8,8 +8,8 @@ from .dispatcher import CommandContext, register
 @register("inaccessible")
 def inaccessible(ctx: CommandContext):
     path = ctx.cl.value("path") if ctx.cl and ctx.cl.value("path") else ""
-    QMessageBox.warning(None, tr("inaccessible_title", "路径不可访问"),
-                        tr("inaccessible_text", "路径不可访问：{}").format(path))
+    QMessageBox.warning(None, tr("inaccessible_title", "Path not accessible"),
+                        tr("inaccessible_text", "Path not accessible: {}").format(path))
     return "ok"
 
 

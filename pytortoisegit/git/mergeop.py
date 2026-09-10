@@ -24,6 +24,8 @@
 
 from __future__ import annotations
 
+from ..res.strings import tr
+
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -132,19 +134,19 @@ def run_action(repo: Repository, args: List[str]) -> RunResult:
     in_progress = _repo_state(repo)
     if in_progress:
         raise MergeInProgressError(
-            f"仓库处于 {in_progress} 状态，请先完成或中止该操作")
+            tr("merge_in_progress", "Repository is in {state} state; finish or abort it first").format(state=in_progress))
     return repo.runner.run(*args)
 
 
 def _repo_state(repo: Repository) -> str:
-    for marker, name in (("MERGE_HEAD", "合并"), ("rebase-merge", "变基"),
-                         ("rebase-apply", "变基")):
+    for marker, key, default in (("MERGE_HEAD", "state_merge", "merge"), ("rebase-merge", "state_rebase", "rebase"),
+                         ("rebase-apply", "state_rebase", "rebase")):
         if repo.git_dir is None:
             continue
         import os
         path = os.path.join(repo.git_dir, marker)
         if os.path.exists(path):
-            return name
+            return tr(key, default)
     return ""
 
 

@@ -9,8 +9,8 @@ from .dispatcher import CommandContext, register
 
 @register("rebuildiconcache")
 def rebuildiconcache(ctx: CommandContext):
-    QMessageBox.information(None, tr("icon_title", "图标缓存"),
-                            tr("icon_text", "图标缓存已清除（需重启资源管理器生效）。"))
+    QMessageBox.information(None, tr("icon_title", "Icon cache"),
+                            tr("icon_text", "Icon cache cleared (restart Explorer to take effect)."))
     return "ok"
 
 

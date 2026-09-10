@@ -26,17 +26,18 @@ from . import __appname__, __version__
 from .cmdline import parse
 
 def _print_help():
+    from .res.strings import tr
     print(f"{__appname__} {__version__}")
     print()
-    print("用法：app.py /command:<name> [/path:<path>] [/msg:<message>] ...")
+    print(tr("cli_usage", "Usage: app.py /command:<name> [/path:<path>] [/msg:<message>] ..."))
     print("      app.py /help")
     print()
-    print("可用命令：about  clone  commit  diff  log  blame  browse  reflog")
+    print(tr("cli_commands", "Available commands: about  clone  commit  diff  log  blame  browse  reflog"))
     print("          branch tag  settings  sync  pull  push  fetch  shell")
     print("          stash  merge  rebase  submodule (subadd/subupdate)")
     print("          check_modifications (changed)")
     print()
-    print("例：")
+    print(tr("cli_examples", "Examples:"))
     print("  python pytortoisegit/app.py /command:log /path:\"D:\\repo\"")
     print("  python pytortoisegit/app.py /command:clone /url:https://github.com/user/repo.git")
 
@@ -62,7 +63,7 @@ def main(argv: list | None = None) -> int:
 
     from .utils.logging_utils import get_logger, install_excepthooks
     install_excepthooks(show_dialog=True)
-    get_logger().info("启动命令: %s", " ".join(argv) if argv else "(无参数 -> 主菜单)")
+    get_logger().info("startup command: %s", " ".join(argv) if argv else "(no args -> main menu)")
 
     cl = parse(argv)
 

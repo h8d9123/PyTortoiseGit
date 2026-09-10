@@ -25,6 +25,8 @@
 
 from __future__ import annotations
 
+from ..res.strings import tr
+
 import logging
 import os
 import sys
@@ -59,7 +61,7 @@ def _show_error(message: str):
         app = QApplication.instance()
         if app is None:
             return
-        QMessageBox.critical(None, "错误", message)
+        QMessageBox.critical(None, tr("error", "Error"), message)
     except Exception:  # noqa: BLE001
         pass
 
@@ -70,17 +72,18 @@ def install_excepthooks(show_dialog: bool = True) -> None:
 
     def _handle(exc_type, exc, tb, thread_label: str = ""):
         detail = "".join(traceback.format_exception(exc_type, exc, tb))
-        logger.error("%s未捕获异常:\n%s", thread_label, detail)
+        logger.error("%sUnhandled exception:\n%s", thread_label, detail)
         if show_dialog:
-            _show_error(f"{thread_label}发生未捕获异常：\n{exc}\n\n"
-                        f"详情已写入日志文件。")
+            _show_error(tr("unhandled_exception",
+                           "{label}Unhandled exception:\n{exc}\n\nDetails have been written to the log file.")
+                        .format(label=thread_label, exc=exc))
 
     def _syshook(exc_type, exc, tb):
         _handle(exc_type, exc, tb)
 
     def _threadhook(args):
         _handle(args.exc_type, args.exc_value, args.exc_traceback,
-                thread_label=f"[线程 {args.thread.name}] ")
+                thread_label=f"[{tr('thread', 'Thread')} {args.thread.name}] ")
 
     sys.excepthook = _syshook
     threading.excepthook = _threadhook

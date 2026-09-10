@@ -23,7 +23,7 @@ def unignore(ctx: CommandContext):
         with open(gitignore, "w", encoding="utf-8") as fh:
             fh.writelines(out)
         repo.runner.run("check-ignore", *paths)  # 刷新
-    QMessageBox.information(None, tr("unignore_done", "已取消忽略（更新 .gitignore）"))
+    QMessageBox.information(None, tr("unignore_done", "Unignored (updated .gitignore)"))
     return "ok"
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.

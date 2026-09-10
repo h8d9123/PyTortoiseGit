@@ -25,6 +25,8 @@
 
 from __future__ import annotations
 
+from ..res.strings import tr
+
 import os
 import shutil
 import subprocess
@@ -44,7 +46,7 @@ class GitError(Exception):
         self.stderr = stderr
         message = " ".join(cmd_line) or "(empty cmd)"
         if returncode:
-            message += f"\n退出码：{returncode}"
+            message += f"\n{tr('exit_code', 'Exit code')}: {returncode}"
         if stderr:
             message += "\nstderr: " + stderr.strip()
         if stdout and returncode:
@@ -76,7 +78,7 @@ def find_git_executable() -> str:
     found = shutil.which("git")
     if found:
         return found
-    raise RuntimeError("找不到 git 可执行文件，请安装 git 或设置 GIT_PATH 环境变量")
+    raise RuntimeError(tr("git_not_found", "git executable not found; install git or set the GIT_PATH environment variable"))
 
 
 class GitRunner:
@@ -128,7 +130,7 @@ class GitRunner:
         except OSError as exc:
             raise GitError(cmd, 127, stderr=str(exc)) from exc
         except subprocess.TimeoutExpired as exc:
-            raise GitError(cmd, 124, stderr="命令执行超时") from exc
+            raise GitError(cmd, 124, stderr=tr("command_timeout", "Command timed out")) from exc
 
         out = _decode(proc.stdout) if proc.stdout is not None else ""
         err = _decode(proc.stderr) if proc.stderr is not None else ""

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ..res.strings import tr
+
 import os
 import re
 from pathlib import Path
@@ -187,7 +189,7 @@ def validate_path_for_git(path: str) -> Optional[str]:
     if os.name == "nt":
         base = os.path.basename(abs_path)
         if not is_valid_filename(base):
-            return f"无效的文件名：{base}"
+            return tr("invalid_filename", "Invalid file name: {name}").format(name=base)
     return None
 
 

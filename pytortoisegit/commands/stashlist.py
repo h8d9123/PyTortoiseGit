@@ -12,7 +12,7 @@ def stashlist(ctx: CommandContext):
     out = repo.runner.run("stash", "list").stdout or ""
     if out:
         from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(None, tr("stash_list", "Stash 列表"), out)
+        QMessageBox.information(None, tr("stash_list", "Stash list"), out)
     return "ok"
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.

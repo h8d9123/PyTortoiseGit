@@ -118,6 +118,7 @@ class BaseView(QPlainTextEdit):
         self.find_string_lines: List[int] = []
         self.marked_word_count = 0
         self._cur_block = (-1, -1)
+        self.show_eol_diff = False
 
     def line_number_width(self) -> int:
         return 62
@@ -235,7 +236,8 @@ class BaseView(QPlainTextEdit):
                 and other_vd.ending not in (EOL.NoEnding, EOL.AutoLine)
                 and vd.ending != other_vd.ending)
             marker = ""
-            if not vd.is_empty and (self.show_whitespaces or eol_differs):
+            if not vd.is_empty and (self.show_whitespaces
+                                    or (self.show_eol_diff and eol_differs)):
                 marker = self._eol_marker(vd.ending)
             display = text + marker
             cursor.insertText(display)

@@ -65,7 +65,7 @@ class MergeFrm(QMainWindow):
         self._local_left = ""
         self._local_right = ""
         self.ignore_ws = IgnoreWS.None_
-        self.ignore_eol = False
+        self.ignore_eol = True
         self.ignore_comments = False
         self.ignore_case = False
         self.inline_diff = True
@@ -289,7 +289,8 @@ class MergeFrm(QMainWindow):
             tr("tm_ignore_comments", "忽略注释"), self._toggle_ignore_comments, checkable=True)
         self._act_ign_cmt2 = self._act_ign_cmt
         self._act_ign_eol = a["ignore_eol"] = self._act(
-            tr("tm_ignore_eol", "忽略换行符"), self._toggle_ignore_eol, checkable=True)
+            tr("tm_ignore_eol", "忽略换行符"), self._toggle_ignore_eol,
+            checkable=True, checked=True)
         a["view_bars"] = self._act(tr("tm_view_bars", "栏"), lambda: None)
         self._act_ldb = a["linediffbar"] = self._act(
             tr("tm_linediffbar", "行差异条"), self._toggle_linediff, checkable=True, checked=True)
@@ -328,6 +329,7 @@ class MergeFrm(QMainWindow):
             v.inline_word = self.inline_word
             v.show_whitespaces = self.show_ws
             v.collapsed = self.collapsed
+            v.show_eol_diff = not self.ignore_eol
             v.set_wrap(self.wrap_lines)
             v.other_view = self.right_view if v is self.left_view else self.left_view
 

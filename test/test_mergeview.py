@@ -94,12 +94,19 @@ def test_real_moved_block_still_detected(tmp_path_factory, qapp):
 
 
 def test_eol_difference_shown(tmp_path_factory, qapp):
-    """换行符差异（LF vs CRLF）应被检测并显示行尾标记。"""
+    """换行符差异：默认忽略（不显示）；取消忽略后才检测并显示行尾标记。"""
     from pytortoisegit.merge.mergefrm import MergeFrm
     from pytortoisegit.merge.viewdata import DiffState, EOL
     root = tmp_path_factory.mktemp("mergeview_eol")
     repo = _make_repo(root, "line1\nline2\n", "line1\r\nline2\r\n")
+    # 默认忽略换行符 → 不显示差异
     frm = MergeFrm(repo, "a.txt", "HEAD", None)
+    assert frm.ignore_eol is True
+    assert frm.left_view.view_data[0].state == DiffState.Normal
+    assert "CRLF" not in frm.right_view.document().findBlockByNumber(0).text()
+    # 取消忽略 → 检测并显示
+    frm.ignore_eol = False
+    frm._load()
     assert frm.left_view.view_data[0].ending == EOL.LF
     assert frm.right_view.view_data[0].ending == EOL.CRLF
     assert frm.left_view.view_data[0].state == DiffState.WhitespaceDiff

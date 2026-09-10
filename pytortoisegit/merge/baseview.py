@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal
@@ -30,8 +31,18 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QPlainTextEdit, QWidget
 
 from .diffcolors import DiffColors
+from .filetextlines import UnicodeType
 from .inlinediff import inline_spans
 from .viewdata import DiffState, EOL, HideState, ViewData
+
+
+@dataclass
+class WhitecharsProperties:
+    """对齐 CBaseView::TWhitecharsProperties。"""
+    has_mixed_eols: bool = False
+    has_trail_white_chars: bool = False
+    has_spaces_to_convert: bool = False
+    has_tabs_to_convert: bool = False
 
 
 class _LineNumberArea(QWidget):
@@ -78,6 +89,11 @@ class BaseView(QPlainTextEdit):
         self._on_line_clicked = None
         self._screen_to_view: List[int] = []
         self.modified = False
+        # 对齐 CBaseView 的空白/编码/行尾相关状态
+        self.tab_size = 4
+        self.tab_mode = 0
+        self.line_endings = EOL.AutoLine
+        self.text_type = UnicodeType.AUTOTYPE
 
     def line_number_width(self) -> int:
         return 62
@@ -252,6 +268,174 @@ class BaseView(QPlainTextEdit):
 
     def _eol_marker(self, ending: EOL) -> str:
         return self._EOL_MARK.get(ending, "")
+
+    # ---- 行尾 / 编码（对齐 CBaseView 的 GetLineEndings 等）----
+    def get_line_endings(self, has_mixed_eols: bool | None = None) -> EOL:
+        if has_mixed_eols is None:
+            has_mixed_eols = self.get_whitechars_properties().has_mixed_eols
+        if has_mixed_eols:
+            return EOL.AutoLine  # 混合行尾 → hack 值
+        if self.line_endings == EOL.AutoLine:
+            return EOL.CRLF
+        return self.line_endings
+
+    def set_line_ending_style(self, eol: EOL):
+        self.line_endings = eol
+
+    def replace_line_endings(self, eol: EOL):
+        if eol == EOL.AutoLine:
+            return
+        self.line_endings = eol
+        for vd in self.view_data:
+            if vd.is_empty:
+                continue
+            if vd.ending in (EOL.AutoLine, EOL.NoEnding, self.line_endings):
+                continue
+            vd.ending = eol
+        self.set_modified()
+        self._rebuild()
+
+    def get_text_type(self) -> UnicodeType:
+        return self.text_type
+
+    def set_text_type(self, text_type: UnicodeType):
+        if self.text_type == text_type:
+            return
+        self.text_type = text_type
+        self.set_modified()
+        self._rebuild()
+
+    def get_tab_size(self) -> int:
+        return self.tab_size
+
+    def set_tab_size(self, n: int):
+        self.tab_size = n
+
+    def get_tab_mode(self) -> int:
+        return self.tab_mode
+
+    def set_tab_mode(self, n: int):
+        self.tab_mode = n
+
+    # ---- 空白工具（对齐 ConvertTabToSpaces/Tabularize/RemoveTrailWhiteChars）----
+    def get_largest_space_streak(self, line: str) -> int:
+        count = 0
+        maxstreak = 0
+        for ch in line:
+            if ch == " ":
+                count += 1
+            else:
+                maxstreak = max(count, maxstreak)
+                count = 0
+        return max(count, maxstreak)
+
+    def convert_tab_to_spaces(self):
+        modified = False
+        for vd in self.view_data:
+            if vd.is_empty:
+                continue
+            s = vd.line
+            pos_in = pos_out = 0
+            tab_found = False
+            while pos_in < len(s):
+                c = s[pos_in]
+                if c == " ":
+                    pos_in += 1
+                    pos_out += 1
+                    continue
+                if c == "\t":
+                    pos_in += 1
+                    tab_found = True
+                    pos_out = (pos_out + self.tab_size) - pos_out % self.tab_size
+                    continue
+                break
+            if tab_found:
+                vd.line = " " * pos_out + s[pos_in:]
+                modified = True
+        if modified:
+            self.set_modified()
+            self._rebuild()
+
+    def tabularize(self):
+        modified = False
+        for vd in self.view_data:
+            if vd.is_empty:
+                continue
+            s = vd.line
+            n_del = 0
+            n_tab = 0
+            n_space = 0
+            pos = 0
+            while pos < len(s):
+                c = s[pos]
+                pos += 1
+                if c == " ":
+                    n_space += 1
+                    if n_space < self.tab_size:
+                        continue
+                    n_tab += 1
+                    n_space = 0
+                    n_del = pos
+                    continue
+                if c == "\t":
+                    n_tab += 1
+                    n_space = 0
+                    n_del = pos
+                    continue
+                break
+            if n_del > 0:
+                new = "\t" * n_tab + s[n_del:]
+                if new != s:
+                    vd.line = new
+                    modified = True
+        if modified:
+            self.set_modified()
+            self._rebuild()
+
+    def remove_trail_white_chars(self):
+        modified = False
+        for vd in self.view_data:
+            if vd.is_empty:
+                continue
+            new = vd.line.rstrip()
+            if len(new) != len(vd.line):
+                vd.line = new
+                modified = True
+        if modified:
+            self.set_modified()
+            self._rebuild()
+
+    def get_whitechars_properties(self) -> WhitecharsProperties:
+        if len(self.view_data) > 10000:
+            return WhitecharsProperties(True, True, True, True)
+        ret = WhitecharsProperties()
+        for vd in self.view_data:
+            if vd.is_empty or not vd.line:
+                continue
+            s = vd.line
+            pos = 0
+            n_space = 0
+            while pos < len(s) and (not ret.has_spaces_to_convert or not ret.has_tabs_to_convert):
+                c = s[pos]
+                pos += 1
+                if c == " ":
+                    n_space += 1
+                    if n_space >= self.tab_size:
+                        ret.has_spaces_to_convert = True
+                    continue
+                if c == "\t":
+                    ret.has_tabs_to_convert = True
+                    if n_space != 0:
+                        ret.has_spaces_to_convert = True
+                    continue
+                break
+            if s[-1] in (" ", "\t"):
+                ret.has_trail_white_chars = True
+            le = vd.ending
+            if (not ret.has_mixed_eols and le != self.line_endings
+                    and le not in (EOL.AutoLine, EOL.NoEnding)):
+                ret.has_mixed_eols = True
+        return ret
 
     def _emit_line(self, *_):
         self.line_moved.emit(self.current_view_line())

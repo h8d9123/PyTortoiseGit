@@ -31,7 +31,7 @@ from PySide6.QtWidgets import QPlainTextEdit, QWidget
 
 from .diffcolors import DiffColors
 from .inlinediff import inline_spans
-from .viewdata import DiffState, HideState, ViewData
+from .viewdata import DiffState, EOL, HideState, ViewData
 
 
 class _LineNumberArea(QWidget):
@@ -125,11 +125,13 @@ class BaseView(QPlainTextEdit):
         p.drawLine(self._line_area.width() - 1, 0, self._line_area.width() - 1, self.height())
         p.end()
 
-    def set_view_data(self, data: List[ViewData], colors: DiffColors | None = None):
+    def set_view_data(self, data: List[ViewData], colors: DiffColors | None = None,
+                      rebuild: bool = True):
         self.view_data = data
         if colors is not None:
             self.colors = colors
-        self._rebuild()
+        if rebuild:
+            self._rebuild()
 
     def set_writable(self, writable: bool):
         self.setReadOnly(not writable)
@@ -183,7 +185,17 @@ class BaseView(QPlainTextEdit):
             # 重置字符格式，避免上一行的差异背景色“渗透”到本行/后续行
             cursor.setCharFormat(QTextCharFormat())
             text = "" if vd.is_empty else self._display_text(vd.line)
-            cursor.insertText(text)
+            other_vd = other[i] if i < len(other) else None
+            eol_differs = (
+                not vd.is_empty and other_vd is not None
+                and vd.ending not in (EOL.NoneEOL, EOL.Autodetect)
+                and other_vd.ending not in (EOL.NoneEOL, EOL.Autodetect)
+                and vd.ending != other_vd.ending)
+            marker = ""
+            if not vd.is_empty and (self.show_whitespaces or eol_differs):
+                marker = self._eol_marker(vd.ending)
+            display = text + marker
+            cursor.insertText(display)
             block = doc.findBlockByNumber(doc.blockCount() - 1)
             sel = QTextCursor(block)
             sel.select(QTextCursor.SelectionType.LineUnderCursor)
@@ -214,11 +226,32 @@ class BaseView(QPlainTextEdit):
                         fmt = QTextCharFormat()
                         fmt.setBackground(color)
                         ic.mergeCharFormat(fmt)
+            # 行尾差异：给行尾标记着色，使换行符差异可见
+            if marker and eol_differs:
+                ic = QTextCursor(block)
+                ic.setPosition(block.position() + len(text))
+                ic.setPosition(block.position() + len(display),
+                               QTextCursor.MoveMode.KeepAnchor)
+                fmt = QTextCharFormat()
+                fmt.setBackground(
+                    self.colors.inline_removed_color()
+                    if getattr(self, "_side", "left") == "left"
+                    else self.colors.inline_added_color())
+                ic.mergeCharFormat(fmt)
             # 换行前重置格式，避免段分隔符带着差异色导致下一段继承
             cursor.setCharFormat(QTextCharFormat())
             cursor.insertText("\n")
             self._screen_to_view.append(i)
         self._update_line_area_width()
+
+    _EOL_MARK = {
+        EOL.LF: " ↵LF",
+        EOL.CRLF: " ↵CRLF",
+        EOL.CR: " ↵CR",
+    }
+
+    def _eol_marker(self, ending: EOL) -> str:
+        return self._EOL_MARK.get(ending, "")
 
     def _emit_line(self, *_):
         self.line_moved.emit(self.current_view_line())

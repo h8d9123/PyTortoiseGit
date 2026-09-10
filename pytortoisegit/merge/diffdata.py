@@ -33,7 +33,7 @@ from enum import Enum
 from typing import List, Optional, Sequence, Tuple
 
 from ..udiff import FilePatch, parse_diff, parse_file_patch
-from .viewdata import DiffState, HideState, ViewData
+from .viewdata import DiffState, EOL, HideState, ViewData
 
 
 class IgnoreWS(Enum):
@@ -46,6 +46,31 @@ class IgnoreWS(Enum):
 def _vd(text: str, state: DiffState, linenumber: int = -1) -> ViewData:
     hidden = HideState.Hidden if state == DiffState.Normal else HideState.Shown
     return ViewData(text, state, linenumber, hidestate=hidden)
+
+
+def _split_lines_eol(text: str) -> Tuple[List[str], List[EOL]]:
+    """按 CRLF/CR/LF 拆分文本，并记录每行行尾（对齐 splitlines 的行数）。"""
+    lines: List[str] = []
+    eols: List[EOL] = []
+    i, n = 0, len(text)
+    while i < n:
+        j = i
+        while j < n and text[j] not in "\r\n":
+            j += 1
+        lines.append(text[i:j])
+        if j >= n:
+            eols.append(EOL.NoneEOL)
+            break
+        if text[j] == "\r" and j + 1 < n and text[j + 1] == "\n":
+            eols.append(EOL.CRLF)
+            i = j + 2
+        elif text[j] == "\r":
+            eols.append(EOL.CR)
+            i = j + 1
+        else:
+            eols.append(EOL.LF)
+            i = j + 1
+    return lines, eols
 
 
 def normalize_revs(rev1: str | None, rev2: str | None):
@@ -410,15 +435,32 @@ class DiffData:
           * 都不给       → 工作区与工作区（无差异）
         """
         old_rev, new_rev = normalize_revs(rev1, rev2)
-        old_lines = self._read(path, old_rev)
-        new_lines = self._read(path, new_rev)
+        old_lines, old_eols = self._read_with_eol(path, old_rev)
+        new_lines, new_eols = self._read_with_eol(path, new_rev)
         left, right = align_lines(
             old_lines, new_lines, "", path,
             match_old=self._match_copies(old_lines),
             match_new=self._match_copies(new_lines))
         apply_ignore_filters(left, right, self.ignore_ws, self.ignore_eol,
                              self.ignore_case, self.ignore_comments)
+        self._apply_endings(left, right, old_eols, new_eols)
         return left, right
+
+    def _apply_endings(self, left: List[ViewData], right: List[ViewData],
+                       old_eols: List[EOL], new_eols: List[EOL]):
+        """填充每行行尾，并把「仅行尾不同」的行标成行尾差异（可见）。"""
+        for lv, rv in zip(left, right):
+            if 0 < lv.linenumber <= len(old_eols):
+                lv.ending = old_eols[lv.linenumber - 1]
+            if 0 < rv.linenumber <= len(new_eols):
+                rv.ending = new_eols[rv.linenumber - 1]
+            if (not self.ignore_eol
+                    and lv.state == DiffState.Normal
+                    and rv.state == DiffState.Normal
+                    and lv.ending not in (EOL.NoneEOL, EOL.Autodetect)
+                    and rv.ending not in (EOL.NoneEOL, EOL.Autodetect)
+                    and lv.ending != rv.ending):
+                lv.state = rv.state = DiffState.WhitespaceDiff
 
     def load_local(self, left_path: str, right_path: str):
         old_lines = self._read_local(left_path)
@@ -458,6 +500,20 @@ class DiffData:
             out = self.repo.runner.run("show", f"{rev}:{path}").stdout
             return out.splitlines() if out else []
         return self._read_local(self.repo.full_path(path) if self.repo else path)
+
+    def _read_with_eol(self, path: str, rev: str | None):
+        """读取内容并返回 (lines, eols)，保留行尾信息以检测换行符差异。"""
+        if rev:
+            if self.repo is None:
+                return [], []
+            out = self.repo.runner.run("show", f"{rev}:{path}").stdout
+            return _split_lines_eol(out) if out else ([], [])
+        full = self.repo.full_path(path) if self.repo else path
+        if not full or not os.path.isfile(full):
+            return [], []
+        # newline="" 保留原始行尾（不做 universal newline 转换）
+        with open(full, "r", encoding="utf-8", errors="replace", newline="") as fh:
+            return _split_lines_eol(fh.read())
 
     @staticmethod
     def _read_local(full: str) -> List[str]:

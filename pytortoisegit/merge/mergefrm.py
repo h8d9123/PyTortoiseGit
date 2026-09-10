@@ -305,9 +305,13 @@ class MergeFrm(QMainWindow):
             if self.view_moved:
                 mark_moved_blocks(left, right, min_block=3)
             self._apply_view_flags()
-            self.left_view.set_view_data(left)
-            self.right_view.set_view_data(right)
-            self.bottom_view.set_view_data(bottom)
+            # 先给两侧都赋数据，再统一重建：否则先重建的一侧看不到对侧数据，
+            # 行内差异高亮会缺失（左侧不会显示部分差异色）
+            self.left_view.set_view_data(left, rebuild=False)
+            self.right_view.set_view_data(right, rebuild=False)
+            self.bottom_view.set_view_data(bottom, rebuild=False)
+            for v in self._views():
+                v._rebuild()
             self.bottom_view.set_writable(True)
             self._reset_edit_flags()
             self._undo_stack = get_undo()
@@ -326,8 +330,11 @@ class MergeFrm(QMainWindow):
         if self.view_moved:
             mark_moved_blocks(left, right, min_block=3)
         self._apply_view_flags()
-        self.left_view.set_view_data(left)
-        self.right_view.set_view_data(right)
+        # 先赋数据再统一重建，保证行内差异两侧都能看到对侧内容
+        self.left_view.set_view_data(left, rebuild=False)
+        self.right_view.set_view_data(right, rebuild=False)
+        self.left_view._rebuild()
+        self.right_view._rebuild()
         self._reset_edit_flags()
         self._undo_stack = get_undo()
         self._undo_stack.clear()
@@ -845,8 +852,10 @@ class MergeFrm(QMainWindow):
 
     def _switch_left(self):
         ld, rd = self.left_view.view_data, self.right_view.view_data
-        self.left_view.set_view_data(rd)
-        self.right_view.set_view_data(ld)
+        self.left_view.set_view_data(rd, rebuild=False)
+        self.right_view.set_view_data(ld, rebuild=False)
+        self.left_view._rebuild()
+        self.right_view._rebuild()
         self._refresh_linebar()
 
     def _toggle_collapse(self, on: bool):

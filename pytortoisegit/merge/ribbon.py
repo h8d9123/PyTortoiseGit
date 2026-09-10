@@ -281,20 +281,23 @@ class MergeRibbon(QWidget):
         h.setSpacing(0)
 
         g = _Group(tr("tm_group_edit", "编辑"), strip)
-        # 对齐 XML 的 GroupSizeDefinition 分栏：
-        #   Save | Reload/Undo/Redo/EditEnabled | Copy/Paste | Find/FindPrev/FindNext/Goto | Mark
+        # 对齐原版：Save | Reload+[Undo/Redo/EnableEdit] | Copy/Paste(列) |
+        #           Find+[Find Previous/Find Next] | Goto | Mark as resolved
         g.add(_tool(a["save"], True))
-        g.add_col([_tool(a["reload"], True), _tool(a["undo"]),
-                   _tool(a["redo"]), _tool(a["enable_edit"])])
+        g.add(_tool(a["reload"], True))
+        g.add_col([_tool(a["undo"]), _tool(a["redo"]), _tool(a["enable_edit"])])
         g.add_col([_tool(a["copy"], True), _tool(a["paste"], True)])
-        g.add_col([_tool(a["find"], True), _tool(a["find_prev"]),
-                   _tool(a["find_next"]), _tool(a["goto"], True)])
+        g.add(_tool(a["find"], True))
+        g.add_col([_tool(a["find_prev"]), _tool(a["find_next"])])
+        g.add(_tool(a["goto"], True))
         g.add(_tool(a["mark"], True))
         h.addWidget(g)
 
         g = _Group(tr("tm_group_nav", "导航"), strip)
-        g.add_col([_tool(a["prev_diff"]), _tool(a["prev_conf"]), _tool(a["prev_inline"])])
-        g.add_col([_tool(a["next_diff"]), _tool(a["next_conf"]), _tool(a["next_inline"])])
+        # 三列：前/后 差异、前/后 冲突、前/后 行内差异
+        g.add_col([_tool(a["prev_diff"]), _tool(a["next_diff"])])
+        g.add_col([_tool(a["prev_conf"]), _tool(a["next_conf"])])
+        g.add_col([_tool(a["prev_inline"]), _tool(a["next_inline"])])
         h.addWidget(g)
 
         g = _Group(tr("tm_group_blocks", "块"), strip)
@@ -305,18 +308,18 @@ class MergeRibbon(QWidget):
         h.addWidget(g)
 
         g = _Group(tr("tm_group_ws", "空白"), strip)
+        # Show Whitespaces 大按钮 + 右侧三项小按钮
         g.add(_tool(a["show_ws"], True))
-        g.add(_tool(a["cmp_ws"], True))
-        g.add(_tool(a["ign_ws"], True))
-        g.add(_tool(a["ign_all_ws"], True))
+        g.add_col([_tool(a["cmp_ws"]), _tool(a["ign_ws"]),
+                   _tool(a["ign_all_ws"])])
         h.addWidget(g)
 
         g = _Group(tr("tm_group_diff", "差异"), strip)
+        # Inline diff / Inline diff word-wise / Regex Filter 大按钮 + 右侧两项小按钮
         g.add(_tool(a["inline"], True))
         g.add(_tool(a["inline_word"], True))
         g.add(_tool(a["regex"], True))
-        g.add(_tool(a["ignore_comments"], True))
-        g.add(_tool(a["ignore_eol"], True))
+        g.add_col([_tool(a["ignore_comments"]), _tool(a["ignore_eol"])])
         h.addWidget(g)
 
         g = _Group(tr("tm_group_view", "视图"), strip)
@@ -328,10 +331,8 @@ class MergeRibbon(QWidget):
         bars_menu.addAction(a["statusbar"])
         bars.setMenu(bars_menu)
         g.add(bars)
-        g.add(_tool(a["wrap"], True))
-        g.add(_tool(a["oneway"], True))
-        g.add(_tool(a["switch"], True))
-        g.add(_tool(a["collapse"], True))
+        g.add_col([_tool(a["wrap"]), _tool(a["oneway"]), _tool(a["switch"]),
+                   _tool(a["collapse"])])
         h.addWidget(g)
 
         h.addStretch(1)

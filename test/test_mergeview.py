@@ -214,10 +214,16 @@ def test_ribbon_edit_group_columns(tmp_path_factory, qapp):
     px, py = pos("paste")
     assert cx == px and cy < py            # Copy/Paste 同一列（纵向）
     fx, fy = pos("find")
-    nx, ny = pos("find_next")
-    assert fx == nx and fy < ny            # Find/FindNext 同一列
-    gx, gy = pos("goto")
-    assert gx == fx and gy > ny            # Goto 与 Find 同列且在下方
+    npx, npy = pos("find_prev")
+    nnx, nny = pos("find_next")
+    assert npx == nnx and npy < nny        # Find Previous/Next 同一列
+    assert fx < npx                        # Find 大按钮在其左侧
+    # 导航组三列（前/后 成列）
+    ax, ay = pos("prev_diff")
+    bx, by = pos("next_diff")
+    assert ax == bx and ay < by
+    gx, _gy = pos("prev_conf")
+    assert gx > ax                          # 冲突列在差异列右侧
 
 
 def test_locatorbar_stripes(qapp):

@@ -25,6 +25,7 @@ UI 用 PySide6，功能流程对齐 CFindDlg。
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Optional
 
 from PySide6.QtWidgets import (
@@ -35,13 +36,21 @@ from PySide6.QtWidgets import (
 from ..res.strings import tr
 
 
+class FindType(Enum):
+    """对齐 CFindDlg::FindType。"""
+    Find = 0
+    Count = 1
+    Replace = 2
+    ReplaceAll = 3
+
+
 class FindDlg(QDialog):
     """查找/替换对话框。"""
 
     def __init__(self, parent=None, replace_mode: bool = True):
         super().__init__(parent)
         self.setWindowTitle(tr("find_title", "查找/替换"))
-        self.resize(420, 180)
+        self.resize(420, 190)
         self.replace_mode = replace_mode
         self._build_ui(replace_mode)
         self.find_string = ""
@@ -50,7 +59,11 @@ class FindDlg(QDialog):
         self.case_sensitive = False
         self.match_whole_word = False
         self.regex = False
+        self.limit_to_diffs = False
+        self.find_type = FindType.Find
+        self._terminating = False
         self.count = 0
+        self._load_history()
 
     def _build_ui(self, replace_mode: bool):
         lay = QVBoxLayout(self)
@@ -74,10 +87,12 @@ class FindDlg(QDialog):
         self.chk_case = QCheckBox(tr("find_case", "区分大小写"), self)
         self.chk_whole = QCheckBox(tr("find_whole", "全词匹配"), self)
         self.chk_regex = QCheckBox(tr("find_regex", "正则表达式"), self)
+        self.chk_limit = QCheckBox(tr("find_limit", "仅在差异处"), self)
         opts.addWidget(self.chk_down)
         opts.addWidget(self.chk_case)
         opts.addWidget(self.chk_whole)
         opts.addWidget(self.chk_regex)
+        opts.addWidget(self.chk_limit)
         lay.addLayout(opts)
 
         btns = QDialogButtonBox(self)
@@ -91,16 +106,67 @@ class FindDlg(QDialog):
         btns.rejected.connect(self.reject)
         lay.addWidget(btns)
 
-        self._btn_find.clicked.connect(self._accept_find)
+        self._btn_find.clicked.connect(lambda: self._accept_find(FindType.Find))
+        if replace_mode:
+            self._btn_count.clicked.connect(lambda: self._accept_find(FindType.Count))
+            self._btn_replace.clicked.connect(lambda: self._accept_find(FindType.Replace))
+            self._btn_replace_all.clicked.connect(
+                lambda: self._accept_find(FindType.ReplaceAll))
 
-    def _accept_find(self):
+    def _accept_find(self, find_type: FindType = FindType.Find):
+        self.find_type = find_type
         self.find_string = self.find_combo.currentText()
         self.replace_string = self.replace_combo.currentText() if self.replace_mode else ""
         self.search_down = self.chk_down.isChecked()
         self.case_sensitive = self.chk_case.isChecked()
         self.match_whole_word = self.chk_whole.isChecked()
         self.regex = self.chk_regex.isChecked()
+        self.limit_to_diffs = self.chk_limit.isChecked()
+        self._save_history()
         self.accept()
+
+    # ---- 历史记录（对齐 CHistoryCombo + 注册表）----
+    _HIST_KEY = "TortoiseGitMerge/FindHistory"
+
+    def _load_history(self):
+        try:
+            from PySide6.QtCore import QSettings
+            s = QSettings("TortoiseGit", "TortoiseGitMerge")
+            self.find_combo.addItems(s.value(self._HIST_KEY, [], type=list) or [])
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _save_history(self):
+        try:
+            from PySide6.QtCore import QSettings
+            s = QSettings("TortoiseGit", "TortoiseGitMerge")
+            hist = s.value(self._HIST_KEY, [], type=list) or []
+            if self.find_string and self.find_string in hist:
+                hist.remove(self.find_string)
+            if self.find_string:
+                hist.insert(0, self.find_string)
+            s.setValue(self._HIST_KEY, hist[:20])
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ---- 状态访问（对齐 CFindDlg 的 getter）----
+    def is_terminating(self) -> bool:
+        return self._terminating
+
+    def find_next(self) -> bool:
+        return self.find_type == FindType.Find
+
+    def match_case(self) -> bool:
+        return self.case_sensitive
+
+    def is_limit_to_diffs(self) -> bool:
+        return self.limit_to_diffs
+
+    def whole_word(self) -> bool:
+        return self.match_whole_word
+
+    def search_up(self) -> bool:
+        return not self.search_down
 
     def set_find_string(self, s: str):
         self.find_combo.setEditText(s)

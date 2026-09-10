@@ -59,3 +59,22 @@ def test_binary_file_errors(tmp_path):
     ft = FileTextLines()
     assert not ft.load(str(p))
     assert ft.error_string
+
+
+def test_save_preprocessing(tmp_path):
+    """Save 的注释/正则/空白/大小写预处理（对齐 CFileTextLines::Save）。"""
+    import re
+    from pytortoisegit.merge.filetextlines import FileLine
+    ft = FileTextLines()
+    ft.add(FileLine("foo  # comment", EOL.LF))
+    ft.add(FileLine("Bar", EOL.LF))
+    ft.line_endings = EOL.LF
+    out = tmp_path / "o.txt"
+    assert ft.save(str(out), ignore_comments=True, line_start="#",
+                   ignore_case=True, ignore_whitespaces=1)
+    assert out.read_bytes() == b"foo\nbar\n"
+
+    # 正则替换
+    out2 = tmp_path / "o2.txt"
+    ft.save(str(out2), regex=re.compile(r"\s*#.*"), replacement="")
+    assert out2.read_bytes() == b"foo\nBar\n"

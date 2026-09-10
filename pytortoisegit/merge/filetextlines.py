@@ -168,6 +168,60 @@ def _ansi_encoding() -> str:
         return "latin-1"
 
 
+def _is_inside_string(line: str, pos: int) -> bool:
+    """对齐 CFileTextLines::IsInsideString（简化的引号计数）。"""
+    if pos < 0:
+        return False
+    scount = 0
+    spos = line.find('"')
+    while 0 <= spos < pos:
+        scount += 1
+        spos = line.find('"', spos + 1)
+    ccount = 0
+    cpos = line.find("'")
+    while 0 <= cpos < pos:
+        ccount += 1
+        cpos = line.find("'", cpos + 1)
+    return scount % 2 != 0 or ccount % 2 != 0
+
+
+def strip_comments(line: str, line_tok: str, block_start: str, block_end: str,
+                   in_block: bool):
+    """对齐 CFileTextLines::StripComments，返回 (文本, 是否仍在块注释内)。"""
+    startpos = 0
+    old_startpos = -1
+    while True:
+        if in_block:
+            endpos = line.find(block_end) if block_end else -1
+            if endpos >= 0 and _is_inside_string(line, endpos):
+                endpos = -1
+            if endpos >= 0 and (endpos > startpos or endpos == 0):
+                line = line[:startpos] + line[endpos + len(block_end):]
+                in_block = False
+                startpos = endpos
+            else:
+                line = line[:startpos]
+                startpos = -1
+        if not in_block:
+            startpos = line.find(block_start, startpos) if block_start else -1
+            startpos2 = line.find(line_tok) if line_tok else -1
+            if (0 <= startpos2 < startpos) or (startpos2 >= 0 and startpos < 0):
+                if not _is_inside_string(line, startpos2):
+                    line = line[:startpos2]
+                    startpos = -1
+                if startpos == old_startpos:
+                    return line, False
+                old_startpos = startpos
+            elif startpos >= 0:
+                if not _is_inside_string(line, startpos):
+                    in_block = True
+                else:
+                    startpos += 1
+        if startpos < 0:
+            break
+    return line, in_block
+
+
 def split_lines_eol(text: str) -> Tuple[List[str], List[EOL]]:
     """按 CRLF/LFCR/CR/LF 拆行并记录行尾（对齐 CFileTextLines::Load）。"""
     lines: List[str] = []
@@ -301,7 +355,12 @@ class FileTextLines(CStdArray):
 
     # ---- 保存 ----
     def save(self, path: str, save_as_utf8: bool = False,
-             use_svn_compatible_eols: bool = False) -> bool:
+             use_svn_compatible_eols: bool = False,
+             ignore_whitespaces: int = 0, ignore_case: bool = False,
+             blame: bool = False, ignore_comments: bool = False,
+             line_start: str = "", block_start: str = "",
+             block_end: str = "", regex=None, replacement: str = "") -> bool:
+        """保存，可对齐 CFileTextLines::Save 的预处理（注释/正则/空白/大小写）。"""
         self.error_string = ""
         eol_default = self.line_endings
         if eol_default in (EOL.AutoLine, EOL.NoEnding):
@@ -309,13 +368,33 @@ class FileTextLines(CStdArray):
         if use_svn_compatible_eols and eol_default not in (EOL.CRLF, EOL.CR, EOL.LF):
             eol_default = EOL.LF
         parts: List[str] = []
+        in_block = False
         for f in self._vec:
+            line = f.text
+            if ignore_comments:
+                line, in_block = strip_comments(
+                    line, line_start, block_start, block_end, in_block)
+            if regex is not None:
+                try:
+                    line = regex.sub(replacement, line)
+                except Exception:  # noqa: BLE001
+                    pass
+            if blame and len(line) > 66:
+                line = line[66:]
+            if ignore_whitespaces == 1:
+                line = line.strip(" \t")
+            elif ignore_whitespaces == 2:
+                line = line.lstrip(" \t")
+            elif ignore_whitespaces == 3:
+                line = line.rstrip(" \t")
+            if ignore_case:
+                line = line.lower()
             eol = f.eol
             if use_svn_compatible_eols and eol not in (EOL.CRLF, EOL.CR, EOL.LF):
                 eol = eol_default
             if eol in (EOL.AutoLine, EOL.NoEnding):
                 eol = eol_default
-            parts.append(f.text + eol_sequence(eol))
+            parts.append(line + eol_sequence(eol))
         text = "".join(parts)
         utype = self.unicode_type
         if save_as_utf8 or utype in (UnicodeType.AUTOTYPE, UnicodeType.BINARY):

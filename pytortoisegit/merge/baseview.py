@@ -180,6 +180,8 @@ class BaseView(QPlainTextEdit):
                 continue
             cursor = QTextCursor(doc)
             cursor.movePosition(QTextCursor.MoveOperation.End)
+            # 重置字符格式，避免上一行的差异背景色“渗透”到本行/后续行
+            cursor.setCharFormat(QTextCharFormat())
             text = "" if vd.is_empty else self._display_text(vd.line)
             cursor.insertText(text)
             block = doc.findBlockByNumber(doc.blockCount() - 1)
@@ -212,6 +214,8 @@ class BaseView(QPlainTextEdit):
                         fmt = QTextCharFormat()
                         fmt.setBackground(color)
                         ic.mergeCharFormat(fmt)
+            # 换行前重置格式，避免段分隔符带着差异色导致下一段继承
+            cursor.setCharFormat(QTextCharFormat())
             cursor.insertText("\n")
             self._screen_to_view.append(i)
         self._update_line_area_width()

@@ -1,0 +1,4 @@
+# PyTortoiseGit 0.1.0 —— 运行时依赖
+# Python 版本要求：>= 3.10（见 pyproject.toml requires-python）
+# 与 pyproject.toml 的 [project] dependencies 保持一致，此处固定版本以保证可复现。
+PySide6==6.9.0

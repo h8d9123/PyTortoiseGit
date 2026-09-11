@@ -36,7 +36,10 @@ Public License v2 (GPLv2)** 发布。完整许可文本见 [LICENSE](LICENSE)。
 ## 运行
 
 ```bash
-# 安装依赖
+# 安装依赖（推荐，版本已固定）
+pip install -r requirements-dev.txt
+
+# 或：以可编辑模式安装本项目（含 dev 依赖）
 pip install -e .[dev]
 
 # 打开「关于」对话框

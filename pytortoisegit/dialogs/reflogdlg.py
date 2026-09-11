@@ -192,11 +192,16 @@ class ReflogDlg(QDialog):
     def _on_search(self):
         if self._search_dlg is None:
             self._search_dlg = ReflogSearchDlg(self)
-        self._search_dlg.show()
-        self._search_dlg.raise_()
-        self._search_dlg.activateWindow()
-        self._search_dlg.edit.setFocus()
-        self._search_dlg.edit.selectAll()
+        dlg = self._search_dlg
+        dlg.adjustSize()
+        # 居中于父窗口，避免出现在屏幕角落或被父窗口遮住。
+        center = self.frameGeometry().center()
+        dlg.move(center.x() - dlg.width() // 2, center.y() - dlg.height() // 2)
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+        dlg.edit.setFocus()
+        dlg.edit.selectAll()
 
     @staticmethod
     def _entry_text(e: ReflogEntry) -> str:
@@ -274,7 +279,8 @@ class ReflogSearchDlg(QDialog):
     """Reflog 查找对话框：查找上一个 / 下一个（对齐原版 CFindReplaceDialog）。"""
 
     def __init__(self, reflog: ReflogDlg):
-        super().__init__(reflog, Qt.WindowType.Window)
+        # Tool 窗口：始终浮于父窗口之上（对齐原版 FindReplaceDialog）。
+        super().__init__(reflog, Qt.WindowType.Tool)
         self.reflog = reflog
         self.setWindowTitle(tr("find_title", "Find/Replace"))
         layout = QVBoxLayout(self)

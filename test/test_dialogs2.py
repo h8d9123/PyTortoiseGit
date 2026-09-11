@@ -250,6 +250,18 @@ def test_reflog_search_dialog_reports_not_found(qapp, repo):
     dlg.deleteLater()
 
 
+def test_reflog_search_dialog_floats_on_top(qapp, repo):
+    from PySide6.QtCore import Qt
+    from pytortoisegit.dialogs.reflogdlg import ReflogDlg
+    dlg = ReflogDlg(repo)
+    dlg.show()
+    dlg._on_search()
+    sd = dlg._search_dlg
+    assert sd.windowFlags() & Qt.WindowType.Tool
+    assert sd.isVisible()
+    dlg.deleteLater()
+
+
 def test_command_registry_has_new_commands():
     from pytortoisegit.commands.dispatcher import available_commands, _ensure_imports
     _ensure_imports()

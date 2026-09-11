@@ -36,6 +36,7 @@ STRINGS: Dict[str, str] = {
     # ---- 通用 ----
     "app_name": "PyTortoiseGit",
     "ok": "确定",
+    "select": "选择",
     "cancel": "取消",
     "close": "关闭",
     "apply": "应用",
@@ -631,6 +632,7 @@ STRINGS: Dict[str, str] = {
     "firststart_adv": "高级(&A)...",
     # ---- Reflog 补充 ----
     "reflog_search": "搜索(&S)...",
+    "reflog_ref": "引用(&R):",
     "reflog_clearstash": "清除暂存(&C)",
     # ---- 检查更新补充 ----
     "upd_download": "下载(&D)",
@@ -936,6 +938,8 @@ STRINGS: Dict[str, str] = {
     "switch_merge": "合并(&M)",
     "switch_track": "跟踪(&R)",
     "switch_override": "覆盖已存在的分支(&O)",
+    "switch_browse_ref": "浏览引用",
+    "switch_browse_ref_prompt": "选择引用:",
     "ignore_onlyfolder": "仅在所在文件夹忽略",
     "ignore_recursive": "递归忽略",
     "ignore_root": "仓库根目录的 .gitignore",

@@ -113,7 +113,7 @@ class SyncDlg(QDialog):
         self.incoming_tree.setHeaderLabels([tr("sync_in", "Incoming")])
         self.outgoing_tree = QTreeWidget(self.tab)
         self.outgoing_tree.setHeaderLabels([tr("sync_out", "Outgoing")])
-        self.tab.addTab(self.log_view, tr("log"))
+        self.tab.addTab(self.log_view, tr("log", "Log"))
         self.tab.addTab(self.incoming_tree, tr("sync_incoming", "Incoming"))
         self.tab.addTab(self.outgoing_tree, tr("sync_outgoing", "Outgoing"))
 

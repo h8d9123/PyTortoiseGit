@@ -55,7 +55,7 @@ class StatGraphDlg(QDialog):
         self.type_combo.addItems(["Commits per author", "Commits per week",
                                   "Authors"]) 
         self.type_combo.currentIndexChanged.connect(self._load)
-        self.graph_label = QLabel(tr("stat_graph", ""), self)
+        self.graph_label = QLabel(tr("stat_graph", "Graph"), self)
         self.graph_label.setWordWrap(True)
         self.num_weeks_label = QLabel(tr("stat_numweeks", "Number of weeks:"), self)
         self.num_weeks_value = QLabel("", self)

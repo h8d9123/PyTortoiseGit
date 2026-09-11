@@ -37,6 +37,25 @@ def test_tr_missing_key_falls_back():
     strings.set_language("zh")
 
 
+def test_all_tr_keys_registered():
+    """所有 tr("key", ...) 的 key 都应在 STRINGS 中有中文。"""
+    import glob
+    import os
+    import re
+
+    root = os.path.join(os.path.dirname(__file__), "..", "pytortoisegit")
+    missing = {}
+    for path in glob.glob(os.path.join(root, "**", "*.py"), recursive=True):
+        if path.endswith("strings.py"):
+            continue
+        src = open(path, encoding="utf-8").read()
+        for m in re.finditer(r'tr\(\s*["\']([A-Za-z_][A-Za-z0-9_]*)["\']\s*(?:,|\))', src):
+            key = m.group(1)
+            if key not in strings.STRINGS:
+                missing.setdefault(os.path.relpath(path, root), set()).add(key)
+    assert not missing, missing
+
+
 def test_no_chinese_ui_literals():
     """UI 源码中不应再有中文文案（default 统一为英文，中文入 STRINGS）。
 

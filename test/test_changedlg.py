@@ -16,6 +16,14 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
+@pytest.fixture(autouse=True)
+def _english_ui():
+    from pytortoisegit.res import strings
+    strings.set_language("en")
+    yield
+    strings.set_language("zh")
+
+
 @pytest.fixture(scope="module")
 def repo(tmp_path_factory):
     root = tmp_path_factory.mktemp("changedrepo")
@@ -90,7 +98,8 @@ def test_changed_dialog_columns_and_rows(qapp, repo):
     assert "staged.txt" in paths
     groups = _group_titles(dlg.status_tree)
     assert any("修改" in g or "Modified" in g for g in groups)
-    assert any("未版本" in g or "Not Versioned" in g or "版本控制" in g for g in groups)
+    assert any("未版本" in g or "Not Versioned" in g or "版本控制" in g or "Unversioned" in g
+               for g in groups)
     first_file = None
     top = dlg.status_tree.topLevelItem(0)
     if top.childCount():

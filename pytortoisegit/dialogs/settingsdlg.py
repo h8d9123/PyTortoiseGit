@@ -52,7 +52,7 @@ from PySide6.QtWidgets import (
 
 from ..git.git import GitRunner
 from ..git.repo import Repository
-from ..res.strings import set_language, tr
+from ..res.strings import set_language, tr, tr_settings
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
 
@@ -66,6 +66,25 @@ def _is_win11() -> bool:
 # ---------------------------------------------------------------------------
 # 页面基类：按 rc 模板排版
 # ---------------------------------------------------------------------------
+
+
+def _parse_proxy(proxy: str):
+    """把 git http.proxy 拆成 (host, port, user, password)。"""
+    if not proxy:
+        return "", "", "", ""
+    s = proxy.split("://", 1)[1] if "://" in proxy else proxy
+    user = pwd = ""
+    if "@" in s:
+        auth, s = s.rsplit("@", 1)
+        if ":" in auth:
+            user, pwd = auth.split(":", 1)
+        else:
+            user = auth
+    host, port = s, ""
+    if ":" in s:
+        host, port = s.rsplit(":", 1)
+    return host, port, user, pwd
+
 
 class _SettingPage(QWidget):
     """一个设置页：按 IDD_SETTINGS* 模板绝对定位控件。"""
@@ -96,8 +115,20 @@ class _SettingPage(QWidget):
             self._ctl[ctrl.ctrl_id] = wgt
 
     def _make_control(self, ctrl):
-        """按 rc 生成控件，子类可覆盖映射。"""
-        return rc_mod.make_widget(ctrl, self)
+        """按 rc 生成控件并翻译文本，子类可覆盖映射。"""
+        wgt = rc_mod.make_widget(ctrl, self)
+        if ctrl.text:
+            text = tr_settings(ctrl.text)
+            from PySide6.QtWidgets import (
+                QCheckBox, QGroupBox, QLabel, QPushButton, QRadioButton)
+            if isinstance(wgt, QGroupBox):
+                wgt.setTitle(text)
+            elif isinstance(wgt, (QCheckBox, QRadioButton, QPushButton)):
+                wgt.setText(text)
+            elif isinstance(wgt, QLabel):
+                wgt.setText(text)
+        return wgt
+
 
     def _place(self, ctrl_id, wgt):
         for c in self._spec.controls:
@@ -328,6 +359,24 @@ class _GitPage(_SettingPage):
 class _DiffPage(_SettingPage):
     TEMPLATE = "IDD_SETTINGSPROGSDIFF"
 
+    def _build_ui(self):
+        super()._build_ui()
+        self._group("IDC_EXTDIFF_OFF", "IDC_EXTDIFF_ON")
+        self._group("IDC_DIFFVIEWER_OFF", "IDC_DIFFVIEWER_ON")
+        # 默认选中 TortoiseGitMerge / TortoiseGitUDiff（对齐原版）
+        if self._ctl.get("IDC_EXTDIFF_OFF") is not None:
+            self._ctl["IDC_EXTDIFF_OFF"].setChecked(True)
+        if self._ctl.get("IDC_DIFFVIEWER_OFF") is not None:
+            self._ctl["IDC_DIFFVIEWER_OFF"].setChecked(True)
+
+    def _group(self, *ids):
+        from PySide6.QtWidgets import QButtonGroup
+        g = QButtonGroup(self)
+        for i in ids:
+            w = self._ctl.get(i)
+            if w is not None:
+                g.addButton(w)
+
     @property
     def diff_edit(self):
         return self._ctl.get("IDC_EXTDIFF")
@@ -340,6 +389,17 @@ class _DiffPage(_SettingPage):
 class _MergePage(_SettingPage):
     TEMPLATE = "IDD_SETTINGSPROGSMERGE"
 
+    def _build_ui(self):
+        super()._build_ui()
+        from PySide6.QtWidgets import QButtonGroup
+        g = QButtonGroup(self)
+        for i in ("IDC_EXTMERGE_OFF", "IDC_EXTMERGE_ON"):
+            w = self._ctl.get(i)
+            if w is not None:
+                g.addButton(w)
+        if self._ctl.get("IDC_EXTMERGE_OFF") is not None:
+            self._ctl["IDC_EXTMERGE_OFF"].setChecked(True)
+
     @property
     def merge_edit(self):
         return self._ctl.get("IDC_EXTMERGE")
@@ -348,6 +408,15 @@ class _MergePage(_SettingPage):
 class _NetworkPage(_SettingPage):
     TEMPLATE = "IDD_SETTINGSPROXY"
 
+    def _build_ui(self):
+        super()._build_ui()
+        if b := self._ctl.get("IDC_SSHBROWSE"):
+            b.clicked.connect(self._browse_ssh)
+
+    @property
+    def enable(self):
+        return self._ctl.get("IDC_ENABLE")
+
     @property
     def server_edit(self):
         return self._ctl.get("IDC_SERVERADDRESS")
@@ -355,6 +424,85 @@ class _NetworkPage(_SettingPage):
     @property
     def port_edit(self):
         return self._ctl.get("IDC_SERVERPORT")
+
+    @property
+    def username_edit(self):
+        return self._ctl.get("IDC_USERNAME")
+
+    @property
+    def password_edit(self):
+        return self._ctl.get("IDC_PASSWORD")
+
+    @property
+    def ssh_edit(self):
+        return self._ctl.get("IDC_SSHCLIENT")
+
+    def _browse_ssh(self):
+        from ..utils.pick import pick_file
+        p = pick_file(self, tr("set_selectssh", "Select SSH client"), "")
+        if p and self.ssh_edit is not None:
+            self.ssh_edit.setText(p)
+
+
+class _SmtpPage(_SettingPage):
+    """IDD_SETTINGSMTP —— Email：映射 git sendemail.* 配置。"""
+
+    TEMPLATE = "IDD_SETTINGSMTP"
+
+    def _build_ui(self):
+        super()._build_ui()
+        if c := self._ctl.get("IDC_SMTPDELIVERYCOMBO"):
+            c.addItems(["", "smtp", "smtps", "sendmail", "mailto", "auto"])
+        if c := self._ctl.get("IDC_SMTPENCRYPTIONCOMBO"):
+            c.addItems(["", "none", "ssl", "tls"])
+
+    @property
+    def delivery_combo(self):
+        return self._ctl.get("IDC_SMTPDELIVERYCOMBO")
+
+    @property
+    def server_edit(self):
+        return self._ctl.get("IDC_SMTP_SERVER")
+
+    @property
+    def port_edit(self):
+        return self._ctl.get("IDC_SMTP_PORT")
+
+    @property
+    def from_edit(self):
+        return self._ctl.get("IDC_SEND_ADDRESS")
+
+    @property
+    def encryption_combo(self):
+        return self._ctl.get("IDC_SMTPENCRYPTIONCOMBO")
+
+    @property
+    def auth_check(self):
+        return self._ctl.get("IDC_SMTP_AUTH")
+
+    @property
+    def user_edit(self):
+        return self._ctl.get("IDC_SMTP_USER")
+
+
+class _AdvancedPage(_SettingPage):
+    """IDD_SETTINGS_CONFIG —— Advanced：列出/编辑全局 git config。"""
+
+    TEMPLATE = "IDD_SETTINGS_CONFIG"
+
+    def _build_ui(self):
+        super()._build_ui()
+        tree = self.config_tree
+        if tree is not None:
+            tree.setColumnCount(2)
+            tree.setHeaderLabels([tr("set_adv_key", "Key"),
+                                  tr("set_adv_value", "Value")])
+            tree.setRootIsDecorated(False)
+            tree.setColumnWidth(0, self._fu.px(0, 0, 150, 0).width())
+
+    @property
+    def config_tree(self):
+        return self._ctl.get("IDC_CONFIG")
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +617,7 @@ class SettingsDlg(QDialog):
         )
 
         proxy = self._add_page("proxy", _NetworkPage(self), "IDI_PROXY")
-        self._add_page("smtp", _RcPage("IDD_SETTINGSMTP", self), "IDI_MISC", proxy)
+        self._add_page("smtp", _SmtpPage(self), "IDI_MISC", proxy)
 
         diff = self._add_page("diff", _DiffPage(self), "IDI_SWITCHLEFTRIGHT")
         self._add_page("merge", _MergePage(self), "IDI_MERGEACTIVE", diff)
@@ -477,7 +625,7 @@ class SettingsDlg(QDialog):
         self._add_page("save", _RcPage("IDD_SETTINGSSAVEDDATA", self), "IDI_SAVEDDATA")
         self._add_page("blame", _RcPage("IDD_SETTINGSTBLAME", self), "IDI_TORTOISEBLAME")
         self._add_page("udiff", _RcPage("IDD_SETTINGSUDIFF", self), "IDI_TORTOISEUDIFF")
-        self._add_page("advanced", _RcPage("IDD_SETTINGS_CONFIG", self), "IDI_GENERAL")
+        self._add_page("advanced", _AdvancedPage(self), "IDI_GENERAL")
 
         self.tree.expandAll()
         default = "gitconfig" if has_repo else "main"
@@ -538,7 +686,6 @@ class SettingsDlg(QDialog):
             "user.name": "",
             "user.email": "",
             "http.proxy": "",
-            "http.proxyPort": "",
             "core.autocrlf": "false",
             "init.defaultBranch": "main",
         }
@@ -549,17 +696,27 @@ class SettingsDlg(QDialog):
             self.name_edit.setText(values["user.name"])
         if self.email_edit is not None:
             self.email_edit.setText(values["user.email"])
-        # network
+        # network / proxy：git 只认单个 http.proxy（[proto://][user:pass@]host[:port]）
         for _, page in self.pages:
             if isinstance(page, _NetworkPage):
-                if page.server_edit:
-                    page.server_edit.setText(values["http.proxy"])
-                if page.port_edit:
-                    port = values["http.proxyPort"]
-                    page.port_edit.setText(port if port else "8080")
-        # diff/merge
-        for _, page in self.pages:
-            if isinstance(page, _DiffPage):
+                proxy = values["http.proxy"]
+                host, port, user, pwd = _parse_proxy(proxy)
+                if page.enable is not None:
+                    page.enable.setChecked(bool(proxy))
+                if page.server_edit is not None:
+                    page.server_edit.setText(host)
+                if page.port_edit is not None:
+                    page.port_edit.setText(port or "8080")
+                if page.username_edit is not None:
+                    page.username_edit.setText(user)
+                if page.password_edit is not None:
+                    page.password_edit.setText(pwd)
+                if page.ssh_edit is not None:
+                    page.ssh_edit.setText(
+                        general_settings().value("sshClient", "") or "")
+            elif isinstance(page, _SmtpPage):
+                self._load_smtp(page)
+            elif isinstance(page, _DiffPage):
                 if page.diff_edit:
                     page.diff_edit.setText(self._get_ext("tortoisegit.externaldiff"))
                 if page.viewer_edit:
@@ -567,9 +724,44 @@ class SettingsDlg(QDialog):
             elif isinstance(page, _MergePage):
                 if page.merge_edit:
                     page.merge_edit.setText(self._get_ext("tortoisegit.externalmerge"))
+            elif isinstance(page, _AdvancedPage):
+                self._load_advanced(page)
+
+    def _load_smtp(self, page: "_SmtpPage"):
+        g = self._get_ext
+        if page.server_edit is not None:
+            page.server_edit.setText(g("sendemail.smtpserver"))
+        if page.port_edit is not None:
+            page.port_edit.setText(g("sendemail.smtpserverport"))
+        if page.from_edit is not None:
+            page.from_edit.setText(g("sendemail.from"))
+        if page.user_edit is not None:
+            page.user_edit.setText(g("sendemail.smtpuser"))
+        if page.encryption_combo is not None:
+            enc = g("sendemail.smtpencryption")
+            i = page.encryption_combo.findText(enc)
+            page.encryption_combo.setCurrentIndex(i if i >= 0 else 0)
+        if page.auth_check is not None:
+            page.auth_check.setChecked(
+                g("sendemail.smtpauth").strip().lower() in ("true", "1", "yes"))
+
+    def _load_advanced(self, page: "_AdvancedPage"):
+        tree = page.config_tree
+        if tree is None:
+            return
+        tree.clear()
+        out = self._runner.run("config", "--global", "--list").stdout or ""
+        for line in out.splitlines():
+            key, _, val = line.partition("=")
+            key = key.strip()
+            if not key:
+                continue
+            item = QTreeWidgetItem([key, val.strip()])
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            tree.addTopLevelItem(item)
 
     def _config_lines(self) -> List[Tuple[str, str]]:
-        keys = ["user.name", "user.email", "http.proxy", "http.proxyPort",
+        keys = ["user.name", "user.email", "http.proxy",
                 "core.autocrlf", "init.defaultBranch"]
         result = self._runner.run("config", "--global", "--get-regexp",
                                   "^(" + "|".join(k.replace(".", r"\.") for k in keys) + ")$")
@@ -608,17 +800,61 @@ class SettingsDlg(QDialog):
                 page.apply_to_settings()
         for _, page in self.pages:
             if isinstance(page, _NetworkPage):
-                host = page.server_edit.text().strip() if page.server_edit else ""
-                port = page.port_edit.text().strip() if page.port_edit else ""
-                self._set_global("http.proxy", host or None)
-                if host and port:
-                    self._set_global("http.proxyPort", port)
+                self._apply_proxy(page)
+            elif isinstance(page, _SmtpPage):
+                self._apply_smtp(page)
             elif isinstance(page, _DiffPage):
                 val = page.diff_edit.text().strip() if page.diff_edit else ""
                 self._set_global("tortoisegit.externaldiff", val or None)
+                val2 = page.viewer_edit.text().strip() if page.viewer_edit else ""
+                self._set_global("tortoisegit.diffviewer", val2 or None)
             elif isinstance(page, _MergePage):
                 val = page.merge_edit.text().strip() if page.merge_edit else ""
                 self._set_global("tortoisegit.externalmerge", val or None)
+            elif isinstance(page, _AdvancedPage):
+                self._apply_advanced(page)
+
+    def _apply_proxy(self, page: "_NetworkPage"):
+        enabled = page.enable.isChecked() if page.enable is not None else True
+        host = page.server_edit.text().strip() if page.server_edit else ""
+        port = page.port_edit.text().strip() if page.port_edit else ""
+        user = page.username_edit.text().strip() if page.username_edit else ""
+        pwd = page.password_edit.text().strip() if page.password_edit else ""
+        if enabled and host:
+            auth = f"{user}:{pwd}@" if user else ""
+            value = f"http://{auth}{host}" + (f":{port}" if port else "")
+            self._set_global("http.proxy", value)
+        else:
+            self._set_global("http.proxy", None)
+        if page.ssh_edit is not None:
+            s = general_settings()
+            s.setValue("sshClient", page.ssh_edit.text().strip())
+            s.sync()
+
+    def _apply_smtp(self, page: "_SmtpPage"):
+        for key, wgt in (("sendemail.smtpserver", page.server_edit),
+                         ("sendemail.smtpserverport", page.port_edit),
+                         ("sendemail.from", page.from_edit),
+                         ("sendemail.smtpuser", page.user_edit)):
+            val = wgt.text().strip() if wgt is not None else ""
+            self._set_global(key, val or None)
+        if page.encryption_combo is not None:
+            enc = page.encryption_combo.currentText().strip()
+            self._set_global("sendemail.smtpencryption", enc or None)
+        if page.auth_check is not None:
+            self._set_global("sendemail.smtpauth",
+                             "true" if page.auth_check.isChecked() else None)
+
+    def _apply_advanced(self, page: "_AdvancedPage"):
+        tree = page.config_tree
+        if tree is None:
+            return
+        for i in range(tree.topLevelItemCount()):
+            it = tree.topLevelItem(i)
+            key = it.text(0).strip()
+            if not key:
+                continue
+            self._set_global(key, it.text(1).strip() or None)
 
     def _set_global(self, key: str, val: str | None):
         if val:

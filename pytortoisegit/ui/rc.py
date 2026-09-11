@@ -277,14 +277,30 @@ class DialogUnits:
         self._measure(font_size, font_family)
 
     def _measure(self, size: int, family: str):
-        from PySide6.QtGui import QFont, QFontMetrics
+        from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
         f = QFont(family)
         f.setPointSize(size)
         f.setStyleHint(QFont.StyleHint.Helvetica)
         fm = QFontMetrics(f)
         sample = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         self.base_x = fm.horizontalAdvance(sample) / 26.0
-        self.base_y = float(fm.height())
+        # 行高需容纳 CJK：中文由回退的 CJK 字体渲染，通常比拉丁字体更高，
+        # 若只按拉丁行高换算 DLU，中文底部会被裁切（Linux 上尤其明显）。
+        # boundingRect 会走回退引擎，能反映 CJK 实际高度。
+        self.base_y = float(max(fm.height(), fm.boundingRect(chr(0x56FD)).height()))
+        try:
+            families = QFontDatabase.families()
+        except Exception:  # noqa: BLE001
+            families = []
+        for cfam in ("Noto Sans CJK SC", "Noto Sans CJK JP", "Source Han Sans SC",
+                     "Source Han Sans CN", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei",
+                     "Droid Sans Fallback", "AR PL UMing CN",
+                     "Microsoft YaHei", "PingFang SC", "SimHei"):
+            if cfam in families:
+                cf = QFont(cfam)
+                cf.setPointSize(size)
+                self.base_y = max(self.base_y, float(QFontMetrics(cf).height()))
+                break
 
     def px(self, x: int, y: int, w: int, h: int):
         from PySide6.QtCore import QRect

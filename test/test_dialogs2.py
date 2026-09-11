@@ -1459,6 +1459,17 @@ def test_theme_embeds_groupbox_title(qapp):
         qapp.setStyleSheet(old)
 
 
+def test_dialog_units_base_y_accommodates_cjk(qapp):
+    from PySide6.QtGui import QFont, QFontMetrics
+    from pytortoisegit.ui.rc import DialogUnits
+    fu = DialogUnits(9, "Segoe UI")
+    f = QFont("Segoe UI")
+    f.setPointSize(9)
+    f.setStyleHint(QFont.StyleHint.Helvetica)
+    # base_y 至少容纳拉丁行高（装有 CJK 字体时会更大）
+    assert fu.base_y >= QFontMetrics(f).height()
+
+
 def test_place_widget_label_height_fits_text(qapp):
     from PySide6.QtWidgets import QDialog, QLabel
     from pytortoisegit.ui import rc as rc_mod

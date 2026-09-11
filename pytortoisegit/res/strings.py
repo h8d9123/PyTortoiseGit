@@ -1095,6 +1095,22 @@ STRINGS: Dict[str, str] = {
     "mail_group": "邮件",
     "wt_group_branch": "位置",
     "wt_group_baseon": "基于",
+    # ---- 更改文件/补丁视图（diffdlg）----
+    "filediff_patch_title": "查看补丁",
+    "filediff_title": "更改的文件",
+    "filediff_between": "比较",
+    "filediff_diffoption": "差异选项",
+    "filediff_switch": "左右对调",
+    "filediff_rev1": "版本 1（基础）",
+    "filediff_rev2": "版本 2",
+    "filediff_filter": "过滤更改的文件…",
+    "filediff_viewpatch": "查看补丁>>",
+    "filediff_working_tree": "（工作区）",
+    "filediff_hidepatch": "隐藏补丁",
+    "filediff_opt_eol": "忽略行尾空白变化",
+    "filediff_opt_space": "忽略空白数量变化",
+    "filediff_opt_allspace": "忽略所有空白",
+    "filediff_opt_blank": "忽略空行",
 }
 
 

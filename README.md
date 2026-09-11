@@ -14,7 +14,7 @@
 同时利用 Python / PySide6 的跨平台能力，让同一套工具也能跑在
 macOS 与 Linux 上。
 
-> **当前状态：主要代码完成移植，正在修复bug
+> **当前状态：主要代码完成移植，正在修复 bug**
 >
 > 本项目正处于从 TortoiseGit 到 Python 的迁移阶段，很多功能还在逐步
 > 复刻与完善中。欢迎喜欢 TortoiseGit 的用户一起加入，和我共同完成
@@ -51,7 +51,10 @@ python packaging/build.py --clean
 产物在 `dist/PyTortoiseGit/PyTortoiseGit.exe`（onedir 模式，含 PySide6
 运行时）。分发时把整个 `dist/PyTortoiseGit/` 目录拷贝即可；若拷贝到其他路径，
 需重新运行一次右键菜单安装对话框以更新入口路径。
+
 ## 测试
+
+功能测试点（手动 / UI 自动化）见 [docs/功能测试点.md](docs/功能测试点.md)。
 
 ```bash
 pytest

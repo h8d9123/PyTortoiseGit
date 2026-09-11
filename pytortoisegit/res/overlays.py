@@ -48,19 +48,33 @@ def worse(a: str | None, b: str | None) -> str | None:
 
 
 def overlay_icon(status: str) -> QIcon | None:
-    """取状态覆盖图标（GUI 线程；首次会创建 QPixmap 并缓存）。"""
-    fn = OVERLAY_MAP.get(status)
-    if not fn:
-        return None
+    """取状态覆盖图标（GUI 线程；首次会创建 QPixmap 并缓存）。
+
+    加载 .ico 的**全部帧**并加入 QIcon，使 Qt 在按目标尺寸取图时选用最接近的
+    原生帧。覆盖图标的覆盖图形只占每帧左下角一部分：16x16 帧约 8x8、48x48 帧
+    约 16x16。若只读第 0 帧（通常为 48x48）再缩到 16x16，覆盖图形会缩到约
+    5x5，显得过小。
+    """
     if status not in _icon_cache:
-        path = _OVERLAY_DIR / fn
+        fn = OVERLAY_MAP.get(status)
         ic: QIcon | None = None
-        if path.is_file():
-            reader = QImageReader(str(path))
-            reader.setAutoTransform(False)
-            img = reader.read()
-            if img is not None and not img.isNull():
-                ic = QIcon(QPixmap.fromImage(img))
+        if fn:
+            path = _OVERLAY_DIR / fn
+            if path.is_file():
+                reader = QImageReader(str(path))
+                reader.setAutoTransform(False)
+                count = reader.imageCount()
+                if count <= 0:
+                    count = 1
+                icon = QIcon()
+                added = False
+                for i in range(count):
+                    reader.jumpToImage(i)
+                    img = reader.read()
+                    if img is not None and not img.isNull():
+                        icon.addPixmap(QPixmap.fromImage(img))
+                        added = True
+                ic = icon if added else None
         _icon_cache[status] = ic
     return _icon_cache[status]
 

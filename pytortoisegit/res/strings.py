@@ -1120,6 +1120,12 @@ STRINGS: Dict[str, str] = {
     "set_adv_key": "键",
     "set_adv_value": "值",
     "set_selectssh": "选择 SSH 客户端",
+    # ---- 合并对话框补充 ----
+    "merge_current": "当前分支：",
+    "merge_from": "来自",
+    "merge_option": "选项",
+    "merge_log": "信息",
+    "merge_ffonly": "仅快进(&N)",
 }
 
 

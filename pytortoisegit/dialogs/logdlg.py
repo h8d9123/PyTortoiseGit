@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
-from PySide6.QtCore import QFileInfo, Qt, QUrl
+from PySide6.QtCore import QDate, QDateTime, QFileInfo, Qt, QTime, QUrl
 from PySide6.QtGui import QBrush, QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -99,6 +99,10 @@ class LogDlg(QDialog):
         for de in (self.date_from, self.date_to):
             de.setCalendarPopup(True)
             de.setDisplayFormat("yyyy-MM-dd")
+            de.dateChanged.connect(self._apply_filter)
+        # 默认放宽范围，加载后按日志时间范围收紧（对齐原版 GetTimeRange）
+        self.date_from.setDate(QDate(1970, 1, 1))
+        self.date_to.setDate(QDate(2099, 12, 31))
         self.search_edit = QLineEdit(self)
         self.search_edit.setPlaceholderText("author:xxx grep:yyy")
         self.search_edit.setClearButtonEnabled(True)
@@ -178,6 +182,7 @@ class LogDlg(QDialog):
         self.filter_edit.setPlaceholderText(tr("log_filter", "Filter…"))
         self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.textChanged.connect(self._apply_filter)
+        self.filter_edit.returnPressed.connect(self._apply_filter)
         self.btn_help = QPushButton(tr("help"), self)
         self.btn_help.clicked.connect(self._on_help)
         self.btn_refresh = QPushButton(tr("refresh"), self)
@@ -330,6 +335,7 @@ class LogDlg(QDialog):
         if self.log.count():
             self.tree.setCurrentItem(self.tree.topLevelItem(0))
             self._on_commit_selected(self.tree.topLevelItem(0), 0)
+        self._sync_date_range()
         self._apply_filter()
 
     def _on_error(self, message, _tb):
@@ -563,14 +569,44 @@ class LogDlg(QDialog):
     def _compare_two(self, a: GitRev, b: GitRev):
         DiffDlg(self.repo, a.hash, b.hash, paths=self.pathspec or None, parent=self).exec()
 
+    def _sync_date_range(self):
+        """加载后把 From/To 设为日志的时间范围（对齐原版 GetTimeRange）。"""
+        stamps = [c.committer_timestamp for c in self.log if c.committer_timestamp]
+        if not stamps:
+            return
+        lo = QDateTime.fromSecsSinceEpoch(min(stamps)).date()
+        hi = QDateTime.fromSecsSinceEpoch(max(stamps)).date()
+        for de, day in ((self.date_from, lo), (self.date_to, hi)):
+            de.blockSignals(True)
+            de.setDate(day)
+            de.blockSignals(False)
+
     def _apply_filter(self, *_a):
+        if not hasattr(self, "filter_edit") or not hasattr(self, "tree"):
+            return  # UI 尚未构建完成（dateChanged 早触发）
         text = self.filter_edit.text().strip().lower()
+        from_ts = QDateTime(self.date_from.date(), QTime(0, 0, 0)).toSecsSinceEpoch()
+        to_ts = QDateTime(self.date_to.date(), QTime(23, 59, 59)).toSecsSinceEpoch()
         for i in range(self.tree.topLevelItemCount()):
             it = self.tree.topLevelItem(i)
             hay = " ".join(it.text(c) for c in (
                 LOG_COL_MESSAGE, LOG_COL_AUTHOR, LOG_COL_DATE, LOG_COL_HASH,
                 LOG_COL_EMAIL)).lower()
-            it.setHidden(bool(text) and text not in hay)
+            hidden = bool(text) and text not in hay
+            if not hidden:
+                commit = self._commit_of(it)
+                ts = commit.committer_timestamp if commit is not None else 0
+                if ts and (ts < from_ts or ts > to_ts):
+                    hidden = True
+            it.setHidden(hidden)
+
+    def keyPressEvent(self, event):
+        # 输入框里回车不应触发默认按钮（IDOK 会 reject 关闭对话框）
+        if (event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                and isinstance(self.focusWidget(), (QLineEdit, QDateEdit))):
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _on_stats(self):
         from .statgraphdlg import StatGraphDlg

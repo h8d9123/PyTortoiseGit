@@ -51,6 +51,38 @@ def test_log_dialog(qapp, repo):
     assert dlg.tree.topLevelItemCount() >= 1
 
 
+def test_log_dialog_date_filter_and_enter(qapp, repo):
+    import time
+    from PySide6.QtCore import QDate, Qt
+    from PySide6.QtTest import QTest
+    from pytortoisegit.dialogs.logdlg import LogDlg
+    dlg = LogDlg(repo, pathspec=None)
+    dlg.show()
+    for _ in range(200):
+        qapp.processEvents()
+        if dlg.tree.topLevelItemCount() >= 2:
+            break
+        time.sleep(0.02)
+    n = dlg.tree.topLevelItemCount()
+    assert n >= 2
+    visible = lambda: [i for i in range(n) if not dlg.tree.topLevelItem(i).isHidden()]
+    # 默认日期范围覆盖全部提交
+    assert len(visible()) == n
+    # 未来起点 → 全部隐藏
+    dlg.date_from.setDate(QDate(2999, 1, 1))
+    qapp.processEvents()
+    assert visible() == []
+    dlg.date_from.setDate(QDate(1970, 1, 1))
+    qapp.processEvents()
+    assert len(visible()) == n
+    # 筛选框内回车不应关闭对话框
+    dlg.filter_edit.setFocus()
+    QTest.keyClick(dlg.filter_edit, Qt.Key.Key_Return)
+    qapp.processEvents()
+    assert dlg.isVisible()
+    dlg.reject()
+
+
 def test_blame_dialog(qapp, repo):
     from pytortoisegit.dialogs.blamedlg import BlameDlg
     dlg = _smoke(qapp, lambda: BlameDlg(repo, "a.txt"))

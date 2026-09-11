@@ -240,11 +240,17 @@ class LogDlg(QDialog):
             self._ctl[ctrl.ctrl_id] = wgt
         self.branch_value.setParent(self)
         self.branch_value.setObjectName("IDC_BRANCHVAL")
+        # 分支名紧跟在 "Branch:" 文本之后，并尽量用满 IDC_STATIC_REF 的宽度，
+        # 避免长分支名被硬编码的 40 DLU 偏移挤掉；完整名放到 tooltip。
+        from PySide6.QtGui import QFontMetrics
+        fm = QFontMetrics(self.branch_label.font())
+        prefix = fm.horizontalAdvance(self.branch_label.text()) + fu.px(0, 0, 4, 0).width()
         geom = self.branch_label.geometry()
-        self.branch_value.setGeometry(geom.x() +
-                                      fu.px(0, 0, 40, 8).width(), geom.y(),
-                                      geom.width() - fu.px(0, 0, 40, 8).width(),
-                                      geom.height())
+        self.branch_value.setGeometry(
+            geom.x() + prefix, geom.y(),
+            max(fu.px(0, 0, 24, 0).width(), geom.width() - prefix),
+            geom.height())
+        self.branch_value.setToolTip(self.branch_value.text())
 
         for ctrl in spec.controls:
             wgt = self._ctl.get(ctrl.ctrl_id)

@@ -780,6 +780,7 @@ STRINGS: Dict[str, str] = {
     "find_replace": "替换",
     "find_replace_all": "全部替换",
     "find_count": "计数",
+    "find_notfound": "未找到匹配项",
     # ---- TortoiseMerge 打开 ----
     "open_path_hint": "选择文件…",
     "open_title": "选择目录",

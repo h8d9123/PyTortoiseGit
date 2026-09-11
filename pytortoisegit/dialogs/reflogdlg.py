@@ -32,14 +32,18 @@ from typing import List, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDialog,
+    QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QVBoxLayout,
 )
 
 from ..git.repo import Repository
@@ -95,6 +99,8 @@ class ReflogDlg(QDialog):
         super().__init__(parent)
         self.repo = repo
         self.entries: List[ReflogEntry] = []
+        self._search_row = 0
+        self._search_dlg: Optional["ReflogSearchDlg"] = None
         self.setWindowTitle(f"{repo.name} — {tr('reflog_title', 'Reference log (reflog)')}")
         self.resize(820, 520)
         self._build_ui()
@@ -118,6 +124,8 @@ class ReflogDlg(QDialog):
         header.setStretchLastSection(True)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._on_menu)
+        self.table.currentCellChanged.connect(
+            lambda row, *_a: self._sync_search_row(row))
 
         from PySide6.QtWidgets import QComboBox, QPushButton, QLabel
         self.ref_combo = QComboBox(self)
@@ -167,6 +175,7 @@ class ReflogDlg(QDialog):
         ref = self.ref_combo.currentText().strip() or "HEAD"
         entries = load_reflog(self.repo, ref=ref)
         self.entries = entries
+        self._search_row = 0
         self.table.setRowCount(len(entries))
         for row, e in enumerate(entries):
             cols = [e.selector, e.short, e.date, e.subject]
@@ -176,33 +185,50 @@ class ReflogDlg(QDialog):
                 item.setData(Qt.ItemDataRole.UserRole, e.hash_)
                 self.table.setItem(row, col, item)
 
+    def _sync_search_row(self, row: int):
+        if 0 <= row < len(self.entries):
+            self._search_row = row
+
     def _on_search(self):
-        """IDC_SEARCH：在 reflog 列表中查找文本（对齐原版 FindNext）。"""
-        from PySide6.QtWidgets import QInputDialog
-        text, ok = QInputDialog.getText(
-            self, tr("reflog_search", "Search..."),
-            tr("reflog_search_prompt", "Find text:"),
-            text=getattr(self, "_search_text", ""))
-        if not ok or not text:
-            return
-        self._search_text = text
-        needle = text.lower()
-        n = self.table.rowCount()
-        if n == 0:
-            return
-        start = self.table.currentRow()
-        start = 0 if start < 0 else start + 1
-        for k in range(n):
-            row = (start + k) % n
-            for col in range(self.table.columnCount()):
-                item = self.table.item(row, col)
-                if item is not None and needle in item.text().lower():
-                    self.table.selectRow(row)
+        if self._search_dlg is None:
+            self._search_dlg = ReflogSearchDlg(self)
+        self._search_dlg.show()
+        self._search_dlg.raise_()
+        self._search_dlg.activateWindow()
+        self._search_dlg.edit.setFocus()
+        self._search_dlg.edit.selectAll()
+
+    @staticmethod
+    def _entry_text(e: ReflogEntry) -> str:
+        return "\n".join((e.selector, e.short, e.hash_, e.date,
+                          e.subject, e.author_email))
+
+    def find(self, text: str, match_case: bool = False,
+             forward: bool = True) -> bool:
+        """从当前行开始查找匹配的 reflog 条目，命中则选中并返回 True。
+
+        与 TortoiseGit 一致：环绕查找，逐行匹配 选择器/哈希/日期/消息/作者。
+        """
+        if not text or not self.entries:
+            return False
+        needle = text if match_case else text.casefold()
+        count = len(self.entries)
+        step = 1 if forward else -1
+        row = (self._search_row + step) % count
+        for _ in range(count):
+            hay = self._entry_text(self.entries[row])
+            if not match_case:
+                hay = hay.casefold()
+            if needle in hay:
+                self.table.setCurrentCell(row, 0)
+                self.table.selectRow(row)
+                item = self.table.item(row, 0)
+                if item is not None:
                     self.table.scrollToItem(item)
-                    return
-        QMessageBox.information(
-            self, tr("reflog_search", "Search..."),
-            tr("reflog_not_found", "\"{}\" not found.").format(text))
+                self._search_row = row
+                return True
+            row = (row + step) % count
+        return False
 
     def _current_entry(self) -> Optional[ReflogEntry]:
         row = self.table.currentRow()
@@ -242,3 +268,48 @@ class ReflogDlg(QDialog):
             DiffDlg(self.repo, parent if has_parent else entry.hash_,
                     entry.hash_ if has_parent else None,
                     parent=self).exec()
+
+
+class ReflogSearchDlg(QDialog):
+    """Reflog 查找对话框：查找上一个 / 下一个（对齐原版 CFindReplaceDialog）。"""
+
+    def __init__(self, reflog: ReflogDlg):
+        super().__init__(reflog, Qt.WindowType.Window)
+        self.reflog = reflog
+        self.setWindowTitle(tr("find_title", "Find/Replace"))
+        layout = QVBoxLayout(self)
+        row = QHBoxLayout()
+        row.addWidget(QLabel(tr("find_label", "Find what:"), self))
+        self.edit = QLineEdit(self)
+        row.addWidget(self.edit, 1)
+        layout.addLayout(row)
+        self.chk_case = QCheckBox(tr("find_case", "Match case"), self)
+        layout.addWidget(self.chk_case)
+        buttons = QHBoxLayout()
+        self.btn_prev = QPushButton(tr("tm_find_prev", "Find Previous"), self)
+        self.btn_next = QPushButton(tr("tm_find_next", "Find Next"), self)
+        self.btn_close = QPushButton(tr("close", "Close"), self)
+        for b in (self.btn_prev, self.btn_next, self.btn_close):
+            buttons.addWidget(b)
+        layout.addLayout(buttons)
+        self.status = QLabel("", self)
+        layout.addWidget(self.status)
+
+        self.btn_next.setDefault(True)
+        self.btn_next.clicked.connect(lambda: self._do_find(True))
+        self.btn_prev.clicked.connect(lambda: self._do_find(False))
+        self.btn_close.clicked.connect(self.close)
+        self.edit.returnPressed.connect(lambda: self._do_find(True))
+        self.edit.textChanged.connect(self._reset_status)
+
+    def _reset_status(self):
+        self.status.clear()
+
+    def _do_find(self, forward: bool):
+        text = self.edit.text()
+        if not text:
+            return
+        if self.reflog.find(text, self.chk_case.isChecked(), forward):
+            self.status.clear()
+        else:
+            self.status.setText(tr("find_notfound", "Not found"))

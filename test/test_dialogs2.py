@@ -226,6 +226,30 @@ def test_load_reflog(repo):
     assert entries[0].subject
 
 
+def test_reflog_search_finds_match(qapp, repo):
+    from pytortoisegit.dialogs.reflogdlg import ReflogDlg
+    dlg = ReflogDlg(repo)
+    assert dlg.table.rowCount() >= 2
+    assert dlg.find("second", forward=True)
+    assert dlg.table.currentRow() >= 0
+    assert not dlg.find("zzz-no-such-entry-zzz", forward=True)
+    dlg.deleteLater()
+
+
+def test_reflog_search_dialog_reports_not_found(qapp, repo):
+    from pytortoisegit.dialogs.reflogdlg import ReflogDlg
+    dlg = ReflogDlg(repo)
+    dlg._on_search()
+    assert dlg._search_dlg is not None
+    dlg._search_dlg.edit.setText("initial")
+    dlg._search_dlg._do_find(True)
+    assert dlg._search_dlg.status.text() == ""
+    dlg._search_dlg.edit.setText("zzz-no-such-entry-zzz")
+    dlg._search_dlg._do_find(True)
+    assert dlg._search_dlg.status.text() != ""
+    dlg.deleteLater()
+
+
 def test_command_registry_has_new_commands():
     from pytortoisegit.commands.dispatcher import available_commands, _ensure_imports
     _ensure_imports()

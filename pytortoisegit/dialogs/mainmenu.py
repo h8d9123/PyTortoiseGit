@@ -237,11 +237,9 @@ class MainMenuDlg(QMainWindow):
         panel_lay.addWidget(
             QLabel(tr("repo_manager_title", "Repository Manager"), self.repo_manager_panel))
         self.repo_tree = QTreeWidget(self.repo_manager_panel)
-        self.repo_tree.setColumnCount(3)
+        self.repo_tree.setColumnCount(1)
         self.repo_tree.setHeaderLabels([
             tr("submodule_path", "Path"),
-            tr("submodule_status", "Status"),
-            tr("submodule_sha", "SHA"),
         ])
         self.repo_tree.setRootIsDecorated(True)
         self.repo_tree.setIndentation(16)
@@ -611,7 +609,7 @@ class MainMenuDlg(QMainWindow):
             repo = _Repo.open(repo_path)
             for e in GitSubmodule(repo).list(recursive=False):
                 sub_abs = os.path.join(repo_path, e.path)
-                sub = QTreeWidgetItem([e.path, e.status_text, (e.sha1 or "")[:8]])
+                sub = QTreeWidgetItem([e.path])
                 sub.setData(0, ROLE_PATH, sub_abs)
                 sub.setData(0, ROLE_KIND, "submodule")
                 sub.setData(0, ROLE_PARENT, repo_path)

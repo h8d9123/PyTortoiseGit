@@ -335,6 +335,34 @@ def test_pull_dialog_has_groupboxes(qapp, repo):
     assert dlg.grp_options.geometry().height() > 0
 
 
+def test_pull_dialog_defaults_to_current_branch(qapp, repo):
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    dlg = PullFetchDlg(repo, fetch_only=False)
+    # 不再是硬编码 master，而是当前分支（或它跟踪的远程分支）
+    assert dlg.remote_branch_edit.text() == repo.current_branch()
+
+
+def test_pull_dialog_browse_ref_fills_branch(qapp, repo, monkeypatch):
+    from PySide6.QtWidgets import QDialog
+    import pytortoisegit.dialogs.selectremoterefdlg as srd
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    dlg = PullFetchDlg(repo, fetch_only=False)
+
+    class _FakeRefDlg:
+        selected = "origin/develop"
+
+        def __init__(self, *a, **k):
+            pass
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(srd, "SelectRemoteRefDlg", _FakeRefDlg)
+    dlg.btn_browse_ref.click()
+    # 去掉远端前缀，填入远程分支名
+    assert dlg.remote_branch_edit.text() == "develop"
+
+
 def test_reset_dialog(qapp, repo):
     from pytortoisegit.dialogs.resetdlg import ResetDlg
     dlg = _smoke(qapp, lambda: ResetDlg(repo))

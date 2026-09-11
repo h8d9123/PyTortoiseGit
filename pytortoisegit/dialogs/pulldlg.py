@@ -61,8 +61,9 @@ class PullFetchDlg(QDialog):
         self.rd_other = QCheckBox(tr("pull_url", "Arbitrary &URL:"), self)
         self.other_edit = QLineEdit(self)
         self.static_branch = QLabel(tr("pull_branch", "Remote &Branch:"), self)
-        self.remote_branch_edit = QLineEdit("master", self)
+        self.remote_branch_edit = QLineEdit(self._initial_remote_branch(), self)
         self.btn_browse_ref = QPushButton("...", self)
+        self.btn_browse_ref.clicked.connect(self._on_browse_ref)
 
         self.chk_squash = QCheckBox(tr("pull_squash", "&Squash"), self)
         self.chk_noff = QCheckBox(tr("pull_noff", "No &Fast Forward"), self)
@@ -134,6 +135,27 @@ class PullFetchDlg(QDialog):
             self.chk_squash.hide()
             self.chk_noff.hide()
             self.chk_nocommit.hide()
+
+    def _initial_remote_branch(self) -> str:
+        """当前分支跟踪的远程分支（对齐 GetRemoteTrackedBranch），回退当前分支。"""
+        cur = self.repo.current_branch()
+        if not cur or cur.startswith("("):
+            return ""
+        merge = self.repo.config(f"branch.{cur}.merge")
+        return merge.rsplit("/", 1)[-1] if merge else cur
+
+    def _on_browse_ref(self):
+        """对齐 OnBnClickedButtonBrowseRef：选远程引用后填入分支。"""
+        from .selectremoterefdlg import SelectRemoteRefDlg
+        remote = (self.other_edit.text().strip() if self.rd_other.isChecked()
+                  else self.remote_combo.currentText().strip())
+        dlg = SelectRemoteRefDlg(self.repo, remote=remote, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.selected:
+            return
+        branch = dlg.selected
+        if remote and branch.startswith(remote + "/"):
+            branch = branch[len(remote) + 1:]
+        self.remote_branch_edit.setText(branch)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

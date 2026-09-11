@@ -924,23 +924,28 @@ def _noop(*_a, **_k):
 
 
 class _GitIconProvider(QFileIconProvider):
-    """QFileSystemModel 图标提供者：把 git 仓库根目录标为 Git 图标。"""
+    """QFileSystemModel 图标提供者：把 git 仓库根目录标为 Git 图标。
+
+    注意：QFileSystemModel 会在后台线程调用 icon()，而 QPixmap 只能在 GUI
+    线程创建（在 Linux/X11 下跨线程创建会段错误）。因此这里在构造（GUI
+    线程）时预加载图标，icon() 只返回缓存的 QIcon。
+    """
 
     def __init__(self, owner):
         super().__init__()
         self._owner = owner
+        self._git_icon = None
+        try:
+            from ..res import icons
+            self._git_icon = icons.icon("IDI_GITFOLDER")
+        except Exception:  # noqa: BLE001
+            pass
 
     def icon(self, info):  # noqa: A003 - 覆写基类成员名
-        if info.isDir():
+        if info.isDir() and self._git_icon is not None and not self._git_icon.isNull():
             p = info.absoluteFilePath()
             # 仅仓库工作树根目录显示 git 图标；其余目录（含未受版本管理的
             # 子目录）一律使用普通文件夹图标。
             if p and find_repo_root(p) == os.path.abspath(p):
-                try:
-                    from ..res import icons
-                    ic = icons.icon("IDI_GITFOLDER")
-                    if ic and not ic.isNull():
-                        return ic
-                except Exception:
-                    pass
+                return self._git_icon
         return super().icon(info)

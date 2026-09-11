@@ -388,6 +388,15 @@ def test_pull_clipboard_parse(qapp):
     assert PullFetchDlg._parse_pull_clipboard("no url here") == ("", "")
 
 
+def test_git_icon_provider_prewarms_icon(qapp):
+    from pytortoisegit.dialogs.mainmenu import _GitIconProvider
+    # 必须在构造（GUI 线程）时预加载，icon() 只返回缓存，
+    # 避免 QFileSystemModel 后台线程创建 QPixmap 导致段错误
+    provider = _GitIconProvider(None)
+    assert provider._git_icon is not None
+    assert not provider._git_icon.isNull()
+
+
 def test_pull_dialog_horizontal_resize_only(qapp, repo):
     from pytortoisegit.dialogs.pulldlg import PullFetchDlg
     dlg = PullFetchDlg(repo, fetch_only=False)

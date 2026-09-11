@@ -76,7 +76,9 @@ class ProgressDialog(QDialog):
         if self._movie is not None and self._movie.isValid():
             self._anim.setMovie(self._movie)
             self._movie.jumpToFrame(0)
-            self._anim.setFixedSize(self._movie.currentPixmap().size())
+            size = self._movie.currentPixmap().size()
+            if size.isValid() and not size.isEmpty():
+                self._anim.setFixedSize(size)
         else:
             self._anim.hide()
         layout.addWidget(self._anim)

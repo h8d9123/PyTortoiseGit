@@ -556,6 +556,51 @@ def test_gitswitch_dialog(qapp, repo):
     assert dlg.rd_branch.isChecked()
 
 
+def _auto_close_modal_progress():
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication
+
+    def _close():
+        w = QApplication.activeModalWidget()
+        if w is not None:
+            w.accept()
+        else:
+            QTimer.singleShot(50, _close)
+
+    QTimer.singleShot(100, _close)
+
+
+def test_gitswitch_lists_branches(qapp, repo):
+    from pytortoisegit.dialogs.gitswitchdlg import GitSwitchDlg
+    dlg = GitSwitchDlg(repo)
+    branches = [dlg.branch_combo.itemText(i)
+                for i in range(dlg.branch_combo.count())]
+    assert "main" in branches
+    dlg.deleteLater()
+
+
+def test_gitswitch_nonexistent_branch_keeps_dialog(qapp, repo):
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs.gitswitchdlg import GitSwitchDlg
+    dlg = GitSwitchDlg(repo)
+    dlg.branch_combo.setCurrentText("no-such-branch-xyz")
+    _auto_close_modal_progress()
+    dlg._on_switch()
+    assert dlg.result() != QDialog.DialogCode.Accepted
+    dlg.deleteLater()
+
+
+def test_gitswitch_success_closes_dialog(qapp, repo):
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs.gitswitchdlg import GitSwitchDlg
+    dlg = GitSwitchDlg(repo)
+    dlg.branch_combo.setCurrentText("main")
+    _auto_close_modal_progress()
+    dlg._on_switch()
+    assert dlg.result() == QDialog.DialogCode.Accepted
+    dlg.deleteLater()
+
+
 def test_worktreelist_dialog(qapp, repo):
     from pytortoisegit.dialogs.worktreelistdlg import WorktreeListDlg
     dlg = _smoke(qapp, lambda: WorktreeListDlg(repo))

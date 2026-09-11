@@ -56,6 +56,7 @@ class ProgressDialog(QDialog):
         self._cancellable = cancellable
         self._done = False
         self._exit_code = 0
+        self._gui_thread_id = threading.get_ident()
         self._q: "queue.Queue" = queue.Queue()
         self._worker_thread: Optional[threading.Thread] = None
         self._poll: QTimer | None = None
@@ -116,6 +117,10 @@ class ProgressDialog(QDialog):
 
     def log(self, text: str):
         if not text:
+            return
+        # 后台线程直接调用时经队列转回 GUI 线程，避免跨线程操作控件。
+        if threading.get_ident() != self._gui_thread_id:
+            self.log_async(text)
             return
         self.output.appendPlainText(text.rstrip("\n"))
 

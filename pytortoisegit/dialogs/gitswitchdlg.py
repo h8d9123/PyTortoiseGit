@@ -116,12 +116,18 @@ class GitSwitchDlg(QDialog):
                 self._anchors.add(wgt, a[0], a[1] if len(a) > 1 else None)
 
         out = self.repo.runner.run("for-each-ref",
-                                   "--format=%(refname:short)").stdout or ""
+                                   "--format=%(refname)").stdout or ""
         refs = [x.strip() for x in out.splitlines() if x.strip()]
-        self.branch_combo.addItems([r for r in refs if r.startswith(("heads/",))])
+        branches = [r[len("refs/heads/"):] for r in refs
+                    if r.startswith("refs/heads/")]
+        tags = [r[len("refs/tags/"):] for r in refs
+                if r.startswith("refs/tags/")]
+        remotes = [r[len("refs/remotes/"):] for r in refs
+                   if r.startswith("refs/remotes/") and not r.endswith("/HEAD")]
+        self.branch_combo.addItems(branches)
         self.branch_combo.setEditable(True)
-        self.tags_combo.addItems([r[5:] for r in refs if r.startswith("tags/")])
-        self.version_combo.addItems([r for r in refs if r.startswith(("heads/", "tags/"))] + ["HEAD"])
+        self.tags_combo.addItems(tags)
+        self.version_combo.addItems(branches + tags + remotes + ["HEAD"])
         self.version_combo.setEditable(True)
         self.rd_branch.setChecked(True)
 
@@ -152,14 +158,18 @@ class GitSwitchDlg(QDialog):
         args.append(target)
         dlg = ProgressDialog(title=tr("progress", "Progress"), parent=self)
         dlg.set_label("git " + " ".join(args))
+        result = {"ok": False}
         def _bg():
             r = self.repo.runner.run(*args)
             if r.stdout: dlg.log(r.stdout)
             if r.stderr: dlg.log(r.stderr)
             return r.returncode == 0
+        dlg.on_finish(lambda ok: result.__setitem__("ok", ok))
         dlg.run(_bg)
         dlg.exec()
-        self.accept()
+        # 只有切出成功才关闭对话框；失败时保留以便用户修正分支名。
+        if result["ok"]:
+            self.accept()
 
 
 _ANCHORS = {

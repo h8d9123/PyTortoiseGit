@@ -162,7 +162,9 @@ class PullFetchDlg(QDialog):
 
     def _load_branch_history(self):
         s = self._history_settings()
-        for b in (s.value("pullRemoteBranchHistory", []) or []):
+        # type=list：QSettings 把单元素 QStringList 存成字符串，读回会变成 str，
+        # 直接迭代会逐字符拆成 m/a/i/n 多项。显式转 list 保证得到 ['main']。
+        for b in (s.value("pullRemoteBranchHistory", [], type=list) or []):
             if b:
                 self.remote_branch_edit.addItem(str(b))
         self.remote_branch_edit.setEditText(self._initial_remote_branch())

@@ -388,6 +388,17 @@ def test_pull_clipboard_parse(qapp):
     assert PullFetchDlg._parse_pull_clipboard("no url here") == ("", "")
 
 
+def test_pull_dialog_history_single_branch_not_split(qapp, repo, isolated_settings):
+    """QSettings 会把单元素历史读回成字符串 'main'，不能逐字符拆成 m/a/i/n。"""
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    isolated_settings.setValue("pullRemoteBranchHistory", "main")
+    isolated_settings.sync()
+    dlg = PullFetchDlg(repo, fetch_only=False)
+    items = [dlg.remote_branch_edit.itemText(i)
+             for i in range(dlg.remote_branch_edit.count())]
+    assert items == ["main"]
+
+
 def test_git_icon_provider_prewarms_icon(qapp):
     from pytortoisegit.dialogs.mainmenu import _GitIconProvider
     # 必须在构造（GUI 线程）时预加载，icon() 只返回缓存，

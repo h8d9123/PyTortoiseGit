@@ -1215,3 +1215,34 @@ def test_packaging_specs_compile():
         ast.parse(src)
     pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
     assert "pytortoisegit.cli:main" in pyproject
+
+
+def test_settings_language_combo_switches(qapp):
+    from pytortoisegit.dialogs.settingsdlg import SettingsDlg
+    from pytortoisegit.res import strings
+    dlg = SettingsDlg()
+    dlg._load_general()
+    target = combo = None
+    for _, page in dlg.pages:
+        if getattr(page, "language_combo", None) is not None:
+            target, combo = page, page.language_combo
+    assert combo is not None
+    assert [combo.itemText(i) for i in range(combo.count())] == [
+        "English", "简体中文", "繁體中文", "Deutsch"]
+    try:
+        combo.setCurrentIndex(combo.findData("English"))
+        target.apply_to_settings()
+        assert strings.get_language() == "en"
+    finally:
+        combo.setCurrentIndex(combo.findData("zh_CN"))
+        target.apply_to_settings()
+        assert strings.get_language() == "zh"
+
+
+def test_firststart_language_mapping(qapp):
+    from pytortoisegit.dialogs.firststartdlg import _LanguagePage
+    page = _LanguagePage()
+    assert page.lang_combo.count() == 4
+    for idx, expected in enumerate(("English", "zh_CN", "zh_TW", "Deutsch")):
+        page.lang_combo.setCurrentIndex(idx)
+        assert page.selected_language() == expected

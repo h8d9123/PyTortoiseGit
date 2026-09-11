@@ -83,6 +83,15 @@ class _LanguagePage(_WizardPage):
             if c.ctrl_id == "IDC_LINK":
                 self.link_label.setGeometry(fu.px(c.x, c.y, c.w, c.h))
 
+    def selected_language(self) -> str:
+        """下拉显示名 → 设置里的语言键。"""
+        return {
+            "English": "English",
+            "简体中文": "zh_CN",
+            "繁體中文": "zh_TW",
+            "Deutsch": "Deutsch",
+        }.get(self.lang_combo.currentText(), "English")
+
 
 class _GitPage(_WizardPage):
     def __init__(self, parent=None):
@@ -183,7 +192,9 @@ class FirstStartWizard(QWizard):
         super().__init__(parent)
         self.setWindowTitle(tr("firststart_title", "First Start Wizard - PyTortoiseGit"))
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
-        self._pages = [_StartPage(self), _LanguagePage(self),
+        self._start_page = _StartPage(self)
+        self._language_page = _LanguagePage(self)
+        self._pages = [self._start_page, self._language_page,
                        _GitPage(self), _UserPage(self), _AuthPage(self)]
         for p in self._pages:
             self.addPage(p)
@@ -191,4 +202,14 @@ class FirstStartWizard(QWizard):
 
     def exec_wizard(self) -> bool:
         result = self.exec()
-        return result == QWizard.DialogCode.Accepted if hasattr(QWizard, "DialogCode") else result == 1
+        ok = result == QWizard.DialogCode.Accepted if hasattr(QWizard, "DialogCode") else result == 1
+        if ok:
+            self.language = self._language_page.selected_language()
+            from ..res.strings import set_language
+            set_language(self.language)
+            try:
+                from .settingsdlg import general_settings
+                general_settings().setValue("language", self.language)
+            except Exception:
+                pass
+        return ok

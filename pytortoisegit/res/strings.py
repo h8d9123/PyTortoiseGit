@@ -939,7 +939,7 @@ STRINGS: Dict[str, str] = {
     "switch_track": "跟踪(&R)",
     "switch_override": "覆盖已存在的分支(&O)",
     "switch_browse_ref": "浏览引用",
-    "switch_browse_ref_prompt": "选择引用:",
+    "switch_browse_ref_prompt": "选择引用：",
     "ignore_onlyfolder": "仅在所在文件夹忽略",
     "ignore_recursive": "递归忽略",
     "ignore_root": "仓库根目录的 .gitignore",

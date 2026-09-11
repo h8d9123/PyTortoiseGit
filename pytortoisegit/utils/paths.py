@@ -10,6 +10,16 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 
+def _norm_ci(path) -> str:
+    """统一为 "/" 分隔、Windows 下忽略大小写，用于路径前缀比较。
+
+    不能用 os.path.normcase：Windows 下它会把 "/" 变回 "\\"，导致随后
+    拼接 "/" 做前缀比较失败。
+    """
+    p = str(path).replace("\\", "/")
+    return p.lower() if os.name == "nt" else p
+
+
 class TGitPath:
     """表示一个文件/文件夹路径。同时用于 git 输出中的相对路径。"""
 
@@ -129,8 +139,8 @@ class TGitPath:
     # ---- 关系 ----
     def is_child_of(self, parent: str | "TGitPath") -> bool:
         """判断 self 是否位于 parent 之下（子孙路径）。同时兼容 / 与 \\ 分隔符。"""
-        parent_str = os.path.normcase(str(parent).replace("\\", "/").rstrip("/"))
-        self_str = os.path.normcase(self._path.replace("\\", "/"))
+        parent_str = _norm_ci(parent).rstrip("/")
+        self_str = _norm_ci(self._path)
         if not parent_str or parent_str == self_str:
             return False
         return self_str.startswith(parent_str + "/")
@@ -143,10 +153,11 @@ class TGitPath:
     def relative_to(self, base: str | "TGitPath") -> str:
         base_str = str(base).replace("\\", "/").rstrip("/")
         self_str = self._path.replace("\\", "/")
-        if os.path.normcase(self_str) == os.path.normcase(base_str):
+        base_ci = _norm_ci(base_str)
+        self_ci = _norm_ci(self_str)
+        if self_ci == base_ci:
             return ""
-        if base_str and os.path.normcase(self_str).startswith(
-                os.path.normcase(base_str) + "/"):
+        if base_str and self_ci.startswith(base_ci + "/"):
             rel = self_str[len(base_str) + 1:]
             parts = rel.split("/")
             return os.path.join(*parts) if parts else ""

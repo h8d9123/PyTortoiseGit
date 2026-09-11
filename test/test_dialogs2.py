@@ -670,7 +670,7 @@ def test_repobrowser_dialog(qapp, repo):
 def test_revisiongraph_dialog(qapp, repo):
     from pytortoisegit.dialogs.revisiongraphdlg import RevisionGraphDlg
     dlg = _smoke(qapp, lambda: RevisionGraphDlg(repo))
-    assert dlg.tree.topLevelItemCount() >= 1
+    assert dlg.canvas.node_count() >= 1
 
 
 def test_statgraph_dialog(qapp, repo):

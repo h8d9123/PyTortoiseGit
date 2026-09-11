@@ -1,4 +1,10 @@
-"""diffdlg.py —— DiffDlg：文本 diff 查看对话框。
+"""diffdlg.py —— DiffDlg：CFileDiffDlg / IDD_DIFFFILES 的 Qt 复刻。
+
+严格按原版 IDD_DIFFFILES（301x280 "Changed Files"）排版：
+  顶行（Difference between / Diff Options / Show log / 左右交换）、
+  Version 1 (Base) 与 Version 2 分组框（修订输入 + HEAD 按钮 + URL/subject）、
+  IDC_FILTER 文件过滤、IDC_FILELIST 变更文件列表、
+  右下 IDC_VIEW_PATCH "View Patch>>"（打开独立的 IDD_PATCH_VIEW 补丁窗口）。
 
 支持：
   - 比较两个修订 rev1、rev2
@@ -34,22 +40,24 @@ from PySide6.QtCore import QFileInfo, Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QDialog,
-    QDialogButtonBox,
     QFileIconProvider,
+    QGroupBox,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMenu,
-    QSplitter,
+    QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
-    QVBoxLayout,
 )
 
 from ..git.repo import Repository
-from ..git.rev import GitRev
-from ..res.strings import format_string, tr
+from ..res.strings import tr
 from ..asyncfw import run_async
+from ..ui import rc as rc_mod
+from ..ui.rc import DialogUnits
 from .loglists import ChangedFile, filediff_action_color, status_text
+from .resize import AnchorLayout
 from .widgets import DiffView
 
 # CFileDiffDlg：File / Extension / Action / Lines added / Lines removed
@@ -60,33 +68,97 @@ DIFF_COL_ADD = 3
 DIFF_COL_DEL = 4
 
 
+class _PatchViewDlg(QDialog):
+    """IDD_PATCH_VIEW：独立的补丁查看窗口（IDC_PATCH 铺满）。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent, Qt.WindowType.Window)
+        spec = rc_mod.load_spec("IDD_PATCH_VIEW")
+        fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
+        r = fu.px(0, 0, spec.width, spec.height)
+        self.setWindowTitle(spec.caption or tr("filediff_patch_title", "View Patch"))
+        self.resize(r.width(), r.height())
+        rc_mod.apply_min_size(self, r.width(), r.height())
+        self.view = DiffView(self)
+        self.view.setObjectName("IDC_PATCH")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.view.setGeometry(0, 0, self.width(), self.height())
+
+
 class DiffDlg(QDialog):
     def __init__(self, repo: Repository, rev1: str | None = None,
                  rev2: str | None = None, paths: Sequence[str] | None = None,
                  parent=None, title: str = ""):
-        super().__init__(parent)
+        super().__init__(parent, Qt.WindowType.Window)
         self.repo = repo
         self.rev1 = rev1
         self.rev2 = rev2
         self.paths = list(paths or [])
         self.patches: list = []
-        local = repo.name
-        if title:
-            self.setWindowTitle(title)
-        else:
-            self.setWindowTitle(f"{local} — diff")
-        self.resize(920, 640)
+        self._ignore: List[str] = []
+        self._patch_dlg: Optional[_PatchViewDlg] = None
         self._build_ui()
         self._load()
 
+    # ---- UI（IDD_DIFFFILES 模板）----
     def _build_ui(self):
-        lay = QVBoxLayout(self)
-        header = QLabel(self)
-        self._header = header
-        lay.addWidget(header)
+        spec = rc_mod.load_spec("IDD_DIFFFILES")
+        fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
+        r = fu.px(0, 0, spec.width, spec.height)
+        self.resize(r.width(), r.height())
+        # 对齐原版 CResizableStandAloneDialog（WS_THICKFRAME）：可缩放，不小于模板
+        rc_mod.apply_min_size(self, r.width(), r.height())
+        self.setWindowTitle(tr("filediff_title", "Changed Files"))
+        font = self.font()
+        font.setPointSize(spec.font_size or 9)
+        self.setFont(font)
+        self._anchors = AnchorLayout(self.width(), self.height())
+        self._ctl: dict = {}
 
-        splitter = QSplitter(Qt.Orientation.Horizontal, self)
-        self.file_tree = QTreeWidget(splitter)
+        # 顶行
+        self.lbl_between = QLabel(tr("filediff_between", "Difference between"), self)
+        self.btn_diffoption = QPushButton(tr("filediff_diffoption", "Diff Options"), self)
+        self.btn_diffoption.setCheckable(True)
+        self.btn_diffoption.clicked.connect(self._on_diff_options)
+        self.btn_log = QPushButton(tr("log_show_log", "Show log"), self)
+        self.btn_log.clicked.connect(self._on_show_log)
+        self.btn_switch = QPushButton(self)
+        try:
+            from ..res import icons
+            self.btn_switch.setIcon(icons.icon("IDI_SWITCHLEFTRIGHT"))
+        except Exception:  # noqa: BLE001
+            pass
+        self.btn_switch.setToolTip(tr("filediff_switch", "Switch left/right"))
+        self.btn_switch.clicked.connect(self._on_switch)
+
+        # Version 1 / Version 2 分组框（子控件与其同级，按 .rc 坐标覆盖其上）
+        self.grp_rev1 = QGroupBox(tr("filediff_rev1", "Version 1 (Base)"), self)
+        self.rev1_edit = QLineEdit(self)
+        self.rev1_edit.returnPressed.connect(self._reload)
+        self.rev1_btn = QPushButton("HEAD", self)
+        self.rev1_btn.clicked.connect(lambda: self._browse_rev(1, self.rev1_btn))
+        self.first_url = QLabel(self)
+        self.first_url.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        self.grp_rev2 = QGroupBox(tr("filediff_rev2", "Version 2"), self)
+        self.rev2_edit = QLineEdit(self)
+        self.rev2_edit.returnPressed.connect(self._reload)
+        self.rev2_btn = QPushButton("HEAD", self)
+        self.rev2_btn.clicked.connect(lambda: self._browse_rev(2, self.rev2_btn))
+        self.second_url = QLabel(self)
+        self.second_url.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        # 文件过滤 + 变更文件列表
+        self.filter_edit = QLineEdit(self)
+        self.filter_edit.setPlaceholderText(tr("filediff_filter", "Filter changed files…"))
+        self.filter_edit.setClearButtonEnabled(True)
+        self.filter_edit.textChanged.connect(self._apply_filter)
+
+        self.file_tree = QTreeWidget(self)
         self.file_tree.setColumnCount(5)
         self.file_tree.setHeaderLabels([
             tr("filediff_file", "File"),
@@ -98,7 +170,8 @@ class DiffDlg(QDialog):
         self.file_tree.setRootIsDecorated(False)
         self.file_tree.setIndentation(0)
         self.file_tree.setUniformRowHeights(True)
-        self.file_tree.header().setSectionResizeMode(DIFF_COL_FILE, QHeaderView.ResizeMode.Stretch)
+        self.file_tree.header().setSectionResizeMode(
+            DIFF_COL_FILE, QHeaderView.ResizeMode.Stretch)
         self.file_tree.setColumnWidth(DIFF_COL_EXT, 64)
         self.file_tree.setColumnWidth(DIFF_COL_ACTION, 72)
         self.file_tree.setColumnWidth(DIFF_COL_ADD, 48)
@@ -111,20 +184,57 @@ class DiffDlg(QDialog):
         self.file_tree.itemDoubleClicked.connect(self._on_file_double_clicked)
         self.file_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.file_tree.customContextMenuRequested.connect(self._on_menu)
-        splitter.addWidget(self.file_tree)
 
-        self.view = DiffView(splitter)
-        splitter.addWidget(self.view)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 3)
-        lay.addWidget(splitter, 1)
+        self.btn_view_patch = QPushButton(tr("filediff_viewpatch", "View Patch>>"), self)
+        self.btn_view_patch.setFlat(True)
+        self.btn_view_patch.clicked.connect(self._toggle_patch)
 
-        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
-        box.rejected.connect(self.reject)
-        box.button(QDialogButtonBox.StandardButton.Close).setText(tr("close"))
-        lay.addWidget(box)
+        mapping = {
+            "IDC_DIFFSTATIC1": self.lbl_between,
+            "IDC_DIFFOPTION": self.btn_diffoption,
+            "IDC_LOG": self.btn_log,
+            "IDC_SWITCHLEFTRIGHT": self.btn_switch,
+            "IDC_REV1GROUP": self.grp_rev1,
+            "IDC_REV1EDIT": self.rev1_edit,
+            "IDC_REV1BTN": self.rev1_btn,
+            "IDC_FIRSTURL": self.first_url,
+            "IDC_REV2GROUP": self.grp_rev2,
+            "IDC_REV2EDIT": self.rev2_edit,
+            "IDC_REV2BTN": self.rev2_btn,
+            "IDC_SECONDURL": self.second_url,
+            "IDC_FILTER": self.filter_edit,
+            "IDC_FILELIST": self.file_tree,
+            "IDC_VIEW_PATCH": self.btn_view_patch,
+        }
+        for ctrl in spec.controls:
+            wgt = mapping.get(ctrl.ctrl_id)
+            if wgt is None:
+                continue
+            rc_mod.place_widget(self, fu, ctrl, wgt)
+            self._ctl[ctrl.ctrl_id] = wgt
 
-    # ---- 加载 ----
+        for ctrl in spec.controls:
+            wgt = self._ctl.get(ctrl.ctrl_id)
+            if wgt is None:
+                continue
+            a = _DIFF_ANCHORS.get(ctrl.ctrl_id)
+            if a:
+                self._anchors.add(wgt, a[0], a[1] if len(a) > 1 else None)
+
+        self.rev1_edit.setText(self.rev1 or "")
+        self.rev2_edit.setText(self.rev2 or "")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "_anchors"):
+            self._anchors.apply(self.width(), self.height())
+
+    # ---- 数据 ----
+    def _reload(self, *_a):
+        self.rev1 = self.rev1_edit.text().strip() or None
+        self.rev2 = self.rev2_edit.text().strip() or None
+        self._load()
+
     def _load(self):
         self.setWindowTitle(f"{self.repo.name} — {tr('loading')}")
         run_async(self._build_patch, on_done=self._on_loaded,
@@ -134,7 +244,7 @@ class DiffDlg(QDialog):
         from ..udiff import parse_diff
         from ..merge.diffdata import normalize_revs
         old_rev, new_rev = normalize_revs(self.rev1, self.rev2)
-        args: List[str] = ["diff", "--no-color", "-U3"]
+        args: List[str] = ["diff", "--no-color", "-U3", *self._ignore]
         if old_rev and new_rev:
             args += [old_rev, new_rev]
         elif old_rev:
@@ -146,17 +256,23 @@ class DiffDlg(QDialog):
         out = self.repo.runner.run_checked(*args)
         patches = parse_diff(out)
         total = sum(p.added + p.removed for p in patches)
-        return patches, total
+        return patches, total, self._rev_label(self.rev1), self._rev_label(self.rev2)
+
+    def _rev_label(self, rev: str | None) -> str:
+        if not rev:
+            return ""
+        try:
+            subj = (self.repo.runner.run("log", "-1", "--format=%s", rev).stdout or "").strip()
+        except Exception:  # noqa: BLE001
+            subj = ""
+        return f"{rev}: {subj}" if subj else rev
 
     def _on_loaded(self, payload):
-        from ..merge.diffdata import normalize_revs
-        patches, total = payload
+        patches, _total, label1, label2 = payload
         self.patches = patches
-        old_rev, new_rev = normalize_revs(self.rev1, self.rev2)
-        self._header.setText(
-            " " + tr("diff_summary", "{files} files, +{lines} lines").format(
-                files=len(patches), lines=total)
-            + f"  {old_rev or 'HEAD'} … {new_rev or tr('diff_working_tree', 'Working tree')}")
+        wt = tr("filediff_working_tree", "(working tree)")
+        self.first_url.setText(label1 or wt)
+        self.second_url.setText(label2 or wt)
         self.file_tree.clear()
         align_r = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         for p in patches:
@@ -182,23 +298,58 @@ class DiffDlg(QDialog):
             for c in range(item.columnCount()):
                 item.setForeground(c, brush)
             self.file_tree.addTopLevelItem(item)
-        self.setWindowTitle(f"{self.repo.name} — diff")
+        self.setWindowTitle(tr("filediff_title", "Changed Files"))
+        self._apply_filter()
         if patches:
             self.file_tree.setCurrentItem(self.file_tree.topLevelItem(0))
-            self._show_patch(patches[0])
 
     def _on_error(self, message: str, _tb: str):
-        self.setWindowTitle(self.repo.name)
-        self._header.setText(str(message))
-        self.view.display_text(str(message))
+        self.setWindowTitle(tr("filediff_title", "Changed Files"))
+        self.first_url.setText("")
+        self.second_url.setText("")
+        self.file_tree.clear()
+        self.file_tree.addTopLevelItem(QTreeWidgetItem([str(message)]))
+
+    # ---- 文件列表交互 ----
+    def _apply_filter(self, *_a):
+        text = self.filter_edit.text().strip().lower()
+        for i in range(self.file_tree.topLevelItemCount()):
+            it = self.file_tree.topLevelItem(i)
+            p = it.data(0, Qt.ItemDataRole.UserRole)
+            path = (getattr(p, "git_path", "") or "").lower() if p is not None else ""
+            it.setHidden(bool(text) and text not in path)
 
     def _on_file_clicked(self, item, _col):
         p = item.data(0, Qt.ItemDataRole.UserRole)
-        if p is not None:
+        if p is not None and self._patch_dlg is not None and self._patch_dlg.isVisible():
             self._show_patch(p)
 
     def _show_patch(self, patch):
-        self.view.display_patch(patch.raw, title=f"═══ {patch.filename_display} ═══")
+        dlg = self._ensure_patch_dlg()
+        dlg.view.display_patch(patch.raw, title=f"═══ {patch.filename_display} ═══")
+        dlg.show()
+        dlg.raise_()
+
+    def _toggle_patch(self):
+        dlg = self._ensure_patch_dlg()
+        if dlg.isVisible():
+            dlg.hide()
+            self.btn_view_patch.setText(tr("filediff_viewpatch", "View Patch>>"))
+            return
+        item = self.file_tree.currentItem()
+        if item is None and self.file_tree.topLevelItemCount():
+            item = self.file_tree.topLevelItem(0)
+        p = item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
+        if p is not None:
+            self._show_patch(p)
+        else:
+            dlg.show()
+        self.btn_view_patch.setText(tr("filediff_hidepatch", "Hide Patch"))
+
+    def _ensure_patch_dlg(self) -> _PatchViewDlg:
+        if self._patch_dlg is None:
+            self._patch_dlg = _PatchViewDlg(self)
+        return self._patch_dlg
 
     def _on_file_double_clicked(self, item, _col):
         """双击：对齐 CFileDiffDlg::DoDiff，打开并排比较。"""
@@ -210,6 +361,68 @@ class DiffDlg(QDialog):
         from ..merge.mergefrm import MergeFrm
         frm = MergeFrm(self.repo, p.git_path, self.rev1, self.rev2, parent=self)
         frm.show()
+
+    # ---- 顶行按钮 ----
+    def _on_switch(self):
+        """IDC_SWITCHLEFTRIGHT：交换 Version 1 / Version 2。"""
+        self.rev1, self.rev2 = self.rev2, self.rev1
+        self.rev1_edit.setText(self.rev1 or "")
+        self.rev2_edit.setText(self.rev2 or "")
+        self._load()
+
+    def _browse_rev(self, which: int, btn: QPushButton):
+        refs: List[str] = []
+        out = self.repo.runner.run(
+            "for-each-ref", "--format=%(refname:short)").stdout or ""
+        refs = [x.strip() for x in out.splitlines() if x.strip()]
+        menu = QMenu(self)
+        for name in refs[:100]:
+            menu.addAction(name)
+        menu.addSeparator()
+        menu.addAction("HEAD")
+        chosen = menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
+        if chosen is None:
+            return
+        edit = self.rev1_edit if which == 1 else self.rev2_edit
+        edit.setText(chosen.text())
+        self._reload()
+
+    def _on_show_log(self):
+        from .logdlg import LogDlg
+        pathspec = self.paths[0] if len(self.paths) == 1 else None
+        LogDlg(self.repo, pathspec=pathspec,
+               rev=self.rev2 or self.rev1, parent=self).exec()
+
+    def _on_diff_options(self):
+        """IDC_DIFFOPTION：diff 忽略选项下拉（对齐原版弹出菜单）。"""
+        options = [
+            ("--ignore-space-at-eol",
+             tr("filediff_opt_eol", "Ignore changes in whitespace at EOL")),
+            ("--ignore-space-change",
+             tr("filediff_opt_space", "Ignore changes in amount of whitespace")),
+            ("--ignore-all-space",
+             tr("filediff_opt_allspace", "Ignore all whitespace")),
+            ("--ignore-blank-lines",
+             tr("filediff_opt_blank", "Ignore blank lines")),
+        ]
+        menu = QMenu(self)
+        acts = {}
+        for opt, label in options:
+            act = menu.addAction(label)
+            act.setCheckable(True)
+            act.setChecked(opt in self._ignore)
+            acts[act] = opt
+        chosen = menu.exec(
+            self.btn_diffoption.mapToGlobal(self.btn_diffoption.rect().bottomLeft()))
+        self.btn_diffoption.setChecked(False)
+        if chosen is None:
+            return
+        opt = acts[chosen]
+        if opt in self._ignore:
+            self._ignore.remove(opt)
+        else:
+            self._ignore.append(opt)
+        self._load()
 
     # ---- 右键菜单（对齐 CFileDiffDlg::OnContextMenu）----
     def _on_menu(self, pos):
@@ -246,20 +459,18 @@ class DiffDlg(QDialog):
             BlameDlg(self.repo, path, rev=self.rev2 or self.rev1, parent=self).exec()
 
     def _full_path(self, path: str) -> str:
-        import os
         root = self.repo.root
         return os.path.join(root, path.replace("/", os.sep))
 
     def _open_external(self, path: str):
         """用外部工具打开文件 diff（配置了 tortoisegit.externaldiff 时）。"""
         import subprocess
-        import os
         full = self._full_path(path)
         cmd = ""
         try:
             r = self.repo.runner.run("config", "--get", "diff.external")
             cmd = (r.stdout or "").strip()
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
         if cmd:
             subprocess.Popen(cmd.replace("{path}", full), shell=False)
@@ -270,3 +481,23 @@ class DiffDlg(QDialog):
 def diff_dialog(repo: Repository, rev1=None, rev2=None, paths=None,
                 parent=None) -> DiffDlg:
     return DiffDlg(repo, rev1, rev2, paths, parent)
+
+
+# AddAnchor 定义对齐 FileDiffDlg.cpp:189-204
+_DIFF_ANCHORS = {
+    "IDC_DIFFSTATIC1": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_SWITCHLEFTRIGHT": ("TOP_RIGHT",),
+    "IDC_FIRSTURL": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_REV1BTN": ("TOP_RIGHT",),
+    "IDC_SECONDURL": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_REV2BTN": ("TOP_RIGHT",),
+    "IDC_FILTER": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_FILELIST": ("TOP_LEFT", "BOTTOM_RIGHT"),
+    "IDC_REV1GROUP": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_REV2GROUP": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_REV1EDIT": ("TOP_LEFT",),
+    "IDC_REV2EDIT": ("TOP_LEFT",),
+    "IDC_DIFFOPTION": ("TOP_RIGHT",),
+    "IDC_LOG": ("TOP_RIGHT",),
+    "IDC_VIEW_PATCH": ("BOTTOM_RIGHT",),
+}

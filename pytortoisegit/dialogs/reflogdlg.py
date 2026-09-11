@@ -64,10 +64,11 @@ class ReflogEntry:
         return f"{self.short} {self.subject}"
 
 
-def load_reflog(repo: Repository, limit: int = 500) -> List[ReflogEntry]:
-    """读取 reflog。\x1f 为记录前缀，\x1e 为字段分隔（与 log 一致）。"""
+def load_reflog(repo: Repository, ref: str = "HEAD",
+                limit: int = 500) -> List[ReflogEntry]:
+    """读取指定引用的 reflog。\x1f 为记录前缀，\x1e 为字段分隔（与 log 一致）。"""
     fmt = "--format=\x1f%h\x1e%gd\x1e%gs\x1e%ci\x1e%ce"
-    args = ["reflog", "--date=iso", fmt]
+    args = ["reflog", "show", ref or "HEAD", "--date=iso", fmt]
     if limit > 0:
         args += ["-n", str(limit)]
     out = repo.runner.run(*args).stdout or ""
@@ -121,10 +122,12 @@ class ReflogDlg(QDialog):
         from PySide6.QtWidgets import QComboBox, QPushButton, QLabel
         self.ref_combo = QComboBox(self)
         self.ref_combo.setEditable(True)
-        self.ref_label = QLabel(tr("reflog_hint", "Reflog of the current branch"), self)
-        self.ref_combo.editTextChanged.connect(lambda *_a: self._load())
+        # IDC_STATIC_REF 模板文本为 "&Ref:"（27 DLU），不能放长描述，否则会被裁切。
+        self.ref_label = QLabel(tr("reflog_ref", "&Ref:"), self)
+        self.ref_label.setToolTip(tr("reflog_hint", "Reflog of the current branch"))
+        self.ref_combo.activated.connect(lambda *_a: self._load())
         self.btn_search = QPushButton(tr("reflog_search", "&Search..."), self)
-        self.btn_search.clicked.connect(self._load)
+        self.btn_search.clicked.connect(self._on_search)
         self.btn_clearstash = QPushButton(tr("reflog_clearstash", "&Clear stash"), self)
         self.btn_ok = QPushButton(tr("ok"), self)
         self.btn_ok.setDefault(True)
@@ -161,7 +164,8 @@ class ReflogDlg(QDialog):
             pass
 
     def _load(self):
-        entries = load_reflog(self.repo)
+        ref = self.ref_combo.currentText().strip() or "HEAD"
+        entries = load_reflog(self.repo, ref=ref)
         self.entries = entries
         self.table.setRowCount(len(entries))
         for row, e in enumerate(entries):
@@ -171,6 +175,34 @@ class ReflogDlg(QDialog):
                 item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
                 item.setData(Qt.ItemDataRole.UserRole, e.hash_)
                 self.table.setItem(row, col, item)
+
+    def _on_search(self):
+        """IDC_SEARCH：在 reflog 列表中查找文本（对齐原版 FindNext）。"""
+        from PySide6.QtWidgets import QInputDialog
+        text, ok = QInputDialog.getText(
+            self, tr("reflog_search", "Search..."),
+            tr("reflog_search_prompt", "Find text:"),
+            text=getattr(self, "_search_text", ""))
+        if not ok or not text:
+            return
+        self._search_text = text
+        needle = text.lower()
+        n = self.table.rowCount()
+        if n == 0:
+            return
+        start = self.table.currentRow()
+        start = 0 if start < 0 else start + 1
+        for k in range(n):
+            row = (start + k) % n
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item is not None and needle in item.text().lower():
+                    self.table.selectRow(row)
+                    self.table.scrollToItem(item)
+                    return
+        QMessageBox.information(
+            self, tr("reflog_search", "Search..."),
+            tr("reflog_not_found", "\"{}\" not found.").format(text))
 
     def _current_entry(self) -> Optional[ReflogEntry]:
         row = self.table.currentRow()

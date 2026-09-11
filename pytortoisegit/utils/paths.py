@@ -106,13 +106,21 @@ class TGitPath:
     # ---- 组件 ----
     @property
     def filename(self) -> str:
-        return os.path.basename(self._path.rstrip("/\\")) or self._path
+        parts = [p for p in re.split(r"[\\/]", self._path) if p]
+        return parts[-1] if parts else self._path
 
     @property
     def dirname(self) -> str:
         """父目录。路径以分隔符结尾时先去掉尾部再取 dirname（等价 SDirectoryName）。"""
         stripped = self._path.rstrip("/\\")
-        return os.path.dirname(stripped)
+        idx = max(stripped.rfind("/"), stripped.rfind("\\"))
+        if idx < 0:
+            return ""
+        parent = stripped[:idx]
+        # 保留盘符根，如 "D:\repo" -> "D:\"
+        if len(parent) == 2 and parent[1] == ":":
+            parent += self._path[idx]
+        return parent
 
     @property
     def extension(self) -> str:
@@ -120,14 +128,12 @@ class TGitPath:
 
     # ---- 关系 ----
     def is_child_of(self, parent: str | "TGitPath") -> bool:
-        """判断 self 是否位于 parent 之下（子孙路径）。"""
-        parent_str = os.path.normcase(os.path.abspath(str(parent)))
-        self_str = os.path.normcase(os.path.abspath(self._path))
-        if parent_str == self_str:
+        """判断 self 是否位于 parent 之下（子孙路径）。同时兼容 / 与 \\ 分隔符。"""
+        parent_str = os.path.normcase(str(parent).replace("\\", "/").rstrip("/"))
+        self_str = os.path.normcase(self._path.replace("\\", "/"))
+        if not parent_str or parent_str == self_str:
             return False
-        if len(self_str) <= len(parent_str):
-            return False
-        return self_str.startswith(parent_str + os.sep)
+        return self_str.startswith(parent_str + "/")
 
     def is_same(self, other: str | "TGitPath") -> bool:
         return os.path.normcase(os.path.abspath(self._path)) == os.path.normcase(
@@ -135,6 +141,15 @@ class TGitPath:
         )
 
     def relative_to(self, base: str | "TGitPath") -> str:
+        base_str = str(base).replace("\\", "/").rstrip("/")
+        self_str = self._path.replace("\\", "/")
+        if os.path.normcase(self_str) == os.path.normcase(base_str):
+            return ""
+        if base_str and os.path.normcase(self_str).startswith(
+                os.path.normcase(base_str) + "/"):
+            rel = self_str[len(base_str) + 1:]
+            parts = rel.split("/")
+            return os.path.join(*parts) if parts else ""
         return os.path.relpath(self._path, str(base))
 
     # ---- 组合 ----
@@ -184,12 +199,13 @@ def is_valid_filename(filename: str) -> bool:
 
 
 def validate_path_for_git(path: str) -> Optional[str]:
-    """校验路径能否被 git 接受，返回错误说明或 None。"""
-    abs_path = os.path.abspath(path)
-    if os.name == "nt":
-        base = os.path.basename(abs_path)
-        if not is_valid_filename(base):
-            return tr("invalid_filename", "Invalid file name: {name}").format(name=base)
+    """校验路径能否被 git 接受，返回错误说明或 None。
+
+    采用 Windows/git 的保守命名规则，跨平台均执行校验。
+    """
+    base = os.path.basename(os.path.abspath(path).replace("\\", "/"))
+    if not is_valid_filename(base):
+        return tr("invalid_filename", "Invalid file name: {name}").format(name=base)
     return None
 
 

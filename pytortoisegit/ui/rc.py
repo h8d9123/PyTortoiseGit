@@ -253,11 +253,15 @@ _JSON_PATH = os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "res", "rc_dialogs.json")
 
 
+def load_all() -> Dict[str, Dialog]:
+    """从内置 rc_dialogs.json 加载全部对话框模板。"""
+    with open(_JSON_PATH, encoding="utf-8-sig") as fh:
+        return load_json(json.load(fh))
+
+
 def load_spec(dialog_id: str) -> Dialog:
     """从内置 rc_dialogs.json 获取一个对话框模板。"""
-    with open(_JSON_PATH, encoding="utf-8-sig") as fh:
-        dialogs = load_json(json.load(fh))
-    return dialogs[dialog_id]
+    return load_all()[dialog_id]
 
 
 # ---------------------------------------------------------------------------

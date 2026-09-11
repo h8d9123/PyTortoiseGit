@@ -52,8 +52,8 @@ from .diffdlg import DiffDlg
 from .loggraph import LogListDelegate, graph_width
 from .loglists import (
     FILE_COL_ADD, FILE_COL_DEL, FILE_COL_EXT, FILE_COL_PATH, FILE_COL_SIZE,
-    FILE_COL_STATUS, LOG_COL_ACTIONS, LOG_COL_AUTHOR, LOG_COL_DATE, LOG_COL_EMAIL,
-    LOG_COL_GRAPH, LOG_COL_HASH, LOG_COL_MESSAGE, ChangedFile, file_column_labels,
+    FILE_COL_STATUS, LOG_COL_ACTIONS, LOG_COL_GRAPH, LOG_COL_MESSAGE,
+    ChangedFile, file_column_labels,
     file_default_hidden, log_column_labels, log_default_hidden, parse_show_files,
     status_color, status_text,
 )
@@ -181,8 +181,8 @@ class LogDlg(QDialog):
         self.filter_edit = QLineEdit(self)
         self.filter_edit.setPlaceholderText(tr("log_filter", "Filter…"))
         self.filter_edit.setClearButtonEnabled(True)
-        self.filter_edit.textChanged.connect(self._apply_filter)
-        self.filter_edit.returnPressed.connect(self._apply_filter)
+        self.filter_edit.textChanged.connect(self._apply_file_filter)
+        self.filter_edit.returnPressed.connect(self._apply_file_filter)
         self.btn_help = QPushButton(tr("help"), self)
         self.btn_help.clicked.connect(self._on_help)
         self.btn_refresh = QPushButton(tr("refresh"), self)
@@ -457,6 +457,7 @@ class LogDlg(QDialog):
                 self._add_file_item(parent, row)
             if parent is not None:
                 parent.setExpanded(True)
+        self._apply_file_filter()
 
     def _current_commit(self):
         tree_item = self.tree.currentItem()
@@ -582,23 +583,45 @@ class LogDlg(QDialog):
             de.blockSignals(False)
 
     def _apply_filter(self, *_a):
-        if not hasattr(self, "filter_edit") or not hasattr(self, "tree"):
+        """提交维度过滤：仅按 From/To 日期范围隐藏提交记录。
+
+        文本筛选（IDC_FILTER）针对变更文件列表，见 _apply_file_filter。
+        """
+        if not hasattr(self, "date_from") or not hasattr(self, "tree"):
             return  # UI 尚未构建完成（dateChanged 早触发）
-        text = self.filter_edit.text().strip().lower()
         from_ts = QDateTime(self.date_from.date(), QTime(0, 0, 0)).toSecsSinceEpoch()
         to_ts = QDateTime(self.date_to.date(), QTime(23, 59, 59)).toSecsSinceEpoch()
         for i in range(self.tree.topLevelItemCount()):
             it = self.tree.topLevelItem(i)
-            hay = " ".join(it.text(c) for c in (
-                LOG_COL_MESSAGE, LOG_COL_AUTHOR, LOG_COL_DATE, LOG_COL_HASH,
-                LOG_COL_EMAIL)).lower()
-            hidden = bool(text) and text not in hay
-            if not hidden:
-                commit = self._commit_of(it)
-                ts = commit.committer_timestamp if commit is not None else 0
-                if ts and (ts < from_ts or ts > to_ts):
-                    hidden = True
-            it.setHidden(hidden)
+            commit = self._commit_of(it)
+            ts = commit.committer_timestamp if commit is not None else 0
+            it.setHidden(bool(ts) and (ts < from_ts or ts > to_ts))
+
+    def _apply_file_filter(self, *_a):
+        """文件维度过滤：按文本隐藏当前提交变更文件列表中的不匹配项。
+
+        对齐原版 IDC_FILTER（m_cFileFilter）：过滤的是变更文件列表，
+        而非提交记录；分组节点（合并提交）在子项全部隐藏时一并隐藏。
+        """
+        if not hasattr(self, "filter_edit") or not hasattr(self, "file_list"):
+            return
+        text = self.filter_edit.text().strip().lower()
+        for i in range(self.file_list.topLevelItemCount()):
+            self._filter_file_item(self.file_list.topLevelItem(i), text)
+
+    def _filter_file_item(self, item: QTreeWidgetItem, text: str) -> bool:
+        """递归过滤文件项，返回该项是否可见。"""
+        if item.childCount():
+            visible = sum(
+                self._filter_file_item(item.child(i), text)
+                for i in range(item.childCount()))
+            hidden = bool(text) and visible == 0
+            item.setHidden(hidden)
+            return not hidden
+        path = (self._file_path(item) or "").lower()
+        hidden = bool(text) and text not in path
+        item.setHidden(hidden)
+        return not hidden
 
     def keyPressEvent(self, event):
         # 输入框里回车不应触发默认按钮（IDOK 会 reject 关闭对话框）

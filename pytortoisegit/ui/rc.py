@@ -316,6 +316,26 @@ def build_dialog(spec: Dialog, parent=None):
     return dlg
 
 
+# ---------------------------------------------------------------------------
+# 窗口缩放策略（对齐原版对话框基类）
+#   CHorizontalResizableStandAloneDialog -> 锁定垂直，仅横向
+#   CStandAloneDialog                    -> 不可缩放
+#   CResizableStandAloneDialog           -> 双向可缩放，但不小于模板尺寸
+# ---------------------------------------------------------------------------
+
+def apply_horizontal_resize(dlg, width: int, height: int) -> None:
+    dlg.setFixedHeight(int(height))
+    dlg.setMinimumWidth(int(width))
+
+
+def apply_fixed_size(dlg, width: int, height: int) -> None:
+    dlg.setFixedSize(int(width), int(height))
+
+
+def apply_min_size(dlg, width: int, height: int) -> None:
+    dlg.setMinimumSize(int(width), int(height))
+
+
 # Win32 ComboBox/ComboBoxEx 的 rc 高度是下拉列表高度，闭合态约等于按钮（14 DLU）
 _CLOSED_COMBO_DLU = 14
 _COMBO_CLASSES = {"ComboBox", "ComboBoxEx32"}

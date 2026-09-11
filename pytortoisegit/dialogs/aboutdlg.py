@@ -44,6 +44,7 @@ class AboutDlg(QDialog):
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
+        rc_mod.apply_fixed_size(self, r.width(), r.height())
         self.setWindowTitle(tr("about_title", "About {}").format(__appname__))
         self._ctl: dict = {}
 

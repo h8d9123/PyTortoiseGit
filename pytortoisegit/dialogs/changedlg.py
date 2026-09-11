@@ -85,6 +85,7 @@ class ChangedDlg(QDialog):
         self._fu = fu
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
+        rc_mod.apply_min_size(self, r.width(), r.height())
         if spec.caption:
             self.setWindowTitle(spec.caption)
         font = self.font()

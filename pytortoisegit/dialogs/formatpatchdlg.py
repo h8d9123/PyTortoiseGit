@@ -51,6 +51,7 @@ class FormatPatchDlg(QDialog):
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
+        rc_mod.apply_horizontal_resize(self, r.width(), r.height())
         self.setWindowTitle(spec.caption or "Format Patch")
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}

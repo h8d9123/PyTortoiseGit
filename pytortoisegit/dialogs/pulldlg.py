@@ -48,10 +48,8 @@ class PullFetchDlg(QDialog):
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
-        # 对齐原版 CHorizontalResizableStandAloneDialog（BlockResize(DIALOG_BLOCKVERTICAL)）：
-        # 高度固定、仅横向可拖拽、最小宽度为模板宽度
-        self.setFixedHeight(r.height())
-        self.setMinimumWidth(r.width())
+        # 对齐原版 CHorizontalResizableStandAloneDialog：高度固定、仅横向可拖拽、有最小宽度
+        rc_mod.apply_horizontal_resize(self, r.width(), r.height())
         self.setWindowTitle(tr("pullfetch_title", "Pull/Fetch"))
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}

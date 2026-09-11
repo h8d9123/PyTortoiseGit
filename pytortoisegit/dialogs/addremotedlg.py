@@ -38,6 +38,7 @@ class AddRemoteDlg(QDialog):
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
+        rc_mod.apply_fixed_size(self, r.width(), r.height())
         self.setWindowTitle(spec.caption or "Add Remote")
         self._ctl: dict = {}
 

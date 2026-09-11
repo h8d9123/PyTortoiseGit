@@ -70,6 +70,7 @@ class CloneDlg(QDialog):
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
+        rc_mod.apply_horizontal_resize(self, r.width(), r.height())
         self.setWindowTitle(spec.caption or tr("clone_title", "Clone repository"))
         font = self.font()
         font.setPointSize(spec.font_size or 9)

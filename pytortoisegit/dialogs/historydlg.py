@@ -37,6 +37,7 @@ class HistoryDlg(QDialog):
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
+        rc_mod.apply_min_size(self, r.width(), r.height())
         self.setWindowTitle(title or spec.caption or "Log History")
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}

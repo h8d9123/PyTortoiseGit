@@ -38,6 +38,7 @@ class PatchViewDlg(QDialog):
         fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
+        rc_mod.apply_fixed_size(self, r.width(), r.height())
         self.setWindowTitle(title or spec.caption or tr("patch_view", "View Patch"))
 
         self.view = QPlainTextEdit(self)

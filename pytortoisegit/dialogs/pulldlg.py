@@ -25,7 +25,8 @@ Options 组（squash/nofastforward/nocommit/depth/ffonly/tags/prune/putty/rebase
 from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QLabel, QLineEdit, QPushButton, QSpinBox,
+    QCheckBox, QComboBox, QDialog, QGroupBox, QLabel, QLineEdit, QPushButton,
+    QSpinBox,
 )
 from ..git.repo import Repository
 from ..res.strings import tr
@@ -50,6 +51,10 @@ class PullFetchDlg(QDialog):
         self.setWindowTitle(tr("pullfetch_title", "Pull/Fetch"))
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
+
+        # 分组框（与其它控件同级，先创建置于底层，对齐 IDD_PULLFETCH）
+        self.grp_remote = QGroupBox(tr("pull_group_remote", "Remote"), self)
+        self.grp_options = QGroupBox(tr("pull_group_options", "Options"), self)
 
         self.rd_remote = QCheckBox(tr("pull_remote", "&Remote:"), self)
         self.remote_combo = QComboBox(self)
@@ -82,6 +87,8 @@ class PullFetchDlg(QDialog):
         self.btn_help = QPushButton(tr("help"), self)
 
         mapping = {
+            "IDC_GROUPT_REMOTE": self.grp_remote,
+            "IDC_GROUP_OPTION": self.grp_options,
             "IDC_REMOTE_RD": self.rd_remote,
             "IDC_REMOTE_COMBO": self.remote_combo,
             "IDC_OTHER_RD": self.rd_other,
@@ -174,6 +181,8 @@ class PullFetchDlg(QDialog):
 
 
 _PULL_ANCHORS = {
+    "IDC_GROUPT_REMOTE": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_GROUP_OPTION": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_REMOTE_COMBO": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_OTHER": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_REMOTE_BRANCH": ("TOP_LEFT", "TOP_RIGHT"),

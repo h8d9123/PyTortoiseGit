@@ -269,6 +269,18 @@ def test_fetch_dialog(qapp, repo):
     assert dlg.chk_squash.isHidden()  # fetch 模式隐藏合并选项
 
 
+def test_pull_dialog_has_groupboxes(qapp, repo):
+    from PySide6.QtWidgets import QGroupBox
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    dlg = _smoke(qapp, lambda: PullFetchDlg(repo, fetch_only=False))
+    # 对齐 IDD_PULLFETCH：Remote / Options 两个分组框
+    assert isinstance(dlg.grp_remote, QGroupBox)
+    assert isinstance(dlg.grp_options, QGroupBox)
+    assert dlg.grp_remote.title() and dlg.grp_options.title()
+    assert dlg.grp_remote.geometry().width() > 0
+    assert dlg.grp_options.geometry().height() > 0
+
+
 def test_reset_dialog(qapp, repo):
     from pytortoisegit.dialogs.resetdlg import ResetDlg
     dlg = _smoke(qapp, lambda: ResetDlg(repo))

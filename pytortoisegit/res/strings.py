@@ -1078,6 +1078,8 @@ STRINGS: Dict[str, str] = {
     "call_remove": "移除(&R)",
     "log": "日志",
     "stat_graph": "图表",
+    "pull_group_remote": "远程",
+    "pull_group_options": "选项",
 }
 
 

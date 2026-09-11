@@ -505,6 +505,80 @@ class _AdvancedPage(_SettingPage):
         return self._ctl.get("IDC_CONFIG")
 
 
+class _BlamePage(_SettingPage):
+    """IDD_SETTINGSTBLAME —— TortoiseGitBlame：字体/颜色/移动行检测。"""
+
+    TEMPLATE = "IDD_SETTINGSTBLAME"
+
+    _DEFAULT_COLORS = {
+        "IDC_NEWLINESCOLOR": "#ffff88",
+        "IDC_OLDLINESCOLOR": "#ffffff",
+    }
+
+    def _build_ui(self):
+        super()._build_ui()
+        self._fill_fonts()
+        self._apply_colors()
+        if c := self._ctl.get("IDC_DETECT_MOVED_OR_COPIED_LINES"):
+            c.addItems(["", "0", "1", "2"])
+        if b := self._ctl.get("IDC_RESTORE"):
+            b.clicked.connect(self._apply_colors)
+
+    def _fill_fonts(self):
+        from PySide6.QtGui import QFontDatabase
+        if c := self._ctl.get("IDC_FONTNAMES"):
+            c.addItems(QFontDatabase.families())
+        if c := self._ctl.get("IDC_FONTSIZES"):
+            c.addItems([str(s) for s in range(6, 73)])
+
+    def _apply_colors(self):
+        for cid, color in self._DEFAULT_COLORS.items():
+            w = self._ctl.get(cid)
+            if w is not None:
+                w.setText("")
+                w.setStyleSheet(f"background-color: {color};")
+
+
+class _UDiffPage(_SettingPage):
+    """IDD_SETTINGSUDIFF —— TortoiseGitUDiff：字体/颜色。"""
+
+    TEMPLATE = "IDD_SETTINGSUDIFF"
+
+    # 对齐 DiffView.LIGHT 默认配色
+    _DEFAULT_COLORS = {
+        "IDC_FORECOMMANDCOLOR": "#0a2436",
+        "IDC_BACKCOMMANDCOLOR": "#ffffff",
+        "IDC_FOREPOSITIONCOLOR": "#ff0000",
+        "IDC_BACKPOSITIONCOLOR": "#ffffff",
+        "IDC_FOREHEADERCOLOR": "#800000",
+        "IDC_BACKHEADERCOLOR": "#ffff80",
+        "IDC_FORECOMMENTCOLOR": "#008000",
+        "IDC_BACKCOMMENTCOLOR": "#ffffff",
+        "IDC_FOREADDEDCOLOR": "#000000",
+        "IDC_BACKADDEDCOLOR": "#ccffcc",
+        "IDC_FOREREMOVEDCOLOR": "#000000",
+        "IDC_BACKREMOVEDCOLOR": "#ffdddd",
+    }
+
+    def _build_ui(self):
+        super()._build_ui()
+        from PySide6.QtGui import QFontDatabase
+        if c := self._ctl.get("IDC_FONTNAMES"):
+            c.addItems(QFontDatabase.families())
+        if c := self._ctl.get("IDC_FONTSIZES"):
+            c.addItems([str(s) for s in range(6, 73)])
+        self._apply_colors()
+        if b := self._ctl.get("IDC_RESTORE"):
+            b.clicked.connect(self._apply_colors)
+
+    def _apply_colors(self):
+        for cid, color in self._DEFAULT_COLORS.items():
+            w = self._ctl.get(cid)
+            if w is not None:
+                w.setText("")
+                w.setStyleSheet(f"background-color: {color};")
+
+
 # ---------------------------------------------------------------------------
 # 设置主对话框
 # ---------------------------------------------------------------------------
@@ -623,8 +697,8 @@ class SettingsDlg(QDialog):
         self._add_page("merge", _MergePage(self), "IDI_MERGEACTIVE", diff)
 
         self._add_page("save", _RcPage("IDD_SETTINGSSAVEDDATA", self), "IDI_SAVEDDATA")
-        self._add_page("blame", _RcPage("IDD_SETTINGSTBLAME", self), "IDI_TORTOISEBLAME")
-        self._add_page("udiff", _RcPage("IDD_SETTINGSUDIFF", self), "IDI_TORTOISEUDIFF")
+        self._add_page("blame", _BlamePage(self), "IDI_TORTOISEBLAME")
+        self._add_page("udiff", _UDiffPage(self), "IDI_TORTOISEUDIFF")
         self._add_page("advanced", _AdvancedPage(self), "IDI_GENERAL")
 
         self.tree.expandAll()

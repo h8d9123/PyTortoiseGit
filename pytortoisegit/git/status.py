@@ -86,6 +86,24 @@ class GitStatusEntry:
         }
 
     @property
+    def overlay_key(self) -> str:
+        """覆盖图标类别（对齐 TortoiseOverlays 的状态优先级）。"""
+        x, y = self.index_status, self.worktree_status
+        if self.is_conflicted:
+            return "conflicted"
+        if "D" in (x, y):
+            return "deleted"
+        if "A" in (x, y):
+            return "added"
+        if self.is_untracked:
+            return "unversioned"
+        if x == "!" or y == "!":
+            return "ignored"
+        if "R" in (x, y) or "C" in (x, y) or "M" in (x, y) or "T" in (x, y):
+            return "modified"
+        return "normal"
+
+    @property
     def status_text(self) -> str:
         if self.is_untracked:
             return tr("status_untracked", "Untracked")

@@ -397,6 +397,50 @@ def test_git_icon_provider_prewarms_icon(qapp):
     assert not provider._git_icon.isNull()
 
 
+def test_overlay_icons_and_compose(qapp):
+    import os
+    import tempfile
+    from PySide6.QtCore import QFileInfo
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import QFileIconProvider
+    from pytortoisegit.res import overlays
+    for st in ("normal", "modified", "added", "conflicted", "deleted",
+               "unversioned", "ignored"):
+        ic = overlays.overlay_icon(st)
+        assert ic is not None and not ic.isNull(), st
+    # 空基础图标原样返回
+    assert overlays.compose(QIcon(), "normal").isNull()
+    d = tempfile.mkdtemp()
+    p = os.path.join(d, "f.txt")
+    open(p, "w", encoding="utf-8").write("x")
+    base = QFileIconProvider().icon(QFileInfo(p))
+    assert not overlays.compose(base, "normal").isNull()
+    assert not overlays.compose(base, "modified").isNull()
+
+
+def test_overlay_key_classification():
+    from pytortoisegit.git.status import GitStatusEntry
+    def key(x, y):
+        return GitStatusEntry(x, y, "p").overlay_key
+    assert key("?", " ") == "unversioned"
+    assert key(" ", "M") == "modified"
+    assert key("M", " ") == "modified"
+    assert key("A", " ") == "added"
+    assert key("D", " ") == "deleted"
+    assert key("U", "U") == "conflicted"
+    assert key("!", "!") == "ignored"
+    assert key(" ", " ") == "normal"
+
+
+def test_main_window_builds_overlay_icons(qapp, repo):
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    dlg = MainMenuDlg(repo_path=str(repo.root))
+    icons = dlg._build_overlay_icons(str(repo.root))
+    assert icons  # 至少 modified / untracked 之一带覆盖
+    for ic in icons.values():
+        assert ic is not None and not ic.isNull()
+
+
 def test_pull_dialog_horizontal_resize_only(qapp, repo):
     from pytortoisegit.dialogs.pulldlg import PullFetchDlg
     dlg = PullFetchDlg(repo, fetch_only=False)

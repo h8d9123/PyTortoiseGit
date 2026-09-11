@@ -29,6 +29,12 @@ if _anim_dir.is_dir():
     datas += [(_path, "pytortoisegit/res/animation")
               for _path in sorted(str(p) for p in _anim_dir.glob("*.gif"))]
 
+# 加入版本控制状态覆盖图标（overlay/*.ico，跨平台绿勾等）
+_overlay_dir = Path("pytortoisegit/res/overlay")
+if _overlay_dir.is_dir():
+    datas += [(_path, "pytortoisegit/res/overlay")
+              for _path in sorted(str(p) for p in _overlay_dir.glob("*.ico"))]
+
 # 加入许可与归属文件
 for _lic in ("LICENSE", "NOTICE"):
     if Path(_lic).is_file():

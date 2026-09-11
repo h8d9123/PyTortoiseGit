@@ -157,6 +157,7 @@ class MainMenuDlg(QMainWindow):
         self._nav_stack: list[str] = []   # 后退历史
         self._nav_forward: list[str] = []  # 前进历史
         self._nav_current: str = ""
+        self._status_cache: dict = {}   # 仓库根 -> (时间戳, 状态条目)
         self._build_menu()
         self._build_central()
         self._build_statusbar()
@@ -348,12 +349,84 @@ class MainMenuDlg(QMainWindow):
         # 强制刷新图标缓存：stash push/pop 会删除再重建目录，Qt 的
         # QFileSystemModel 可能保留旧的目录图标（例如误用 git 文件夹图标）。
         # 重新设置 iconProvider 会让模型重新请求图标。
-        self.fs_model.setIconProvider(_GitIconProvider(self))
+        # 同时在 GUI 线程预构建「基础图标 + 状态覆盖」，供后台线程查表使用。
+        provider = _GitIconProvider(self)
+        provider.set_icons(self._build_overlay_icons(abspath))
+        self.fs_model.setIconProvider(provider)
         self.fs_model.setRootPath(abspath)
         self.content_list.setRootIndex(self.fs_model.index(abspath))
         self._nav_current = abspath
         self.path_row.setText(abspath)
         self._update_nav_buttons()
+
+    def _status_entries(self, root: str) -> list:
+        """取仓库状态条目（带 2 秒缓存，避免频繁 git status）。"""
+        import time
+        now = time.time()
+        cached = self._status_cache.get(root)
+        if cached and now - cached[0] < 2.0:
+            return cached[1]
+        entries: list = []
+        try:
+            from ..git.repo import Repository
+            from ..git.status import GitStatus
+            entries = GitStatus(Repository.open(root)).get_status()
+        except Exception:  # noqa: BLE001
+            entries = []
+        self._status_cache[root] = (now, entries)
+        return entries
+
+    def _build_overlay_icons(self, directory: str) -> dict:
+        """为 directory 下的条目构建 规范化路径 -> 合成图标（GUI 线程）。"""
+        out: dict = {}
+        root = find_repo_root(directory)
+        if not root:
+            return out
+        try:
+            from PySide6.QtCore import QFileInfo
+            from PySide6.QtWidgets import QFileIconProvider
+            from ..res import icons, overlays
+        except Exception:  # noqa: BLE001
+            return out
+        root_nc = os.path.normcase(os.path.abspath(root))
+        file_state: dict = {}
+        dir_state: dict = {}
+        for e in self._status_entries(root):
+            key = e.overlay_key
+            p = os.path.normcase(os.path.abspath(os.path.join(root, e.path)))
+            file_state[p] = overlays.worse(file_state.get(p), key)
+            d = os.path.dirname(p)
+            while d.startswith(root_nc) and len(d) > len(root_nc):
+                dir_state[d] = overlays.worse(dir_state.get(d), key)
+                d = os.path.dirname(d)
+        try:
+            names = os.listdir(directory)
+        except OSError:
+            return out
+        base_provider = QFileIconProvider()
+        git_icon = None
+        for name in names:
+            full = os.path.join(directory, name)
+            nc = os.path.normcase(os.path.abspath(full))
+            try:
+                is_dir = os.path.isdir(full)
+            except OSError:
+                continue
+            if is_dir:
+                status = dir_state.get(nc, "normal")
+                if nc == root_nc:
+                    if git_icon is None:
+                        git_icon = icons.icon("IDI_GITFOLDER")
+                    base = git_icon
+                else:
+                    base = base_provider.icon(QFileInfo(full))
+            else:
+                status = file_state.get(nc, "normal")
+                base = base_provider.icon(QFileInfo(full))
+            ic = overlays.compose(base, status)
+            if ic is not None:
+                out[nc] = ic
+        return out
 
     def _navigate(self, path: str):
         """进入目录并记录导航历史（后退可回退）。"""
@@ -924,24 +997,33 @@ def _noop(*_a, **_k):
 
 
 class _GitIconProvider(QFileIconProvider):
-    """QFileSystemModel 图标提供者：把 git 仓库根目录标为 Git 图标。
+    """QFileSystemModel 图标提供者：仓库根用 git 图标，版本控制文件叠加状态覆盖。
 
     注意：QFileSystemModel 会在后台线程调用 icon()，而 QPixmap 只能在 GUI
-    线程创建（在 Linux/X11 下跨线程创建会段错误）。因此这里在构造（GUI
-    线程）时预加载图标，icon() 只返回缓存的 QIcon。
+    线程创建（在 Linux/X11 下跨线程创建会段错误）。因此所有合成图标都在
+    GUI 线程预先构建并存入 self._icons，icon() 只做查表返回。
     """
 
     def __init__(self, owner):
         super().__init__()
         self._owner = owner
         self._git_icon = None
+        self._icons: dict = {}
         try:
             from ..res import icons
             self._git_icon = icons.icon("IDI_GITFOLDER")
         except Exception:  # noqa: BLE001
             pass
 
+    def set_icons(self, mapping: dict) -> None:
+        """在 GUI 线程设置 规范化路径 -> 合成图标。"""
+        self._icons = mapping
+
     def icon(self, info):  # noqa: A003 - 覆写基类成员名
+        key = os.path.normcase(info.absoluteFilePath())
+        ic = self._icons.get(key)
+        if ic is not None:
+            return ic
         if info.isDir() and self._git_icon is not None and not self._git_icon.isNull():
             p = info.absoluteFilePath()
             # 仅仓库工作树根目录显示 git 图标；其余目录（含未受版本管理的

@@ -53,6 +53,8 @@ def main(argv: list | None = None) -> int:
     from PySide6.QtWidgets import QApplication
 
     qapp = QApplication.instance() or QApplication([])
+    from .ui.theme import apply_theme
+    apply_theme(qapp)
     try:
         from .dialogs.settingsdlg import general_settings
         set_language(general_settings().value("language", "zh_CN"))

@@ -334,7 +334,7 @@ def _closed_field_height(fu: DialogUnits, widget) -> int:
 
 def place_widget(dlg, fu: DialogUnits, ctrl: Control, widget) -> None:
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QComboBox, QLineEdit, QWidget
+    from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QWidget
     r = fu.px(ctrl.x, ctrl.y, ctrl.w, ctrl.h)
     combo_like = _is_combo_template(ctrl) or isinstance(widget, QComboBox)
     single_line = isinstance(widget, QLineEdit)
@@ -344,14 +344,18 @@ def place_widget(dlg, fu: DialogUnits, ctrl: Control, widget) -> None:
             extra = max(ctrl.h - _CLOSED_COMBO_DLU, 30)
             widget.setMaxVisibleItems(max(8, extra // 12))
     widget.setParent(dlg)
-    widget.setGeometry(r)
     widget.setObjectName(ctrl.ctrl_id)
-    if ctrl.hidden:
-        widget.hide()
     if isinstance(widget, QWidget):
         font = widget.font()
         font.setPointSize(dlg.font().pointSize())
         widget.setFont(font)
+    # 单行标签：DLU 高度按西文行高换算，回退/CJK 字体行高更大时底部会被裁切，
+    # 这里保证至少容纳实际文本高度（对齐 Windows 显示）。
+    if isinstance(widget, QLabel) and not widget.wordWrap() and not ctrl.hidden:
+        r.setHeight(max(r.height(), widget.sizeHint().height()))
+    widget.setGeometry(r)
+    if ctrl.hidden:
+        widget.hide()
     widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
 

@@ -1321,3 +1321,28 @@ def test_progress_dialog_has_animation(qapp):
     assert dlg._movie is not None and dlg._movie.isValid()
     assert dlg._movie.frameCount() >= 2
     assert dlg._anim.width() > 0 and dlg._anim.height() > 0
+
+
+def test_theme_embeds_groupbox_title(qapp):
+    from pytortoisegit.ui.theme import GROUPBOX_QSS, apply_theme
+    old = qapp.styleSheet()
+    try:
+        apply_theme(qapp)
+        assert qapp.styleSheet() == GROUPBOX_QSS
+        assert "QGroupBox::title" in GROUPBOX_QSS
+        assert "subcontrol-position: top left" in GROUPBOX_QSS
+    finally:
+        qapp.setStyleSheet(old)
+
+
+def test_place_widget_label_height_fits_text(qapp):
+    from PySide6.QtWidgets import QDialog, QLabel
+    from pytortoisegit.ui import rc as rc_mod
+    from pytortoisegit.ui.rc import DialogUnits
+    dlg = QDialog()
+    fu = DialogUnits(9, "Segoe UI")
+    ctrl = rc_mod.Control(kind="LTEXT", text="管理远程", ctrl_id="X", cls="",
+                          style="", x=0, y=0, w=60, h=8)
+    lbl = QLabel("管理远程", dlg)
+    rc_mod.place_widget(dlg, fu, ctrl, lbl)
+    assert lbl.height() >= lbl.sizeHint().height()

@@ -60,11 +60,13 @@ class GitSwitchDlg(QDialog):
         self.rd_branch = QRadioButton(tr("switch_branch", "&Branch"), self)
         self.branch_combo = QComboBox(self)
         self.btn_browse_ref = QPushButton("...", self)
+        self.btn_browse_ref.clicked.connect(self._on_browse_ref)
         self.rd_tags = QRadioButton(tr("switch_tag", "&Tag"), self)
         self.tags_combo = QComboBox(self)
         self.rd_version = QRadioButton(tr("switch_commit", "&Commit"), self)
         self.version_combo = QComboBox(self)
         self.btn_show = QPushButton("...", self)
+        self.btn_show.clicked.connect(self._on_show)
 
         self.chk_newbranch = QCheckBox(tr("switch_newbranch", "Create &New Branch"), self)
         self.newbranch_edit = QLineEdit(self)
@@ -115,26 +117,73 @@ class GitSwitchDlg(QDialog):
             if a:
                 self._anchors.add(wgt, a[0], a[1] if len(a) > 1 else None)
 
+        # 用完整 refname 区分分支/标签/远端；%(refname:short) 不含 heads/tags 前缀，
+        # 之前按 "heads/" 过滤导致分支/标签下拉为空。
         out = self.repo.runner.run("for-each-ref",
                                    "--format=%(refname)").stdout or ""
         refs = [x.strip() for x in out.splitlines() if x.strip()]
-        branches = [r[len("refs/heads/"):] for r in refs
-                    if r.startswith("refs/heads/")]
-        tags = [r[len("refs/tags/"):] for r in refs
-                if r.startswith("refs/tags/")]
-        remotes = [r[len("refs/remotes/"):] for r in refs
-                   if r.startswith("refs/remotes/") and not r.endswith("/HEAD")]
+        self._refs: list = []
+        for r in refs:
+            if r.startswith("refs/heads/"):
+                self._refs.append(("branch", r[len("refs/heads/"):]))
+            elif r.startswith("refs/remotes/") and not r.endswith("/HEAD"):
+                self._refs.append(("remote", r[len("refs/remotes/"):]))
+            elif r.startswith("refs/tags/"):
+                self._refs.append(("tag", r[len("refs/tags/"):]))
+        branches = [n for t, n in self._refs if t == "branch"]
+        remotes = [n for t, n in self._refs if t == "remote"]
+        tags = [n for t, n in self._refs if t == "tag"]
         self.branch_combo.addItems(branches)
         self.branch_combo.setEditable(True)
         self.tags_combo.addItems(tags)
+        self.tags_combo.setEditable(True)
         self.version_combo.addItems(branches + tags + remotes + ["HEAD"])
         self.version_combo.setEditable(True)
+        for rd in (self.rd_branch, self.rd_tags, self.rd_version):
+            rd.toggled.connect(self._update_radios)
         self.rd_branch.setChecked(True)
+        self._update_radios()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if hasattr(self, "_anchors"):
             self._anchors.apply(self.width(), self.height())
+
+    def _update_radios(self, *_a):
+        """对齐 OnBnClickedChooseRadio：按选中的单选启用对应下拉/按钮。"""
+        self.branch_combo.setEnabled(self.rd_branch.isChecked())
+        self.btn_browse_ref.setEnabled(self.rd_branch.isChecked())
+        self.tags_combo.setEnabled(self.rd_tags.isChecked())
+        self.version_combo.setEnabled(self.rd_version.isChecked())
+        self.btn_show.setEnabled(self.rd_version.isChecked())
+
+    def _on_browse_ref(self):
+        """IDC_BUTTON_BROWSE_REF：选一个引用（分支/标签）填入对应下拉。"""
+        from PySide6.QtWidgets import QInputDialog
+        if not self._refs:
+            return
+        items = [f"{t}: {n}" for t, n in self._refs]
+        choice, ok = QInputDialog.getItem(
+            self, tr("switch_browse_ref", "Browse refs"),
+            tr("switch_browse_ref_prompt", "Select a ref:"), items, 0, False)
+        if not ok:
+            return
+        rtype, name = self._refs[items.index(choice)]
+        if rtype == "tag":
+            self.rd_tags.setChecked(True)
+            self.tags_combo.setCurrentText(name)
+        else:
+            self.rd_branch.setChecked(True)
+            self.branch_combo.setCurrentText(name)
+
+    def _on_show(self):
+        """IDC_BUTTON_SHOW：打开日志以选择提交，回填到 Commit 下拉。"""
+        from PySide6.QtWidgets import QDialog
+        from .logdlg import LogDlg
+        dlg = LogDlg(self.repo, parent=self, select=True)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.selected_hash:
+            self.rd_version.setChecked(True)
+            self.version_combo.setCurrentText(dlg.selected_hash)
 
     def _target(self) -> str:
         if self.rd_tags.isChecked():

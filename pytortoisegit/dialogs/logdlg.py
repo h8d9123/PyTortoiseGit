@@ -64,11 +64,13 @@ class LogDlg(QDialog):
     """日志查看主对话框。"""
 
     def __init__(self, repo: Repository, pathspec: str | None = None,
-                 rev: str | None = None, parent=None):
+                 rev: str | None = None, parent=None, select: bool = False):
         super().__init__(parent, Qt.WindowType.Window)
         self.repo = repo
         self.pathspec = pathspec
         self.rev = rev
+        self.select_mode = select
+        self.selected_hash: Optional[str] = None
         self.log = GitRevLoglist(repo)
         self.current_item: Optional[QTreeWidgetItem] = None
         self._ordering: str = "default"
@@ -194,9 +196,10 @@ class LogDlg(QDialog):
         self.btn_walk.clicked.connect(self._on_walk)
         self.btn_view = QPushButton(tr("log_view", "&View"), self)
         self.btn_view.clicked.connect(self._on_view_menu)
-        self.btn_ok = QPushButton(tr("ok"), self)
+        self.btn_ok = QPushButton(
+            tr("select", "Select") if self.select_mode else tr("ok"), self)
         self.btn_ok.setDefault(True)
-        self.btn_ok.clicked.connect(self.reject)
+        self.btn_ok.clicked.connect(self._on_select if self.select_mode else self.reject)
         self.btn_cancel = QPushButton(tr("cancel"), self)
         self.btn_cancel.clicked.connect(self.reject)
         self.limit_spin = QSpinBox(self)
@@ -389,6 +392,18 @@ class LogDlg(QDialog):
             if c is not None:
                 out.append(c)
         return out
+
+    def _on_select(self):
+        """选择模式（SetSelect）：确定当前提交并返回其 hash。"""
+        commits = self._selected_commits()
+        if not commits:
+            cur = self._current_commit()
+            if cur is not None:
+                commits = [cur]
+        if not commits:
+            return
+        self.selected_hash = commits[0].hash
+        self.accept()
 
     def _show_commit(self, commit: GitRev):
         author = f"{commit.author_name} [{commit.author_email}]" if commit.author_email else commit.author_name

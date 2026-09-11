@@ -388,6 +388,24 @@ def test_pull_clipboard_parse(qapp):
     assert PullFetchDlg._parse_pull_clipboard("no url here") == ("", "")
 
 
+def test_pull_dialog_horizontal_resize_only(qapp, repo):
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    dlg = PullFetchDlg(repo, fetch_only=False)
+    w, h = dlg.width(), dlg.height()
+    # 高度固定、有最小宽度（对齐 BlockResize(DIALOG_BLOCKVERTICAL)）
+    assert dlg.minimumHeight() == dlg.maximumHeight() == h
+    assert dlg.minimumWidth() == w
+    dlg.resize(w, h + 200)
+    qapp.processEvents()
+    assert dlg.height() == h                 # 纵向不可变
+    dlg.resize(w + 120, h)
+    qapp.processEvents()
+    assert dlg.width() == w + 120            # 横向可拉伸
+    dlg.resize(10, h)
+    qapp.processEvents()
+    assert dlg.width() >= w                  # 不小于最小宽度
+
+
 def test_reset_dialog(qapp, repo):
     from pytortoisegit.dialogs.resetdlg import ResetDlg
     dlg = _smoke(qapp, lambda: ResetDlg(repo))

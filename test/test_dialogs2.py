@@ -339,7 +339,8 @@ def test_pull_dialog_defaults_to_current_branch(qapp, repo):
     from pytortoisegit.dialogs.pulldlg import PullFetchDlg
     dlg = PullFetchDlg(repo, fetch_only=False)
     # 不再是硬编码 master，而是当前分支（或它跟踪的远程分支）
-    assert dlg.remote_branch_edit.text() == repo.current_branch()
+    assert dlg.remote_branch_edit.currentText() == repo.current_branch()
+    assert dlg.remote_branch_edit.isEditable()
 
 
 def test_pull_dialog_browse_ref_fills_branch(qapp, repo, monkeypatch):
@@ -360,7 +361,31 @@ def test_pull_dialog_browse_ref_fills_branch(qapp, repo, monkeypatch):
     monkeypatch.setattr(srd, "SelectRemoteRefDlg", _FakeRefDlg)
     dlg.btn_browse_ref.click()
     # 去掉远端前缀，填入远程分支名
-    assert dlg.remote_branch_edit.text() == "develop"
+    assert dlg.remote_branch_edit.currentText() == "develop"
+
+
+def test_pull_dialog_source_toggle(qapp, repo):
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    dlg = PullFetchDlg(repo, fetch_only=False)
+    # 默认 Remote：远端下拉可用、URL 输入禁用、rebase 可用
+    assert dlg.remote_combo.isEnabled()
+    assert not dlg.other_edit.isEnabled()
+    assert dlg.chk_rebase.isEnabled()
+    # 切到 Arbitrary URL：反向
+    dlg.rd_other.setChecked(True)
+    qapp.processEvents()
+    assert not dlg.remote_combo.isEnabled()
+    assert dlg.other_edit.isEnabled()
+    assert not dlg.chk_rebase.isEnabled()
+
+
+def test_pull_clipboard_parse(qapp):
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    url, branch = PullFetchDlg._parse_pull_clipboard(
+        "git pull https://github.com/u/r.git develop")
+    assert url == "https://github.com/u/r.git"
+    assert branch == "develop"
+    assert PullFetchDlg._parse_pull_clipboard("no url here") == ("", "")
 
 
 def test_reset_dialog(qapp, repo):

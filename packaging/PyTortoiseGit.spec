@@ -23,6 +23,12 @@ if _ribbon_dir.is_dir():
     datas += [(_path, "pytortoisegit/res/ribbon")
               for _path in sorted(str(p) for p in _ribbon_dir.glob("*.bmp"))]
 
+# 加入进度对话框顶部动画（animation/*.gif，由原版 download.avi 转换）
+_anim_dir = Path("pytortoisegit/res/animation")
+if _anim_dir.is_dir():
+    datas += [(_path, "pytortoisegit/res/animation")
+              for _path in sorted(str(p) for p in _anim_dir.glob("*.gif"))]
+
 # 加入许可与归属文件
 for _lic in ("LICENSE", "NOTICE"):
     if Path(_lic).is_file():

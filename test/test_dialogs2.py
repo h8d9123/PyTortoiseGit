@@ -1280,3 +1280,12 @@ def test_firststart_language_mapping(qapp):
     for idx, expected in enumerate(("English", "zh_CN", "zh_TW", "Deutsch")):
         page.lang_combo.setCurrentIndex(idx)
         assert page.selected_language() == expected
+
+
+def test_progress_dialog_has_animation(qapp):
+    from pytortoisegit.dialogs.progress import ProgressDialog, _ANIMATION
+    assert _ANIMATION.is_file()
+    dlg = ProgressDialog(title="git push")
+    assert dlg._movie is not None and dlg._movie.isValid()
+    assert dlg._movie.frameCount() >= 2
+    assert dlg._anim.width() > 0 and dlg._anim.height() > 0

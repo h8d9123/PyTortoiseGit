@@ -5,9 +5,11 @@ from __future__ import annotations
 import queue
 import sys
 import threading
+from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QMovie
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -19,6 +21,9 @@ from PySide6.QtWidgets import (
 )
 
 from ..res.strings import tr
+
+# 顶部动画：原版 IDD_GITPROGRESS 的 IDC_TITLE_ANIMATE（download.avi）
+_ANIMATION = Path(__file__).resolve().parent.parent / "res" / "animation" / "download.gif"
 
 
 class ProgressDialog(QDialog):
@@ -61,8 +66,21 @@ class ProgressDialog(QDialog):
         self._timer.timeout.connect(self._drain)
 
     def _build_ui(self):
-        # 对齐 IDD_GITPROGRESS：状态行、进度条、日志、Close(完成前禁用)/Abort
+        # 对齐 IDD_GITPROGRESS：顶部动画、状态行、进度条、日志、
+        # Close(完成前禁用)/Abort
         layout = QVBoxLayout(self)
+        self._anim = QLabel(self)
+        self._anim.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._movie = QMovie(str(_ANIMATION)) if _ANIMATION.is_file() else None
+        if self._movie is not None and self._movie.isValid():
+            self._anim.setMovie(self._movie)
+            self._movie.jumpToFrame(0)
+            self._anim.setFixedSize(self._movie.currentPixmap().size())
+        else:
+            self._anim.hide()
+        layout.addWidget(self._anim)
+
         self._label = QLabel(tr("progress_wait", "Please wait…"), self)
         layout.addWidget(self._label)
 
@@ -134,6 +152,8 @@ class ProgressDialog(QDialog):
             self._btn_cancel.clicked.connect(self.cancel)
             self._morphed = False
         self.progress.setRange(0, 0)
+        if self._movie is not None:
+            self._movie.start()
         self._worker_thread = threading.Thread(
             target=self._runner, args=(fn,), daemon=True)
         self._worker_thread.start()
@@ -176,6 +196,8 @@ class ProgressDialog(QDialog):
         self._exit_code = code
         if self._timer.isActive():
             self._timer.stop()
+        if self._movie is not None:
+            self._movie.stop()
         self.progress.setRange(0, 100)
         self.progress.setValue(100)
         if ok:

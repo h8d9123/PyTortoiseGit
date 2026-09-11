@@ -24,6 +24,7 @@
 from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QGroupBox,
     QDialog, QLabel, QPushButton, QRadioButton,
 )
 from ..git.repo import Repository
@@ -49,6 +50,8 @@ class MergeAbortDlg(QDialog):
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
 
+        self.grp_reset_type = QGroupBox(tr("mergeabort_group_reset", "Reset Type"), self)
+
         self.reminder = QLabel(
             tr("mergeabort_reminder",
                "In order to abort a merge progress a reset (type) is performed!"), self)
@@ -72,6 +75,7 @@ class MergeAbortDlg(QDialog):
         self.btn_help = QPushButton(tr("help"), self)
 
         mapping = {
+            "IDC_GROUP_RESET_TYPE": self.grp_reset_type,
             "IDC_STATIC_REMINDER": self.reminder,
             "IDC_RADIO_RESET_MERGE": self.rd_merge,
             "IDC_RADIO_RESET_MIXED": self.rd_mixed,
@@ -119,6 +123,7 @@ class MergeAbortDlg(QDialog):
 
 
 _ANCHORS = {
+    "IDC_GROUP_RESET_TYPE": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_SHOW_MODIFIED_FILES": ("TOP_LEFT", "TOP_RIGHT"),
     "IDOK": ("BOTTOM_RIGHT",),
     "IDCANCEL": ("BOTTOM_RIGHT",),

@@ -24,6 +24,7 @@
 from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QGroupBox,
     QCheckBox, QDialog, QLabel, QLineEdit, QPushButton, QTreeWidget,
     QTreeWidgetItem,
 )
@@ -46,6 +47,8 @@ class SendMailDlg(QDialog):
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
 
+        self.grp_mail = QGroupBox(tr("mail_group", "Mail"), self)
+
         self.to_label = QLabel(tr("mail_to", "To:"), self)
         self.to_edit = QLineEdit(self)
         self.cc_edit = QLineEdit(self)
@@ -64,6 +67,7 @@ class SendMailDlg(QDialog):
         self.btn_help = QPushButton(tr("help"), self)
 
         mapping = {
+            "IDC_SENDMAIL_GROUP": self.grp_mail,
             "IDC_STATIC": self.to_label,
             "IDC_SENDMAIL_TO": self.to_edit,
             "IDC_SENDMAIL_CC": self.cc_edit,
@@ -99,6 +103,7 @@ class SendMailDlg(QDialog):
 
 
 _ANCHORS = {
+    "IDC_SENDMAIL_GROUP": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_SENDMAIL_TO": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_SENDMAIL_CC": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_SENDMAIL_SUBJECT": ("TOP_LEFT", "TOP_RIGHT"),

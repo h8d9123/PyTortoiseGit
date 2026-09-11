@@ -26,6 +26,7 @@ from __future__ import annotations
 import os
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QGroupBox,
     QCheckBox, QComboBox, QDialog, QLabel, QLineEdit, QPushButton, QRadioButton,
 )
 from ..git.repo import Repository
@@ -51,6 +52,9 @@ class WorktreeCreateDlg(QDialog):
         self.setWindowTitle(spec.caption or "New Worktree")
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
+
+        self.grp_branch = QGroupBox(tr("wt_group_branch", "&Location"), self)
+        self.grp_baseon = QGroupBox(tr("wt_group_baseon", "Base On"), self)
 
         self.dir_label = QLabel(tr("wt_dir", "Directory:"), self)
         self.dir_edit = QLineEdit(self)
@@ -84,6 +88,8 @@ class WorktreeCreateDlg(QDialog):
         self.btn_help = QPushButton(tr("help"), self)
 
         mapping = {
+            "IDC_GROUP_BRANCH": self.grp_branch,
+            "IDC_GROUP_BASEON": self.grp_baseon,
             "IDC_LABEL_BRANCH": self.dir_label,
             "IDC_WORKTREE_DIR": self.dir_edit,
             "IDC_BUTTON_DIR": self.btn_browse_dir,
@@ -173,6 +179,8 @@ class WorktreeCreateDlg(QDialog):
 
 
 _ANCHORS = {
+    "IDC_GROUP_BRANCH": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_GROUP_BASEON": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_GROUP_OPTION": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_EDIT_BRANCH": ("TOP_LEFT", "TOP_RIGHT"),
     "IDOK": ("BOTTOM_RIGHT",),

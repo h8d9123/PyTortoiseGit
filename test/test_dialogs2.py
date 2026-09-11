@@ -269,6 +269,28 @@ def test_fetch_dialog(qapp, repo):
     assert dlg.chk_squash.isHidden()  # fetch 模式隐藏合并选项
 
 
+def test_all_spec_groupboxes_created():
+    """每个 load_spec 的对话框都应创建其 .rc 中的全部 GROUPBOX。"""
+    import glob
+    import json
+    import os
+    root = os.path.join(os.path.dirname(__file__), "..", "pytortoisegit")
+    data = json.load(open(os.path.join(root, "res", "rc_dialogs.json"), encoding="utf-8"))
+    srcs = {p: open(p, encoding="utf-8").read()
+            for p in glob.glob(os.path.join(root, "**", "*.py"), recursive=True)}
+    bad = []
+    for d in data:
+        ids = [c["id"] for c in d["controls"] if c["k"] == "GROUPBOX"]
+        if not ids:
+            continue
+        for path, src in srcs.items():
+            if f'load_spec("{d["id"]}")' in src:
+                for gid in ids:
+                    if gid not in src:
+                        bad.append((os.path.relpath(path, root), d["id"], gid))
+    assert not bad, bad
+
+
 def test_pull_dialog_has_groupboxes(qapp, repo):
     from PySide6.QtWidgets import QGroupBox
     from pytortoisegit.dialogs.pulldlg import PullFetchDlg

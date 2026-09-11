@@ -25,6 +25,7 @@
 from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QGroupBox,
     QComboBox, QDialog, QLabel, QLineEdit, QPushButton, QRadioButton,
 )
 from ..git.repo import Repository
@@ -53,6 +54,9 @@ class ResetDlg(QDialog):
         self.setWindowTitle(spec.caption or "Reset")
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
+
+        self.grp_baseon = QGroupBox(tr("reset_group_baseon", "Reset active branch"), self)
+        self.grp_type = QGroupBox(tr("reset_group_type", "Reset Type"), self)
 
         self.cur_label = QLabel(self)
         self.cur_edit = QLineEdit(self)
@@ -86,6 +90,8 @@ class ResetDlg(QDialog):
         self.btn_help = QPushButton(tr("help"), self)
 
         mapping = {
+            "IDC_GROUP_BASEON": self.grp_baseon,
+            "IDC_GROUP_RESET_TYPE": self.grp_type,
             "IDC_STATIC": self.cur_label,
             "IDC_CURRENTBRANCH": self.cur_edit,
             "IDC_RADIO_BRANCH": self.rd_branch,
@@ -160,6 +166,8 @@ class ResetDlg(QDialog):
 
 
 _RESET_ANCHORS = {
+    "IDC_GROUP_BASEON": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_GROUP_RESET_TYPE": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_SHOW_MODIFIED_FILES": ("TOP_LEFT", "TOP_RIGHT"),
     "IDOK": ("BOTTOM_RIGHT",),
     "IDCANCEL": ("BOTTOM_RIGHT",),

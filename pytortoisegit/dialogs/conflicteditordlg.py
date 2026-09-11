@@ -23,7 +23,7 @@
 # This program is derived from and mirrors the TortoiseGit project.
 from __future__ import annotations
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton
+from PySide6.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton, QGroupBox
 from ..git.repo import Repository
 from ..res.strings import tr
 from ..ui import rc as rc_mod
@@ -42,6 +42,8 @@ class ConflictEditorDlg(QDialog):
         self.resize(r.width(), r.height())
         self.setWindowTitle(tr("conflicteditor_title", "Conflict - {}").format(path))
         self._ctl: dict = {}
+
+        self.grp_del = QGroupBox(tr("conflicteditor_group", "Delete/modify merge conflict"), self)
 
         self.info_label = QLabel(tr("conflicteditor_reminder", "Delete/modify merge conflict"), self)
         self.local_status = QLabel(tr("conflicteditor_local", "Local:"), self)
@@ -65,6 +67,7 @@ class ConflictEditorDlg(QDialog):
         self.choice = "abort"
 
         mapping = {
+            "IDC_DEL_GROUP": self.grp_del,
             "IDC_INFOLABEL": self.info_label,
             "IDC_LOCAL_STATUS": self.local_status,
             "IDC_FROMHASH": self.from_hash,

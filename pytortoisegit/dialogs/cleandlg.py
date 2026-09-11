@@ -25,6 +25,7 @@ OK 执行 git clean。
 from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QGroupBox,
     QCheckBox, QDialog, QLabel, QPushButton, QRadioButton,
 )
 from ..git.repo import Repository
@@ -50,6 +51,8 @@ class CleanDlg(QDialog):
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
 
+        self.grp_clean_type = QGroupBox(tr("clean_group_type", "Clean Type"), self)
+
         self.rd_all = QRadioButton(tr("clean_all", "Remove &all untracked files (-fx)"), self)
         self.rd_no = QRadioButton(tr("clean_no", "Remove &non-ignored untracked files (-f)"), self)
         self.rd_ignore = QRadioButton(tr("clean_ignored", "Remove ignored files (-fX)"), self)
@@ -69,6 +72,7 @@ class CleanDlg(QDialog):
         self.btn_help = QPushButton(tr("help"), self)
 
         mapping = {
+            "IDC_GROUP_CLEAN_TYPE": self.grp_clean_type,
             "IDC_RADIO_CLEAN_ALL": self.rd_all,
             "IDC_RADIO_CLEAN_NO": self.rd_no,
             "IDC_RADIO_CLEAN_IGNORE": self.rd_ignore,

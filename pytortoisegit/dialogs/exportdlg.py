@@ -26,6 +26,7 @@ from __future__ import annotations
 import os
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QGroupBox,
     QComboBox, QDialog, QLabel, QLineEdit, QPushButton, QRadioButton,
 )
 from ..git.repo import Repository
@@ -56,6 +57,8 @@ class ExportDlg(QDialog):
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
 
+        self.grp_revision = QGroupBox(tr("export_group_revision", "Revision"), self)
+
         self.file_label = QLabel(tr("export_file", "Zip File"), self)
         self.file_edit = QLineEdit(self)
         self.btn_browse = QPushButton("...", self)
@@ -79,6 +82,7 @@ class ExportDlg(QDialog):
         self.btn_help = QPushButton(tr("help"), self)
 
         mapping = {
+            "IDC_GROUP_BASEON": self.grp_revision,
             "IDC_EXPORTFILE_LABEL": self.file_label,
             "IDC_EXPORTFILE": self.file_edit,
             "IDC_EXPORTFILE_BROWSE": self.btn_browse,
@@ -159,6 +163,7 @@ class ExportDlg(QDialog):
 
 
 _ANCHORS = {
+    "IDC_GROUP_BASEON": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_REPOGROUP": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_EXPORTFILE_LABEL": ("TOP_LEFT",),
     "IDC_EXPORTFILE": ("TOP_LEFT", "TOP_RIGHT"),

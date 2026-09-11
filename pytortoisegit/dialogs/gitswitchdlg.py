@@ -25,6 +25,7 @@
 from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QGroupBox,
     QCheckBox, QComboBox, QDialog, QLineEdit, QPushButton, QRadioButton,
 )
 from ..git.repo import Repository
@@ -53,6 +54,8 @@ class GitSwitchDlg(QDialog):
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
 
+        self.grp_baseon = QGroupBox(tr("switch_group_baseon", "Switch To"), self)
+
         self.rd_branch = QRadioButton(tr("switch_branch", "&Branch"), self)
         self.branch_combo = QComboBox(self)
         self.btn_browse_ref = QPushButton("...", self)
@@ -79,6 +82,7 @@ class GitSwitchDlg(QDialog):
         self.btn_help = QPushButton(tr("help"), self)
 
         mapping = {
+            "IDC_GROUP_BASEON": self.grp_baseon,
             "IDC_RADIO_BRANCH": self.rd_branch,
             "IDC_COMBOBOXEX_BRANCH": self.branch_combo,
             "IDC_BUTTON_BROWSE_REF": self.btn_browse_ref,
@@ -158,6 +162,7 @@ class GitSwitchDlg(QDialog):
 
 
 _ANCHORS = {
+    "IDC_GROUP_BASEON": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_GROUP_OPTION": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_EDIT_BRANCH": ("TOP_LEFT", "TOP_RIGHT"),
     "IDOK": ("BOTTOM_RIGHT",),

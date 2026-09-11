@@ -26,6 +26,7 @@ from __future__ import annotations
 import os
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QGroupBox,
     QDialog, QLabel, QPushButton, QRadioButton,
 )
 from ..git.repo import Repository
@@ -51,6 +52,9 @@ class IgnoreDlg(QDialog):
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
 
+        self.grp_ignore_type = QGroupBox(tr("ignore_group_type", "Ignore Type"), self)
+        self.grp_ignore_file = QGroupBox(tr("ignore_group_file", "Ignore File"), self)
+
         self.rd_only_folder = QRadioButton(
             tr("ignore_onlyfolder", "Ignore item(s) only in the containing folder"), self)
         self.rd_recursive = QRadioButton(
@@ -70,6 +74,8 @@ class IgnoreDlg(QDialog):
         self.btn_help = QPushButton(tr("help"), self)
 
         mapping = {
+            "IDC_GROUP_IGNORE_TYPE": self.grp_ignore_type,
+            "IDC_GROUP_IGNORE_FILE": self.grp_ignore_file,
             "IDC_RADIO_IGNORETYPE_ONLYINFOLDER": self.rd_only_folder,
             "IDC_RADIO_IGNORETYPE_RECURSIVELY": self.rd_recursive,
             "IDC_RADIO_IGNOREFILE_GLOBALGITIGNORE": self.rd_root,

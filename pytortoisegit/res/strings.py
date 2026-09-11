@@ -1080,6 +1080,21 @@ STRINGS: Dict[str, str] = {
     "stat_graph": "图表",
     "pull_group_remote": "远程",
     "pull_group_options": "选项",
+    # ---- 分组框标题 ----
+    "clean_group_type": "清理类型",
+    "export_group_revision": "修订",
+    "fmt_patch_group_dir": "输出目录",
+    "fmt_patch_group_version": "版本",
+    "switch_group_baseon": "切换到",
+    "ignore_group_type": "忽略类型",
+    "ignore_group_file": "忽略文件",
+    "mergeabort_group_reset": "重置类型",
+    "reset_group_baseon": "重置当前分支",
+    "reset_group_type": "重置类型",
+    "conflicteditor_group": "删除/修改合并冲突",
+    "mail_group": "邮件",
+    "wt_group_branch": "位置",
+    "wt_group_baseon": "基于",
 }
 
 

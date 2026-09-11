@@ -27,6 +27,7 @@ from __future__ import annotations
 import os
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QGroupBox,
     QCheckBox, QComboBox, QDialog, QLabel, QLineEdit, QPushButton,
     QRadioButton, QSpinBox,
 )
@@ -53,6 +54,9 @@ class FormatPatchDlg(QDialog):
         self.setWindowTitle(spec.caption or "Format Patch")
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
+
+        self.grp_dir = QGroupBox(tr("fmt_patch_group_dir", "Output Directory"), self)
+        self.grp_version = QGroupBox(tr("fmt_patch_group_version", "Version"), self)
 
         self.dir_label = QLabel(tr("fmt_patch_dir", "Directory:"), self)
         self.dir_combo = QComboBox(self)
@@ -90,6 +94,8 @@ class FormatPatchDlg(QDialog):
         self.btn_help = QPushButton(tr("help"), self)
 
         mapping = {
+            "IDC_GROUP_DIR": self.grp_dir,
+            "IDC_GROUP_VERSION": self.grp_version,
             "IDC_STATIC": self.dir_label,
             "IDC_COMBOBOXEX_DIR": self.dir_combo,
             "IDC_BUTTON_DIR": self.btn_dir,
@@ -182,6 +188,8 @@ class FormatPatchDlg(QDialog):
 
 
 _ANCHORS = {
+    "IDC_GROUP_DIR": ("TOP_LEFT", "TOP_RIGHT"),
+    "IDC_GROUP_VERSION": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_COMBOBOXEX_DIR": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_BUTTON_DIR": ("TOP_RIGHT",),
     "IDC_COMBOBOXEX_SINCE": ("TOP_LEFT", "TOP_RIGHT"),

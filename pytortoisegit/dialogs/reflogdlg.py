@@ -159,6 +159,15 @@ class ReflogDlg(QDialog):
             if wgt is not None:
                 rc_mod.place_widget(self, fu, ctrl, wgt)
 
+        # IDC_STATIC_REF 模板仅 27 DLU，中文标签（如 "引用(&R):"）会被裁切，
+        # 按实际文本宽度放宽（不侵入右侧 combo）。
+        from PySide6.QtGui import QFontMetrics
+        fm = QFontMetrics(self.ref_label.font())
+        need = fm.horizontalAdvance(self.ref_label.text()) + 4
+        if self.ref_combo is not None:
+            need = min(need, self.ref_combo.x() - self.ref_label.x() - 4)
+        self.ref_label.setFixedWidth(max(self.ref_label.width(), need))
+
         # ref 列表填充
         try:
             refs = self.repo.runner.run(

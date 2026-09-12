@@ -126,6 +126,10 @@ def main(argv):
         from pytortoisegit.dialogs.mergedlg import MergeDlg
         _shot(app, MergeDlg(repo), "merge", wait=1.0)
 
+    if should("rebase"):
+        from pytortoisegit.dialogs.rebasedlg import RebaseDlg
+        _shot(app, RebaseDlg(repo), "rebase", wait=1.5)
+
     if should("revisiongraph"):
         from pytortoisegit.dialogs.revisiongraphdlg import RevisionGraphDlg
         _shot(app, RevisionGraphDlg(repo), "revisiongraph", wait=2.0)

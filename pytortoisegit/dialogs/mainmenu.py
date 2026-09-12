@@ -190,6 +190,21 @@ class MainMenuDlg(QMainWindow):
         # 命令（列出所有已注册命令，按功能分组）
         m_cmd = bar.addMenu(tr("menu_commands", "&Commands"))
         self._build_command_menu(m_cmd)
+        # 设置
+        m_settings = bar.addMenu(tr("menu_settings", "&Settings"))
+        act_settings = QAction(tr("menu_cmd_settings", "Settings…"), self)
+        self._set_action_icon(act_settings, "IDI_SETTINGS")
+        act_settings.triggered.connect(lambda: self._dispatch("settings"))
+        m_settings.addAction(act_settings)
+        act_firststart = QAction(
+            tr("menu_cmd_firststart", "First Start Wizard…"), self)
+        act_firststart.triggered.connect(lambda: self._dispatch("firststart"))
+        m_settings.addAction(act_firststart)
+        m_settings.addSeparator()
+        act_update = QAction(
+            tr("menu_cmd_updatecheck", "Check for updates…"), self)
+        act_update.triggered.connect(lambda: self._dispatch("updatecheck"))
+        m_settings.addAction(act_update)
         # 帮助
         m_help = bar.addMenu(tr("menu_help", "&Help"))
         act_about = QAction(tr("about_title", "About"), self)
@@ -504,31 +519,32 @@ class MainMenuDlg(QMainWindow):
             self._navigate(path)
 
     def _build_dir_menu(self, path: str, parent=None) -> "QMenu":
-        """目录右键菜单：工作树内→经典 Git 菜单；否则→Clone…+Settings。"""
+        """目录右键菜单：基本操作 + TortoiseGit 两级。"""
         from PySide6.QtWidgets import QMenu
-        if self._inside_repo(path):
-            return self._build_classic_menu(path, parent or self.content_list)
         menu = QMenu(parent or self.content_list)
-        act_clone = menu.addAction(tr("repo_menu_clone", "Git Clone…"))
-        self._set_action_icon(act_clone, "IDI_CLONE")
-        act_clone.triggered.connect(
-            lambda _=False, p=path: self._run_clone_in(p))
-        act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
-        self._set_action_icon(act_set, "IDI_SETTINGS")
-        act_set.triggered.connect(
-            lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))
+        self._add_basic_ops(menu, path)
+        tg = self._add_tortoisegit_submenu(menu, path)
+        if not self._inside_repo(path):
+            act_clone = tg.addAction(tr("repo_menu_clone", "Git Clone…"))
+            self._set_action_icon(act_clone, "IDI_CLONE")
+            act_clone.triggered.connect(
+                lambda _=False, p=path: self._run_clone_in(p))
+            act_set = tg.addAction(tr("repo_menu_settings", "Settings"))
+            self._set_action_icon(act_set, "IDI_SETTINGS")
+            act_set.triggered.connect(
+                lambda _=False, p=path:
+                self._dispatch("settings", extra={"path": p}))
         return menu
 
     def _build_blank_menu(self, path: str, parent=None) -> "QMenu":
-        """内容区空白处右键菜单（参考 TortoiseGit 文件夹背景菜单）。
-
-        工作树内由状态引擎决定显示项（Pull/Push/Sync/Commit/Diff/Show log/
-        Repo Browser/Stash/Revert/Switch/Merge/Settings 等），非仓库目录仅
-        Clone…+Settings。"""
-        from PySide6.QtWidgets import QMenu
+        """内容区空白处右键菜单：基本操作 + TortoiseGit 两级。"""
         if not self._inside_repo(path):
             return self._build_dir_menu(path, parent)
-        return self._build_tortoisegit_menu(path, parent)
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(parent or self.content_list)
+        self._add_basic_ops(menu, path)
+        self._add_tortoisegit_submenu(menu, path)
+        return menu
 
     @staticmethod
     def _shift_pressed() -> bool:
@@ -544,11 +560,17 @@ class MainMenuDlg(QMainWindow):
         path 是当前被右击的路径（文件/目录/仓库根）。从 menuitems 计算其
         itemStates，再结合 Shift 依次插入匹配的菜单项（含分隔线）。
         """
-        from .. import menuitems as mi
         from PySide6.QtWidgets import QMenu
+        menu = QMenu(parent or self.repo_tree)
+        self._populate_tortoisegit_menu(menu, path, shift)
+        return menu
+
+    def _populate_tortoisegit_menu(self, menu, path: str,
+                                   shift: bool | None = None):
+        """把状态驱动的 TortoiseGit 菜单项填入给定菜单。"""
+        from .. import menuitems as mi
         if shift is None:
             shift = self._shift_pressed()
-        menu = QMenu(parent or self.repo_tree)
         states = mi.compute_item_states(path, extended=shift)
         for entry in mi.menu_entries(states, extended=shift):
             if entry.command == "separator":
@@ -561,7 +583,40 @@ class MainMenuDlg(QMainWindow):
             act.triggered.connect(
                 lambda _=False, c=entry.command, p=path:
                 self._dispatch(c, extra={"path": p}))
-        return menu
+
+    @staticmethod
+    def _add_submenu(menu, title: str):
+        """添加子菜单（用 QMenu(title, parent)，addMenu(str) 会被 GC 删除）。"""
+        from PySide6.QtWidgets import QMenu
+        sub = QMenu(title, menu)
+        menu.addMenu(sub)
+        return sub
+
+    def _add_basic_ops(self, menu, path: str):
+        """「基本操作」子菜单：打开 / 在资源管理器中显示 / 复制路径。"""
+        basic = self._add_submenu(menu, tr("menu_basic_ops", "Basic Operations"))
+        act_open = basic.addAction(tr("file_menu_open", "Open"))
+        self._set_action_icon(act_open, "IDI_OPEN")
+        act_open.triggered.connect(
+            lambda _=False, p=path: self._open_with_system(p))
+        act_show = basic.addAction(tr("file_menu_show_in", "Show in Explorer"))
+        act_show.triggered.connect(
+            lambda _=False, p=path: self._show_in_explorer(p))
+        act_copy = basic.addAction(tr("menu_copy_path", "Copy path"))
+        act_copy.triggered.connect(
+            lambda _=False, p=path: self._copy_path(p))
+        return basic
+
+    def _add_tortoisegit_submenu(self, menu, path: str):
+        """「TortoiseGit」子菜单（状态驱动）。"""
+        tg = self._add_submenu(menu, tr("menu_tortoisegit", "TortoiseGit"))
+        if self._inside_repo(path):
+            self._populate_tortoisegit_menu(tg, path)
+        return tg
+
+    def _copy_path(self, path: str):
+        from ..utils.clipboard import ClipboardHelper
+        ClipboardHelper().copy_text(os.path.abspath(path))
 
     def _build_context_menu_for(self, index) -> "QMenu | None":
         path = self._path_of_index(index)
@@ -592,19 +647,11 @@ class MainMenuDlg(QMainWindow):
         menu.exec(self.content_list.viewport().mapToGlobal(pos))
 
     def _build_file_menu(self, path: str, parent=None) -> "QMenu":
-        """文件右键菜单：系统打开 + TortoiseGit 命令（仿 TortoiseGit 经典菜单）。"""
+        """文件右键菜单：基本操作 + TortoiseGit 两级。"""
         from PySide6.QtWidgets import QMenu
         menu = QMenu(parent or self.content_list)
-        act_open = menu.addAction(tr("file_menu_open", "Open"))
-        self._set_action_icon(act_open, "IDI_OPEN")
-        act_open.triggered.connect(lambda _=False, p=path: self._open_with_system(p))
-        act_show = menu.addAction(tr("file_menu_show_in", "Show in Explorer"))
-        act_show.triggered.connect(lambda _=False, p=path: self._show_in_explorer(p))
-        if self._inside_repo(path):
-            menu.addSeparator()
-            engine_menu = self._build_tortoisegit_menu(path, menu)
-            for act in engine_menu.actions():
-                menu.addAction(act)
+        self._add_basic_ops(menu, path)
+        self._add_tortoisegit_submenu(menu, path)
         return menu
 
     def _open_with_system(self, path: str):
@@ -850,16 +897,15 @@ class MainMenuDlg(QMainWindow):
             self._add_placeholder(item)
 
     def _build_folder_repo_menu(self, path: str, item=None) -> "QMenu":
-        """目录树中仓库节点的右键菜单：添加 + 经典 TortoiseGit 命令（含设置）。"""
+        """目录树仓库节点右键菜单：添加到仓库管理 + 基本操作 + TortoiseGit。"""
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self.folder_tree)
         act_add = menu.addAction(tr("menu_add_to_repo_list", "Add to repository manager"))
         act_add.triggered.connect(
             lambda _=False, p=path: self._ensure_in_repo_list(p))
         menu.addSeparator()
-        engine_menu = self._build_tortoisegit_menu(path, menu)
-        for act in engine_menu.actions():
-            menu.addAction(act)
+        self._add_basic_ops(menu, path)
+        self._add_tortoisegit_submenu(menu, path)
         if item is not None:
             menu.addSeparator()
             act_refresh = menu.addAction(tr("refresh"))
@@ -869,15 +915,16 @@ class MainMenuDlg(QMainWindow):
         return menu
 
     def _build_folder_nonrepo_menu(self, path: str, item=None) -> "QMenu":
-        """目录树中非仓库目录/分区的右键菜单：Git Clone… + Settings + 刷新。"""
+        """目录树非仓库目录/分区右键菜单：基本操作 + TortoiseGit(Clone/Settings)。"""
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self.folder_tree)
-        act_clone = menu.addAction(tr("repo_menu_clone", "Git Clone…"))
+        self._add_basic_ops(menu, path)
+        tg = self._add_submenu(menu, tr("menu_tortoisegit", "TortoiseGit"))
+        act_clone = tg.addAction(tr("repo_menu_clone", "Git Clone…"))
         self._set_action_icon(act_clone, "IDI_CLONE")
         act_clone.triggered.connect(
             lambda _=False, p=path: self._run_clone_in(p))
-        menu.addSeparator()
-        act_set = menu.addAction(tr("repo_menu_settings", "Settings"))
+        act_set = tg.addAction(tr("repo_menu_settings", "Settings"))
         self._set_action_icon(act_set, "IDI_SETTINGS")
         act_set.triggered.connect(
             lambda _=False, p=path: self._dispatch("settings", extra={"path": p}))

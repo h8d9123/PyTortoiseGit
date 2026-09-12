@@ -1148,6 +1148,14 @@ def test_mainmenu_folder_tree_add_to_repo_list(
     dlg.reject()
 
 
+def _submenu(menu, label):
+    """取右键菜单中的子菜单（按标题）。"""
+    for a in menu.actions():
+        if a.menu() is not None and a.text() == label:
+            return a.menu()
+    return None
+
+
 def test_mainmenu_folder_nonrepo_menu_has_clone_and_settings(
         qapp, isolated_settings, tmp_path_factory):
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
@@ -1159,10 +1167,14 @@ def test_mainmenu_folder_nonrepo_menu_has_clone_and_settings(
     item.setData(0, Qt.ItemDataRole.UserRole, str(parent))
     item.setData(0, Qt.ItemDataRole.UserRole + 1, "dir")
     menu = dlg._build_folder_nonrepo_menu(str(parent))
-    labels = [a.text() for a in menu.actions()]
-    assert "Git Clone…" in labels
-    assert "Settings" in labels
-    assert "刷新" in labels
+    top = [a.text() for a in menu.actions()]
+    assert "基本操作" in top
+    assert "TortoiseGit" in top
+    assert "刷新" in top
+    tg = _submenu(menu, "TortoiseGit")
+    labels = [a.text() for a in tg.actions()]
+    assert "Git 克隆…" in labels
+    assert "设置" in labels
     dlg.reject()
 
 
@@ -1209,7 +1221,10 @@ def test_mainmenu_folder_repo_menu_includes_settings(
     menu = dlg._build_folder_repo_menu(str(inner))
     labels = [a.text() for a in menu.actions()]
     assert labels[0] == "添加到仓库管理"
-    assert "Settings" in labels
+    assert "基本操作" in labels
+    assert "TortoiseGit" in labels
+    tg = _submenu(menu, "TortoiseGit")
+    assert "设置" in [a.text() for a in tg.actions()]
     # 传入 item 后提供「刷新」
     from PySide6.QtWidgets import QTreeWidgetItem as _Item
     repo_item = _Item()
@@ -1252,16 +1267,17 @@ def test_mainmenu_content_context_menu_classic_for_worktree(
     plain = parent / "plain"
     plain.mkdir()
     dlg = MainMenuDlg()
-    # 工作树内目录 → 经典菜单（含 Commit、Settings）
+    # 工作树内目录 → 经典菜单（含 提交、设置）
     menu = dlg._build_classic_menu(str(sub), dlg.content_list)
     labels = [a.text() for a in menu.actions()]
-    assert "Commit…" in labels
-    assert "Settings" in labels
-    # 仓库外目录 → Clone+Settings（build_folder_nonrepo_menu）
+    assert "提交…" in labels
+    assert "设置" in labels
+    # 仓库外目录 → 基本操作 + TortoiseGit(Clone/Settings)
     menu2 = dlg._build_folder_nonrepo_menu(str(plain))
-    labels2 = [a.text() for a in menu2.actions()]
-    assert "Git Clone…" in labels2
-    assert "Settings" in labels2
+    tg = _submenu(menu2, "TortoiseGit")
+    labels2 = [a.text() for a in tg.actions()]
+    assert "Git 克隆…" in labels2
+    assert "设置" in labels2
     dlg.reject()
 
 
@@ -1284,20 +1300,22 @@ def test_mainmenu_blank_area_context_menu_uses_current_dir(
     # 当前浏览为工作树内子目录 → 空白处菜单含完整 TortoiseGit 命令（状态驱动）
     dlg._show_content(str(sub))
     menu = dlg._build_blank_menu(dlg._current_dir(), dlg.content_list)
-    labels = [a.text() for a in menu.actions()]
-    for expected in ("Pull…", "Push…", "Sync", "Commit…",
-                     "Diff…", "Show log", "Repo Browser", "Stash changes…",
-                     "Revert…", "Switch/Checkout…", "Merge…", "Settings"):
+    assert "基本操作" in [a.text() for a in menu.actions()]
+    tg = _submenu(menu, "TortoiseGit")
+    labels = [a.text() for a in tg.actions()]
+    for expected in ("拉取…", "推送…", "同步", "提交…", "差异…", "显示日志",
+                     "仓库浏览器", "储藏更改…", "还原…", "切换/检出…", "合并…", "设置"):
         assert expected in labels, expected
     # 工作树内子目录本身不显示 Git Clone（文件夹已在 git 中）
-    assert "Git Clone…" not in labels
-    # 当前浏览为仓库外目录 → Clone+Settings
+    assert "Git 克隆…" not in labels
+    # 当前浏览为仓库外目录 → 基本操作 + TortoiseGit(Clone/Settings)
     dlg._show_content(str(plain))
     menu2 = dlg._build_blank_menu(dlg._current_dir(), dlg.content_list)
-    labels2 = [a.text() for a in menu2.actions()]
-    assert "Git Clone…" in labels2
-    assert "Settings" in labels2
-    assert "Commit…" not in labels2
+    tg2 = _submenu(menu2, "TortoiseGit")
+    labels2 = [a.text() for a in tg2.actions()]
+    assert "Git 克隆…" in labels2
+    assert "设置" in labels2
+    assert "提交…" not in labels2
     dlg.reject()
 
 
@@ -1319,19 +1337,23 @@ def test_mainmenu_file_menu_includes_tg_commands(
     runner.run("commit", "-m", "init")
     (repo / "a.txt").write_text("modified\n", encoding="utf-8")
     dlg = MainMenuDlg()
-    # 工作树内文件 → 打开/显示位置 + TortoiseGit 命令（状态驱动）
+    # 工作树内文件 → 基本操作 + TortoiseGit 命令（状态驱动）
     menu = dlg._build_file_menu(str(repo / "a.txt"), dlg.content_list)
-    labels = [a.text() for a in menu.actions()]
-    assert "打开" in labels
-    assert "显示位置" in labels
-    for expected in ("Commit…", "Diff…", "Show log", "Stash changes…",
-                     "Blame…", "Settings", "Revert…", "Remove…"):
+    basic = _submenu(menu, "基本操作")
+    blabels = [a.text() for a in basic.actions()]
+    assert "打开" in blabels
+    assert "显示位置" in blabels
+    tg = _submenu(menu, "TortoiseGit")
+    labels = [a.text() for a in tg.actions()]
+    for expected in ("提交…", "差异…", "显示日志", "储藏更改…",
+                     "追溯…", "设置", "还原…", "移除…"):
         assert expected in labels, expected
     # 工作树内子目录中的文件
     menu2 = dlg._build_file_menu(str(sub / "b.txt"), dlg.content_list)
-    labels2 = [a.text() for a in menu2.actions()]
-    assert "Commit…" in labels2
-    assert "Stash changes…" in labels2
+    tg2 = _submenu(menu2, "TortoiseGit")
+    labels2 = [a.text() for a in tg2.actions()]
+    assert "提交…" in labels2
+    assert "储藏更改…" in labels2
     dlg.reject()
 
 
@@ -1344,12 +1366,15 @@ def test_mainmenu_file_menu_outside_repo_only_system(
     f.write_text("x\n", encoding="utf-8")
     dlg = MainMenuDlg()
     menu = dlg._build_file_menu(str(f), dlg.content_list)
-    labels = [a.text() for a in menu.actions()]
-    assert "打开" in labels
-    assert "显示位置" in labels
-    assert "Commit…" not in labels
-    assert "Stash changes…" not in labels
-    assert "Settings" not in labels
+    basic = _submenu(menu, "基本操作")
+    blabels = [a.text() for a in basic.actions()]
+    assert "打开" in blabels
+    assert "显示位置" in blabels
+    tg = _submenu(menu, "TortoiseGit")
+    labels = [a.text() for a in tg.actions()] if tg is not None else []
+    assert "提交…" not in labels
+    assert "储藏更改…" not in labels
+    assert "设置" not in labels
     dlg.reject()
 
 
@@ -1374,22 +1399,26 @@ def test_mainmenu_menu_actions_have_tortoisegit_icons(
     def by_label(actions, label):
         return next(a for a in actions if a.text() == label)
 
-    # 经典菜单：Commit/Log/Pull/Push/Sync/Revert/CleanUp/Settings 均有图标
+    # 经典菜单：提交/日志/拉取/推送/同步/还原/清理/设置 均有图标
     classic = dlg._build_classic_menu(str(repo))
-    for label in ["Commit…", "Show log", "Pull…", "Push…", "Sync",
-                  "Revert…", "Clean Up…", "Settings"]:
+    for label in ["提交…", "显示日志", "拉取…", "推送…", "同步",
+                  "还原…", "清理…", "设置"]:
         act = by_label(classic.actions(), label)
         assert not act.icon().isNull(), label
-    # 文件菜单：打开/Commit/Diff/Show log/Stash changes…/Blame…/Settings
+    # 文件菜单：基本操作「打开」 + TortoiseGit 各项
     fmenu = dlg._build_file_menu(str(repo / "a.txt"), dlg.content_list)
-    for label in ["打开", "Commit…", "Diff…", "Show log",
-                  "Stash changes…", "Blame…", "Settings"]:
-        act = by_label(fmenu.actions(), label)
+    basic = _submenu(fmenu, "基本操作")
+    assert not by_label(basic.actions(), "打开").icon().isNull()
+    tg = _submenu(fmenu, "TortoiseGit")
+    for label in ["提交…", "差异…", "显示日志",
+                  "储藏更改…", "追溯…", "设置"]:
+        act = by_label(tg.actions(), label)
         assert not act.icon().isNull(), label
     # 仓库外目录：Clone + Settings
     nrepo = dlg._build_folder_nonrepo_menu(str(plain))
-    for label in ["Git Clone…", "Settings"]:
-        act = by_label(nrepo.actions(), label)
+    tg2 = _submenu(nrepo, "TortoiseGit")
+    for label in ["Git 克隆…", "设置"]:
+        act = by_label(tg2.actions(), label)
         assert not act.icon().isNull(), label
     dlg.reject()
 
@@ -1429,7 +1458,7 @@ def test_mainmenu_shift_extends_menu(
     dlg._shift_pressed = lambda: True
     menu = dlg._build_classic_menu(str(repo), dlg.content_list)
     a_labels = labels_of(menu)
-    assert any(("Stash Apply" == t) for t in a_labels), a_labels
+    assert any(("应用储藏" == t) for t in a_labels), a_labels
     dlg.reject()
 
 

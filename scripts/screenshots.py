@@ -142,6 +142,18 @@ def main(argv):
         from pytortoisegit.dialogs.gitswitchdlg import GitSwitchDlg
         _shot(app, GitSwitchDlg(repo), "switch", wait=1.0)
 
+    if should("mainwindow"):
+        from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+        dlg = MainMenuDlg(repo_path=str(repo.root))
+        _shot(app, dlg, "mainwindow", wait=1.5)
+        menu = dlg._build_blank_menu(str(repo.root), dlg.content_list)
+        menu.popup(dlg.mapToGlobal(dlg.rect().center()))
+        _pump(app, 0.4)
+        menu.grab().save(os.path.join(OUT, "contextmenu.png"))
+        print("saved screenshots/contextmenu.png")
+        menu.close()
+        dlg.deleteLater()
+
     print("done ->", os.path.relpath(OUT, ROOT))
     return 0
 

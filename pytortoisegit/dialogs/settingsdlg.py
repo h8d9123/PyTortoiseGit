@@ -713,6 +713,117 @@ class _Dialogs2Page(_SettingPage):
             lbl.setGeometry(self._fu.px(x, y, w, h))
 
 
+def _add_static_labels(page):
+    """按页面上的 _GROUPS / _LABELS 定义补回被去重的 IDC_STATIC 标签/分组框。"""
+    for x, y, w, h, key, default in getattr(page, "_GROUPS", []):
+        gb = QGroupBox(tr(key, default), page)
+        gb.setGeometry(page._fu.px(x, y, w, h))
+        gb.lower()
+    for x, y, w, h, key, default in getattr(page, "_LABELS", []):
+        text = tr(key, default) if key else default
+        lbl = QLabel(text, page)
+        lbl.setGeometry(page._fu.px(x, y, w, h))
+
+
+class _Dialogs3Page(_SettingPage):
+    """IDD_SETTINGSDIALOGS3 —— Dialogs 3（补回被去重的标签/分组框）。"""
+
+    TEMPLATE = "IDD_SETTINGSDIALOGS3"
+
+    _GROUPS = [
+        (7, 7, 286, 26, "set_config_source", "Config source"),
+        (7, 34, 286, 136, "set_commit_group", "Commit"),
+        (7, 170, 286, 40, "set_dialogs_group", "Dialogs"),
+    ]
+    _LABELS = [
+        (173, 18, 13, 11, None, "<<"),
+        (233, 18, 13, 11, None, "<<"),
+        (112, 18, 13, 11, None, "<<"),
+        (14, 43, 269, 18, "set_lang_hint",
+         "Select the language this project is using. This settings affects "
+         "the spell checker used for commit messages."),
+        (14, 63, 99, 8, "set_language_label", "Language:"),
+        (14, 80, 99, 10, "set_keep_english", "keep the file lists in English"),
+        (14, 99, 269, 8, "set_min_chars",
+         "Minimum number of chars for a commit message:"),
+        (14, 113, 99, 8, "set_limit_label", "&Limit:"),
+        (14, 126, 269, 8, "set_border_pos",
+         "Char position where to show a border line in commit text boxes:"),
+        (14, 138, 99, 8, "set_border_label", "&Border:"),
+        (14, 153, 179, 10, "set_warn_signoff",
+         "&Warn on missing Signed-Off-By on commit"),
+        (14, 183, 91, 8, "set_overlay_icon", "&Overlay Icon:"),
+        (14, 212, 99, 11, "set_save_to", "Save to:"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+
+
+class _Colors1Page(_SettingPage):
+    """IDD_SETTINGSCOLORS_1 —— Colors 1（补回被去重的标签/分组框）。"""
+
+    TEMPLATE = "IDD_SETTINGSCOLORS_1"
+
+    _GROUPS = [(7, 130, 286, 62, "col_revgraph_group", "Revision graph")]
+    _LABELS = [
+        (14, 23, 137, 8, "col_conflict", "possible or real conflict/obstructed"),
+        (14, 40, 135, 8, "col_added", "added files"),
+        (14, 57, 137, 8, "col_missing", "missing/deleted/replaced"),
+        (14, 74, 137, 8, "col_merged", "merged"),
+        (14, 92, 137, 8, "col_modified", "modified/copied"),
+        (14, 109, 137, 8, "col_renamed", "renamed"),
+        (14, 142, 137, 8, "col_note_node", "Note node"),
+        (14, 159, 137, 8, "col_unknown_refs", "Unknown ref-types"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+
+
+class _Colors2Page(_SettingPage):
+    """IDD_SETTINGSCOLORS_2 —— Colors 2（补回被去重的标签）。"""
+
+    TEMPLATE = "IDD_SETTINGSCOLORS_2"
+
+    _LABELS = [
+        (14, 23, 137, 8, "col_current_branch", "Current Branch"),
+        (14, 40, 135, 8, "col_local_branch", "Local Branch"),
+        (14, 57, 137, 8, "col_remote_branch", "Remote Branch"),
+        (14, 74, 137, 8, "col_tag", "Tag"),
+        (14, 103, 137, 8, "col_filter_match", "Filter match"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+
+
+class _Colors3Page(_SettingPage):
+    """IDD_SETTINGSCOLORS_3 —— Colors 3（补回被去重的标签）。"""
+
+    TEMPLATE = "IDD_SETTINGSCOLORS_3"
+
+    _LABELS = [
+        (14, 23, 137, 8, "col_line1", "LINE1"),
+        (14, 40, 135, 8, "col_line2", "LINE2"),
+        (14, 57, 137, 8, "col_line3", "LINE3"),
+        (14, 74, 137, 8, "col_line4", "LINE4"),
+        (14, 91, 137, 8, "col_line5", "LINE5"),
+        (14, 108, 135, 8, "col_line6", "LINE6"),
+        (14, 125, 137, 8, "col_line7", "LINE7"),
+        (14, 142, 137, 8, "col_line8", "LINE8"),
+        (14, 159, 33, 8, "col_line_width", "Line width"),
+        (14, 176, 32, 8, "col_node_size", "Node size"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+
+
 # ---------------------------------------------------------------------------
 # 设置主对话框
 # ---------------------------------------------------------------------------
@@ -788,10 +899,10 @@ class SettingsDlg(QDialog):
             )
         self._add_page("dialog", _DialogsPage(self), "IDI_DIALOGS", main)
         self._add_page("dialog2", _Dialogs2Page(self), "IDI_DIALOGS", main)
-        self._add_page("dialog3", _RcPage("IDD_SETTINGSDIALOGS3", self), "IDI_DIALOGS", main)
-        self._add_page("color1", _RcPage("IDD_SETTINGSCOLORS_1", self), "IDI_LOOKANDFEEL", main)
-        self._add_page("color2", _RcPage("IDD_SETTINGSCOLORS_2", self), "IDI_LOOKANDFEEL", main)
-        self._add_page("color3", _RcPage("IDD_SETTINGSCOLORS_3", self), "IDI_LOOKANDFEEL", main)
+        self._add_page("dialog3", _Dialogs3Page(self), "IDI_DIALOGS", main)
+        self._add_page("color1", _Colors1Page(self), "IDI_LOOKANDFEEL", main)
+        self._add_page("color2", _Colors2Page(self), "IDI_LOOKANDFEEL", main)
+        self._add_page("color3", _Colors3Page(self), "IDI_LOOKANDFEEL", main)
         self._add_page(
             "alternativeeditor",
             _RcPage("IDD_SETTINGSPROGSALTERNATIVEEDITOR", self),

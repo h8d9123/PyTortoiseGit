@@ -481,6 +481,7 @@ STRINGS: Dict[str, str] = {
     "menu_settings": "设置(&S)",
     "menu_basic_ops": "基本操作",
     "menu_tortoisegit": "TortoiseGit",
+    "menu_undo": "撤销",
     "menu_copy": "复制",
     "menu_cut": "剪切",
     "menu_paste": "粘贴",

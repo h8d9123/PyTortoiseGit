@@ -1466,6 +1466,44 @@ def test_mainmenu_shift_extends_menu(
     dlg.reject()
 
 
+def test_mainmenu_undo_delete_and_paste(
+        qapp, isolated_settings, tmp_path, monkeypatch):
+    """撤销删除恢复文件；撤销粘贴移除目标。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    from PySide6.QtWidgets import QMessageBox
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    runner.run("config", "user.email", "t@x.com")
+    runner.run("config", "user.name", "T")
+    f = repo / "a.txt"
+    f.write_text("A\n", encoding="utf-8")
+    runner.run("add", "-A")
+    runner.run("commit", "-m", "init")
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
+    dlg = MainMenuDlg()
+    # 删除 → 撤销恢复
+    dlg._delete_path(str(f))
+    assert not f.exists()
+    dlg._undo_last()
+    assert f.exists() and f.read_text(encoding="utf-8") == "A\n"
+    # 复制 + 粘贴 → 撤销移除目标，源保留
+    sub = repo / "sub"
+    sub.mkdir()
+    dlg._copy_files([str(f)])
+    dlg._paste_files(str(sub))
+    dst = sub / "a.txt"
+    assert dst.exists()
+    dlg._undo_last()
+    assert not dst.exists()
+    assert f.exists()
+    dlg.reject()
+
+
 def test_menuitems_state_driven_entries(tmp_path_factory):
     """状态引擎：不同文件/目录状态显示不同菜单项（镜像 MenuInfo.cpp）。"""
     from pytortoisegit.git.git import GitRunner

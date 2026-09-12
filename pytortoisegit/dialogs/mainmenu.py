@@ -159,9 +159,14 @@ class MainMenuDlg(QMainWindow):
         self._nav_current: str = ""
         self._status_cache: dict = {}   # 仓库根 -> (时间戳, 状态条目)
         self._cut_paths: list[str] = []  # 剪切中的路径（粘贴时移动）
+        self._undo_stack: list = []      # 撤销栈：("delete"/"paste", data)
         self._build_menu()
         self._build_central()
         self._build_statusbar()
+        # Ctrl+Z：撤销删除/粘贴
+        from PySide6.QtGui import QKeySequence, QShortcut
+        QShortcut(QKeySequence.StandardKey.Undo, self,
+                  activated=self._undo_last)
         # 从 QSettings 加载已添加仓库并刷新树
         self._repo_list = self._load_repo_list()
         self._refresh_repo_tree()
@@ -600,6 +605,10 @@ class MainMenuDlg(QMainWindow):
         """
         is_dir = os.path.isdir(path)
         target_dir = path if is_dir else (os.path.dirname(path) or path)
+        act_undo = menu.addAction(tr("menu_undo", "Undo"))
+        act_undo.setEnabled(bool(self._undo_stack))
+        act_undo.triggered.connect(lambda _=False: self._undo_last())
+        menu.addSeparator()
         act_open = menu.addAction(tr("file_menu_open", "Open"))
         self._set_action_icon(act_open, "IDI_OPEN")
         act_open.triggered.connect(
@@ -649,6 +658,7 @@ class MainMenuDlg(QMainWindow):
         if mime is None or not mime.hasUrls():
             return
         cut = set(getattr(self, "_cut_paths", []) or [])
+        created = []  # (dst, src or None)：src 非空表示移动（撤销时移回）
         for url in mime.urls():
             src = url.toLocalFile()
             if not src or not os.path.exists(src):
@@ -660,17 +670,29 @@ class MainMenuDlg(QMainWindow):
             try:
                 if os.path.abspath(src) in cut:
                     shutil.move(src, dst)
+                    created.append((dst, src))
                 elif os.path.isdir(src):
                     shutil.copytree(src, dst)
+                    created.append((dst, None))
                 else:
                     shutil.copy2(src, dst)
+                    created.append((dst, None))
             except OSError:
                 continue
+        if created:
+            self._push_undo("paste", created)
         self._cut_paths = []
         self._refresh_content()
 
+    def _trash_dir(self) -> str:
+        import tempfile
+        path = os.path.join(tempfile.gettempdir(), "PyTortoiseGit-trash")
+        os.makedirs(path, exist_ok=True)
+        return path
+
     def _delete_path(self, path: str):
         import shutil
+        import time
         from PySide6.QtWidgets import QMessageBox
         resp = QMessageBox.question(
             self, tr("confirm", "Confirm"),
@@ -679,13 +701,46 @@ class MainMenuDlg(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if resp != QMessageBox.StandardButton.Yes:
             return
+        # 移入临时回收目录以便撤销（而非永久删除）
+        name = os.path.basename(path.rstrip("/\\"))
+        trash = os.path.join(
+            self._trash_dir(), f"{int(time.time() * 1000)}-{name}")
         try:
-            if os.path.isdir(path) and not os.path.islink(path):
-                shutil.rmtree(path)
-            else:
-                os.remove(path)
+            shutil.move(path, trash)
         except OSError:
-            pass
+            return
+        self._push_undo("delete", [(os.path.abspath(path), trash)])
+        self._refresh_content()
+
+    def _push_undo(self, kind: str, data):
+        self._undo_stack.append((kind, data))
+
+    def _undo_last(self):
+        """撤销上一次删除/粘贴。"""
+        import shutil
+        if not self._undo_stack:
+            return
+        kind, data = self._undo_stack.pop()
+        if kind == "delete":
+            for orig, trash in data:
+                try:
+                    os.makedirs(os.path.dirname(orig), exist_ok=True)
+                    if os.path.exists(trash):
+                        shutil.move(trash, orig)
+                except OSError:
+                    pass
+        elif kind == "paste":
+            for dst, src in data:
+                try:
+                    if src is not None and os.path.exists(dst):
+                        os.makedirs(os.path.dirname(src), exist_ok=True)
+                        shutil.move(dst, src)
+                    elif os.path.isdir(dst):
+                        shutil.rmtree(dst)
+                    elif os.path.exists(dst):
+                        os.remove(dst)
+                except OSError:
+                    pass
         self._refresh_content()
 
     def _new_file(self, directory: str):

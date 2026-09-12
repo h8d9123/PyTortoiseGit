@@ -137,6 +137,7 @@ class ReflogDlg(QDialog):
         self.btn_search = QPushButton(tr("reflog_search", "&Search..."), self)
         self.btn_search.clicked.connect(self._on_search)
         self.btn_clearstash = QPushButton(tr("reflog_clearstash", "&Clear stash"), self)
+        self.btn_clearstash.clicked.connect(self._on_clear_stash)
         self.btn_ok = QPushButton(tr("ok"), self)
         self.btn_ok.setDefault(True)
         self.btn_ok.clicked.connect(self.accept)
@@ -243,6 +244,17 @@ class ReflogDlg(QDialog):
                 return True
             row = (row + step) % count
         return False
+
+    def _on_clear_stash(self):
+        """IDC_REFLOG_BUTTONCLEARSTASH：清空所有 stash。"""
+        resp = QMessageBox.question(
+            self, tr("reflog_clearstash", "Clear stash"),
+            tr("reflog_clearstash_confirm", "Delete all stash entries?"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        self.repo.runner.run("stash", "clear")
+        self._load()
 
     def _current_entry(self) -> Optional[ReflogEntry]:
         row = self.table.currentRow()

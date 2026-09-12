@@ -337,7 +337,9 @@ class CloneDlg(QDialog):
         dlg.exec()
 
     def _after_clone(self, ok: bool, target: str):
-        pass
+        # 克隆成功才关闭对话框；失败保留以便用户修改 URL/目录后重试。
+        if ok:
+            self.accept()
 
 
 _CLONE_ANCHORS = {

@@ -634,6 +634,7 @@ STRINGS: Dict[str, str] = {
     "reflog_search": "搜索(&S)...",
     "reflog_ref": "引用(&R):",
     "reflog_clearstash": "清除暂存(&C)",
+    "reflog_clearstash_confirm": "删除所有 stash 条目?",
     # ---- 检查更新补充 ----
     "upd_download": "下载(&D)",
     "upd_close": "关闭(&C)",

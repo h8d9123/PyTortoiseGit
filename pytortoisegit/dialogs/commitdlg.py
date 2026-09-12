@@ -314,6 +314,13 @@ class CommitDlg(QDialog):
             elif kind == "tr":
                 wgt.setGeometry(x + dw, y, w, h)
 
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_F5:
+            self.refresh()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     # ---- 事件 ----
     def _on_amend_toggled(self, on: bool):
         self.amend_diff_btn.setVisible(on)

@@ -100,9 +100,11 @@ class IgnoreDlg(QDialog):
     def _on_ignore(self):
         patterns = []
         for p in self.paths:
-            name = os.path.basename(p.rstrip("/\\"))
-            patterns.append(name if self.rd_recursive.isChecked()
-                           else os.path.join(p.rstrip("/\\"), name).replace("\\", "/").lstrip("./"))
+            rel = os.path.relpath(p, self.repo.root).replace("\\", "/")
+            if self.rd_recursive.isChecked():
+                patterns.append(os.path.basename(rel.rstrip("/")))
+            else:
+                patterns.append(rel)
         lines = "\n".join(patterns) + "\n"
         if self.rd_exclude.isChecked():
             target = os.path.join(self.repo.root, ".git", "info", "exclude")

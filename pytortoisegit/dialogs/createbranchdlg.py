@@ -82,10 +82,10 @@ class CreateBranchDlg(QDialog):
             self.name_edit.setFocus()
             return
         self.name = name
-        args = ["branch"]
         if self.switch_box.isChecked():
-            args.append("-b")
-        args += [name, self.start]
+            args = ["checkout", "-b", name, self.start]
+        else:
+            args = ["branch", name, self.start]
         result = self.repo.runner.run(*args)
         if result.returncode != 0:
             from PySide6.QtWidgets import QMessageBox

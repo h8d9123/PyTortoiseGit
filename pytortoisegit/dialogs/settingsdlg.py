@@ -713,7 +713,8 @@ class SettingsDlg(QDialog):
         self.stack.addWidget(page)
         item = QTreeWidgetItem(parent if parent is not None else self.tree)
         caption = getattr(page, "_spec", None)
-        item.setText(0, caption.caption if caption and caption.caption else key)
+        title = caption.caption if caption and caption.caption else key
+        item.setText(0, tr_settings(title))
         item.setData(0, Qt.ItemDataRole.UserRole, idx)
         item.setData(0, Qt.ItemDataRole.UserRole + 1, key)
         try:

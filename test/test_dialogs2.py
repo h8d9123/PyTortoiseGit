@@ -152,7 +152,19 @@ def _settings_children(item):
     return [item.child(i).text(0) for i in range(item.childCount())]
 
 
-def test_settings_dialog_readonly(qapp):
+@pytest.fixture
+def english_ui():
+    """临时切到英文界面（设置页树标题随语言本地化）。"""
+    from pytortoisegit.res import strings
+    old = strings.get_language()
+    strings.set_language("en")
+    try:
+        yield
+    finally:
+        strings.set_language(old)
+
+
+def test_settings_dialog_readonly(qapp, english_ui):
     from pytortoisegit.dialogs.settingsdlg import SettingsDlg
     dlg = _smoke(qapp, lambda: SettingsDlg(None))
     assert dlg.name_edit is not None
@@ -180,7 +192,7 @@ def test_settings_dialog_readonly(qapp):
     assert "Merge Tool" in _settings_children(diff)
 
 
-def test_settings_dialog_repo_pages(qapp, repo):
+def test_settings_dialog_repo_pages(qapp, repo, english_ui):
     from pytortoisegit.dialogs.settingsdlg import SettingsDlg
     dlg = _smoke(qapp, lambda: SettingsDlg(repo))
     git = next(dlg.tree.topLevelItem(i) for i in range(dlg.tree.topLevelItemCount())

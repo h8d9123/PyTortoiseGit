@@ -90,11 +90,14 @@ class _SettingPage(QWidget):
     """一个设置页：按 IDD_SETTINGS* 模板绝对定位控件。"""
 
     TEMPLATE: str = ""
+    READONLY: bool = False  # 功能暂未开发：整页置灰不可编辑
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._ctl: dict = {}
         self._build_ui()
+        if self.READONLY:
+            self.setEnabled(False)
 
     def _build_ui(self):
         if not self.TEMPLATE:
@@ -339,8 +342,9 @@ class _GeneralPage(_SettingPage):
 class _RcPage(_SettingPage):
     """按模板 ID 生成的通用设置页。"""
 
-    def __init__(self, template: str, parent=None):
+    def __init__(self, template: str, parent=None, readonly: bool = False):
         self.TEMPLATE = template
+        self.READONLY = readonly
         super().__init__(parent)
 
 
@@ -407,6 +411,7 @@ class _MergePage(_SettingPage):
 
 class _NetworkPage(_SettingPage):
     TEMPLATE = "IDD_SETTINGSPROXY"
+    READONLY = True
 
     def _build_ui(self):
         super()._build_ui()
@@ -489,6 +494,7 @@ class _AdvancedPage(_SettingPage):
     """IDD_SETTINGS_CONFIG —— Advanced：列出/编辑全局 git config。"""
 
     TEMPLATE = "IDD_SETTINGS_CONFIG"
+    READONLY = True
 
     def _build_ui(self):
         super()._build_ui()
@@ -749,9 +755,13 @@ class SettingsDlg(QDialog):
 
         git = self._add_page("gitconfig", _GitPage(self), "IDI_GITCONFIG")
         if has_repo:
-            self._add_page("gitremote", _RcPage("IDD_SETTINREMOTE", self), "IDI_GITREMOTE", git)
+            self._add_page(
+                "gitremote", _RcPage("IDD_SETTINREMOTE", self, readonly=True),
+                "IDI_GITREMOTE", git)
         self._add_page(
-            "gitcredential", _RcPage("IDD_SETTINGSCREDENTIAL", self), "IDI_GITCREDENTIAL", git)
+            "gitcredential",
+            _RcPage("IDD_SETTINGSCREDENTIAL", self, readonly=True),
+            "IDI_GITCREDENTIAL", git)
 
         hooks = self._add_page("hooks", _RcPage("IDD_SETTINGSHOOKS", self), "IDI_HOOK")
         self._add_page("bugtraq", _RcPage("IDD_SETTINGSBUGTRAQ", self), "IDI_BUGTRAQ", hooks)

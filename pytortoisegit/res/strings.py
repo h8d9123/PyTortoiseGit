@@ -495,6 +495,7 @@ STRINGS: Dict[str, str] = {
     "menu_cmd_submoduleadd": "添加子模块…",
     "menu_cmd_submoduleupdate": "更新子模块…",
     "menu_cmd_about": "关于",
+    "menu_cmd_unavailable": "原版 TortoiseGit 界面未提供（暂不可用）",
     "content_hint": "单击左侧目录/仓库查看子文件夹；双击进入或打开",
     # ---- 主界面（mainmenu）----
     "menu_title": "PyTortoiseGit 主窗口",

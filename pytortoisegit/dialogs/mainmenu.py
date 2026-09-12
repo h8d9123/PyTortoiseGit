@@ -102,6 +102,24 @@ _CMD_ICON = {
     "lfsunlock": "IDI_LFSUNLOCK",    # menuunlock.ico
 }
 
+# 原版 TortoiseGit 界面提供的命令（取自 Commands/Command.cpp 的 commandInfo 表）。
+# 不在其中的命令（Python 内部/别名）在“命令”菜单里置灰。
+_ORIGINAL_COMMANDS = {
+    "about", "add", "autotexttest", "blame", "branch", "cat", "cleanup",
+    "clone", "commit", "conflicteditor", "crash", "diff", "dropcopy",
+    "dropcopyadd", "dropmove", "fetch", "formatpatch", "export", "help",
+    "ignore", "importpatch", "log", "merge", "pastecopy", "pastemove",
+    "prevdiff", "pull", "push", "rtfm", "rebuildiconcache", "remove", "rebase",
+    "rename", "repocreate", "repostatus", "resolve", "revert", "sendmail",
+    "settings", "showcompare", "switch", "tag", "unignore", "updatecheck",
+    "stashsave", "stashapply", "stashpop", "stashlist", "subadd", "subupdate",
+    "subsync", "reflog", "refbrowse", "svndcommit", "svnrebase", "svnfetch",
+    "svnignore", "sync", "requestpull", "bisect", "repobrowser",
+    "revisiongraph", "daemon", "pgpfp", "commitisonrefs", "lfslocks",
+    "lfslock", "lfsunlock", "newworktree", "worktreelist", "dropnewworktree",
+    "registerwin11contextmenu", "inaccessible", "firststart",
+}
+
 
 class MainMenuDlg(QMainWindow):
     """主窗口：菜单栏 + 标签面板（仓库管理 / 目录树）+ 命令面板。"""
@@ -232,22 +250,25 @@ class MainMenuDlg(QMainWindow):
             placed.update(items)
             sub = m_cmd.addMenu(tr(grp_key, grp_label))
             for name in items:
-                act = sub.addAction(tr("menu_cmd_" + name, name))
-                icon_id = _CMD_ICON.get(name)
-                if icon_id:
-                    self._set_action_icon(act, icon_id)
-                act.triggered.connect(
-                    lambda _=False, n=name: self._dispatch(n))
+                self._add_command_action(sub, name)
         other = sorted(available - placed)
         if other:
             sub = m_cmd.addMenu(tr("menu_grp_other", "Other"))
             for name in other:
-                act = sub.addAction(tr("menu_cmd_" + name, name))
-                icon_id = _CMD_ICON.get(name)
-                if icon_id:
-                    self._set_action_icon(act, icon_id)
-                act.triggered.connect(
-                    lambda _=False, n=name: self._dispatch(n))
+                self._add_command_action(sub, name)
+
+    def _add_command_action(self, menu, name: str):
+        """添加一个命令菜单项；原版未提供的命令置灰。"""
+        act = menu.addAction(tr("menu_cmd_" + name, name))
+        icon_id = _CMD_ICON.get(name)
+        if icon_id:
+            self._set_action_icon(act, icon_id)
+        if name not in _ORIGINAL_COMMANDS:
+            act.setEnabled(False)
+            act.setToolTip(tr(
+                "menu_cmd_unavailable",
+                "Not available in the original TortoiseGit UI"))
+        act.triggered.connect(lambda _=False, n=name: self._dispatch(n))
 
     # ---- 主区：左侧标签页（仓库管理 + 目录树）+ 右侧内容浏览 ----
     def _build_central(self):

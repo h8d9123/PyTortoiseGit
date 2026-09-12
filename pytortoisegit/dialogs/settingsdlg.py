@@ -560,6 +560,22 @@ class _OverlayHandlersPage(_SettingPage):
         _add_static_labels(self)
 
 
+class _SavedDataPage(_SettingPage):
+    """IDD_SETTINGSSAVEDDATA —— Saved Data（补回被去重的标签/分组框）。"""
+
+    TEMPLATE = "IDD_SETTINGSSAVEDDATA"
+
+    # 注意：RC 中首个 IDC_STATIC（"Temp files..." 标签）未被去重，勿重复添加
+    _GROUPS = [(7, 173, 286, 30, "set_saved_actionlog_group", "Action log")]
+    _LABELS = [
+        (13, 185, 120, 16, "set_saved_maxlines", "Max. lines in action log"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+
+
 class _AdvancedPage(_SettingPage):
     """IDD_SETTINGS_CONFIG —— Advanced：列出/编辑全局 git config。"""
 
@@ -1071,7 +1087,7 @@ class SettingsDlg(QDialog):
         diff = self._add_page("diff", _DiffPage(self), "IDI_SWITCHLEFTRIGHT")
         self._add_page("merge", _MergePage(self), "IDI_MERGEACTIVE", diff)
 
-        self._add_page("save", _RcPage("IDD_SETTINGSSAVEDDATA", self), "IDI_SAVEDDATA")
+        self._add_page("save", _SavedDataPage(self), "IDI_SAVEDDATA")
         self._add_page("blame", _BlamePage(self), "IDI_TORTOISEBLAME")
         self._add_page("udiff", _UDiffPage(self), "IDI_TORTOISEUDIFF")
         self._add_page("advanced", _AdvancedPage(self), "IDI_GENERAL")

@@ -114,6 +114,7 @@ def main(argv):
                            ("overlayshandlers", "settings_overlayhandlers"),
                            ("proxy", "settings_network"),
                            ("smtp", "settings_email"),
+                           ("save", "settings_saveddata"),
                            ("blame", "settings_blame"),
                            ("udiff", "settings_udiff"),
                            ("advanced", "settings_advanced")):

@@ -1196,6 +1196,8 @@ STRINGS: Dict[str, str] = {
     "set_overlay_include": "包含路径(&N)：",
     "set_overlayhandlers_hint": "你可以在此禁用特定的覆盖处理程序。\n禁用的处理程序不会占用覆盖槽位，从而给其他 shell 扩展显示覆盖图标的机会。",
     "set_overlayhandlers_note": "注意：这会影响所有 Tortoise 客户端，而不仅是 TortoiseGit！",
+    "set_saved_actionlog_group": "操作日志",
+    "set_saved_maxlines": "操作日志最大行数",
     "set_blame_font_group": "字体",
     "set_blame_group": "Blame",
     "set_blame_log_group": "日志",

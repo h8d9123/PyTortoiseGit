@@ -579,6 +579,88 @@ class _UDiffPage(_SettingPage):
                 w.setStyleSheet(f"background-color: {color};")
 
 
+class _MenuListPage(_SettingPage):
+    """Context Menu / Context Menu 2 通用：菜单项复选列表。"""
+
+    SETTINGS_KEY = ""
+
+    def _build_ui(self):
+        super()._build_ui()
+        tree = self._ctl.get("IDC_MENULIST")
+        if tree is not None:
+            tree.setColumnCount(1)
+            tree.setHeaderHidden(True)
+            tree.setRootIsDecorated(False)
+            self._populate_menu_list(tree)
+        if cb := self._ctl.get("IDC_SELECTALL"):
+            cb.clicked.connect(self._on_select_all)
+        if b := self._ctl.get("IDC_RESTORE"):
+            b.clicked.connect(self._on_restore)
+
+    def _populate_menu_list(self, tree):
+        from .. import menuitems as mi
+        saved = general_settings().value(self.SETTINGS_KEY, [], type=list) or []
+        tree.clear()
+        seen = set()
+        for e in mi.MENU_INFO:
+            if not e.command or e.command == "separator":
+                continue
+            if e.menu_id in seen:
+                continue
+            seen.add(e.menu_id)
+            it = QTreeWidgetItem([tr(e.label_key, e.label)])
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            checked = (not saved) or (e.command in saved)
+            it.setCheckState(0, Qt.CheckState.Checked if checked
+                             else Qt.CheckState.Unchecked)
+            it.setData(0, Qt.ItemDataRole.UserRole, e.command)
+            tree.addTopLevelItem(it)
+
+    def _on_select_all(self):
+        tree = self._ctl.get("IDC_MENULIST")
+        cb = self._ctl.get("IDC_SELECTALL")
+        if tree is None or cb is None:
+            return
+        state = (Qt.CheckState.Checked if cb.isChecked()
+                 else Qt.CheckState.Unchecked)
+        for i in range(tree.topLevelItemCount()):
+            tree.topLevelItem(i).setCheckState(0, state)
+
+    def _on_restore(self):
+        tree = self._ctl.get("IDC_MENULIST")
+        if tree is None:
+            return
+        for i in range(tree.topLevelItemCount()):
+            tree.topLevelItem(i).setCheckState(0, Qt.CheckState.Checked)
+
+    def save_to_settings(self):
+        tree = self._ctl.get("IDC_MENULIST")
+        if tree is None or not self.SETTINGS_KEY:
+            return
+        checked = []
+        for i in range(tree.topLevelItemCount()):
+            it = tree.topLevelItem(i)
+            if it.checkState(0) == Qt.CheckState.Checked:
+                checked.append(it.data(0, Qt.ItemDataRole.UserRole))
+        s = general_settings()
+        s.setValue(self.SETTINGS_KEY, checked)
+        s.sync()
+
+
+class _ContextMenuPage(_MenuListPage):
+    """IDD_SETTINGSLOOKANDFEEL —— Context Menu。"""
+
+    TEMPLATE = "IDD_SETTINGSLOOKANDFEEL"
+    SETTINGS_KEY = "contextMenuEntries"
+
+
+class _ContextMenu2Page(_MenuListPage):
+    """IDD_SETTINGSEXTMENU —— Context Menu 2。"""
+
+    TEMPLATE = "IDD_SETTINGSEXTMENU"
+    SETTINGS_KEY = "contextMenuHideEntries"
+
+
 # ---------------------------------------------------------------------------
 # 设置主对话框
 # ---------------------------------------------------------------------------
@@ -643,8 +725,8 @@ class SettingsDlg(QDialog):
         has_repo = self.repo is not None
 
         main = self._add_page("main", _GeneralPage(self), "IDI_GENERAL")
-        self._add_page("look", _RcPage("IDD_SETTINGSLOOKANDFEEL", self), "IDI_MISC", main)
-        self._add_page("extmenu", _RcPage("IDD_SETTINGSEXTMENU", self), "IDI_MISC", main)
+        self._add_page("look", _ContextMenuPage(self), "IDI_MISC", main)
+        self._add_page("extmenu", _ContextMenu2Page(self), "IDI_MISC", main)
         if _is_win11():
             self._add_page(
                 "win11menu",
@@ -888,6 +970,8 @@ class SettingsDlg(QDialog):
                 self._set_global("tortoisegit.externalmerge", val or None)
             elif isinstance(page, _AdvancedPage):
                 self._apply_advanced(page)
+            elif isinstance(page, _MenuListPage):
+                page.save_to_settings()
 
     def _apply_proxy(self, page: "_NetworkPage"):
         enabled = page.enable.isChecked() if page.enable is not None else True

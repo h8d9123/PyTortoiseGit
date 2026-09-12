@@ -99,6 +99,8 @@ def main(argv):
         from pytortoisegit.dialogs.settingsdlg import SettingsDlg
         dlg = SettingsDlg(repo)
         for key, label in (("main", "settings_general"),
+                           ("look", "settings_contextmenu"),
+                           ("extmenu", "settings_contextmenu2"),
                            ("diff", "settings_diff"),
                            ("proxy", "settings_network"),
                            ("smtp", "settings_email"),

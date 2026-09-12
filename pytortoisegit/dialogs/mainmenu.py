@@ -158,6 +158,7 @@ class MainMenuDlg(QMainWindow):
         self._nav_forward: list[str] = []  # 前进历史
         self._nav_current: str = ""
         self._status_cache: dict = {}   # 仓库根 -> (时间戳, 状态条目)
+        self._cut_paths: list[str] = []  # 剪切中的路径（粘贴时移动）
         self._build_menu()
         self._build_central()
         self._build_statusbar()
@@ -593,19 +594,125 @@ class MainMenuDlg(QMainWindow):
         return sub
 
     def _add_basic_ops(self, menu, path: str):
-        """「基本操作」子菜单：打开 / 在资源管理器中显示 / 复制路径。"""
-        basic = self._add_submenu(menu, tr("menu_basic_ops", "Basic Operations"))
-        act_open = basic.addAction(tr("file_menu_open", "Open"))
+        """在菜单顶层添加基本文件操作（不折叠）。
+
+        打开 / 显示位置 / 复制 / 剪切 / 粘贴 / 删除 / 新建文件 / 新建文件夹。
+        """
+        is_dir = os.path.isdir(path)
+        target_dir = path if is_dir else (os.path.dirname(path) or path)
+        act_open = menu.addAction(tr("file_menu_open", "Open"))
         self._set_action_icon(act_open, "IDI_OPEN")
         act_open.triggered.connect(
             lambda _=False, p=path: self._open_with_system(p))
-        act_show = basic.addAction(tr("file_menu_show_in", "Show in Explorer"))
+        act_show = menu.addAction(tr("file_menu_show_in", "Show in Explorer"))
         act_show.triggered.connect(
             lambda _=False, p=path: self._show_in_explorer(p))
-        act_copy = basic.addAction(tr("menu_copy_path", "Copy path"))
+        menu.addSeparator()
+        act_copy = menu.addAction(tr("menu_copy", "Copy"))
         act_copy.triggered.connect(
-            lambda _=False, p=path: self._copy_path(p))
-        return basic
+            lambda _=False, p=path: self._copy_files([p]))
+        act_cut = menu.addAction(tr("menu_cut", "Cut"))
+        act_cut.triggered.connect(
+            lambda _=False, p=path: self._cut_files([p]))
+        act_paste = menu.addAction(tr("menu_paste", "Paste"))
+        act_paste.triggered.connect(
+            lambda _=False, d=target_dir: self._paste_files(d))
+        menu.addSeparator()
+        act_del = menu.addAction(tr("menu_delete", "Delete"))
+        act_del.triggered.connect(
+            lambda _=False, p=path: self._delete_path(p))
+        menu.addSeparator()
+        act_newf = menu.addAction(tr("menu_new_file", "New File"))
+        act_newf.triggered.connect(
+            lambda _=False, d=target_dir: self._new_file(d))
+        act_newd = menu.addAction(tr("menu_new_folder", "New Folder"))
+        act_newd.triggered.connect(
+            lambda _=False, d=target_dir: self._new_folder(d))
+        menu.addSeparator()
+
+    def _copy_files(self, paths):
+        from PySide6.QtCore import QMimeData, QUrl
+        from PySide6.QtWidgets import QApplication
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(os.path.abspath(p)) for p in paths])
+        QApplication.clipboard().setMimeData(mime)
+        self._cut_paths = []
+
+    def _cut_files(self, paths):
+        self._copy_files(paths)
+        self._cut_paths = [os.path.abspath(p) for p in paths]
+
+    def _paste_files(self, target_dir: str):
+        import shutil
+        from PySide6.QtWidgets import QApplication
+        mime = QApplication.clipboard().mimeData()
+        if mime is None or not mime.hasUrls():
+            return
+        cut = set(getattr(self, "_cut_paths", []) or [])
+        for url in mime.urls():
+            src = url.toLocalFile()
+            if not src or not os.path.exists(src):
+                continue
+            name = os.path.basename(src.rstrip("/\\"))
+            dst = os.path.join(target_dir, name)
+            if os.path.exists(dst):
+                continue
+            try:
+                if os.path.abspath(src) in cut:
+                    shutil.move(src, dst)
+                elif os.path.isdir(src):
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+            except OSError:
+                continue
+        self._cut_paths = []
+        self._refresh_content()
+
+    def _delete_path(self, path: str):
+        import shutil
+        from PySide6.QtWidgets import QMessageBox
+        resp = QMessageBox.question(
+            self, tr("confirm", "Confirm"),
+            tr("menu_delete_q", 'Delete "{name}"?').format(
+                name=os.path.basename(path.rstrip("/\\"))),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+        except OSError:
+            pass
+        self._refresh_content()
+
+    def _new_file(self, directory: str):
+        from PySide6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(
+            self, tr("menu_new_file", "New File"),
+            tr("menu_new_file_prompt", "File name:"))
+        if not ok or not name.strip():
+            return
+        try:
+            open(os.path.join(directory, name.strip()), "x").close()
+        except OSError:
+            pass
+        self._refresh_content()
+
+    def _new_folder(self, directory: str):
+        from PySide6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(
+            self, tr("menu_new_folder", "New Folder"),
+            tr("menu_new_folder_prompt", "Folder name:"))
+        if not ok or not name.strip():
+            return
+        try:
+            os.makedirs(os.path.join(directory, name.strip()), exist_ok=False)
+        except OSError:
+            pass
+        self._refresh_content()
 
     def _add_tortoisegit_submenu(self, menu, path: str):
         """「TortoiseGit」子菜单（状态驱动）。"""

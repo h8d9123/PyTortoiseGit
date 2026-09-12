@@ -1168,7 +1168,10 @@ def test_mainmenu_folder_nonrepo_menu_has_clone_and_settings(
     item.setData(0, Qt.ItemDataRole.UserRole + 1, "dir")
     menu = dlg._build_folder_nonrepo_menu(str(parent))
     top = [a.text() for a in menu.actions()]
-    assert "基本操作" in top
+    assert "打开" in top
+    assert "复制" in top
+    assert "粘贴" in top
+    assert "新建文件夹" in top
     assert "TortoiseGit" in top
     assert "刷新" in top
     tg = _submenu(menu, "TortoiseGit")
@@ -1221,7 +1224,7 @@ def test_mainmenu_folder_repo_menu_includes_settings(
     menu = dlg._build_folder_repo_menu(str(inner))
     labels = [a.text() for a in menu.actions()]
     assert labels[0] == "添加到仓库管理"
-    assert "基本操作" in labels
+    assert "复制" in labels
     assert "TortoiseGit" in labels
     tg = _submenu(menu, "TortoiseGit")
     assert "设置" in [a.text() for a in tg.actions()]
@@ -1300,7 +1303,7 @@ def test_mainmenu_blank_area_context_menu_uses_current_dir(
     # 当前浏览为工作树内子目录 → 空白处菜单含完整 TortoiseGit 命令（状态驱动）
     dlg._show_content(str(sub))
     menu = dlg._build_blank_menu(dlg._current_dir(), dlg.content_list)
-    assert "基本操作" in [a.text() for a in menu.actions()]
+    assert "复制" in [a.text() for a in menu.actions()]
     tg = _submenu(menu, "TortoiseGit")
     labels = [a.text() for a in tg.actions()]
     for expected in ("拉取…", "推送…", "同步", "提交…", "差异…", "显示日志",
@@ -1337,12 +1340,14 @@ def test_mainmenu_file_menu_includes_tg_commands(
     runner.run("commit", "-m", "init")
     (repo / "a.txt").write_text("modified\n", encoding="utf-8")
     dlg = MainMenuDlg()
-    # 工作树内文件 → 基本操作 + TortoiseGit 命令（状态驱动）
+    # 工作树内文件 → 顶层基本操作 + TortoiseGit 命令（状态驱动）
     menu = dlg._build_file_menu(str(repo / "a.txt"), dlg.content_list)
-    basic = _submenu(menu, "基本操作")
-    blabels = [a.text() for a in basic.actions()]
-    assert "打开" in blabels
-    assert "显示位置" in blabels
+    top = [a.text() for a in menu.actions()]
+    assert "打开" in top
+    assert "显示位置" in top
+    assert "复制" in top
+    assert "粘贴" in top
+    assert "新建文件" in top
     tg = _submenu(menu, "TortoiseGit")
     labels = [a.text() for a in tg.actions()]
     for expected in ("提交…", "差异…", "显示日志", "储藏更改…",
@@ -1366,10 +1371,10 @@ def test_mainmenu_file_menu_outside_repo_only_system(
     f.write_text("x\n", encoding="utf-8")
     dlg = MainMenuDlg()
     menu = dlg._build_file_menu(str(f), dlg.content_list)
-    basic = _submenu(menu, "基本操作")
-    blabels = [a.text() for a in basic.actions()]
-    assert "打开" in blabels
-    assert "显示位置" in blabels
+    top = [a.text() for a in menu.actions()]
+    assert "打开" in top
+    assert "显示位置" in top
+    assert "复制" in top
     tg = _submenu(menu, "TortoiseGit")
     labels = [a.text() for a in tg.actions()] if tg is not None else []
     assert "提交…" not in labels
@@ -1405,10 +1410,9 @@ def test_mainmenu_menu_actions_have_tortoisegit_icons(
                   "还原…", "清理…", "设置"]:
         act = by_label(classic.actions(), label)
         assert not act.icon().isNull(), label
-    # 文件菜单：基本操作「打开」 + TortoiseGit 各项
+    # 文件菜单：顶层基本操作「打开」 + TortoiseGit 各项
     fmenu = dlg._build_file_menu(str(repo / "a.txt"), dlg.content_list)
-    basic = _submenu(fmenu, "基本操作")
-    assert not by_label(basic.actions(), "打开").icon().isNull()
+    assert not by_label(fmenu.actions(), "打开").icon().isNull()
     tg = _submenu(fmenu, "TortoiseGit")
     for label in ["提交…", "差异…", "显示日志",
                   "储藏更改…", "追溯…", "设置"]:

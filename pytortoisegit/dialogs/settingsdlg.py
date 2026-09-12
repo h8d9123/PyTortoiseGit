@@ -182,8 +182,8 @@ class _GeneralPage(_SettingPage):
     # -- 静态标签：RC 中多个标签共用 IDC_STATIC 被去重丢弃，手动补回 -----
     def _add_static_labels(self):
         # (x, y, w, h, 字符串键, 默认文本) —— 坐标来自 TortoiseProcENG.rc
+        # 注意：RC 中首个 IDC_STATIC（"TortoiseGit" 分组框）未被去重，勿重复添加
         groups = [
-            (7, 7, 286, 92, "set_group_tortoisegit", "TortoiseGit"),
             (7, 113, 286, 98, "set_group_gitwin", "Git for Windows"),
         ]
         for x, y, w, h, key, default in groups:
@@ -373,8 +373,19 @@ class _GitPage(_SettingPage):
 class _DiffPage(_SettingPage):
     TEMPLATE = "IDD_SETTINGSPROGSDIFF"
 
+    # 注意：RC 中首个 IDC_STATIC（第一个分组框）未被去重，勿重复添加
+    _GROUPS = [
+        (7, 104, 286, 63, "set_viewer_group",
+         "Configure viewer program for GNU diff files (patch files)"),
+    ]
+    _LABELS = [
+        (16, 65, 160, 25, "set_diff_adv_hint",
+         'Click on "Advanced" to specify alternate diff programs based on file extension'),
+    ]
+
     def _build_ui(self):
         super()._build_ui()
+        _add_static_labels(self)
         self._group("IDC_EXTDIFF_OFF", "IDC_EXTDIFF_ON")
         self._group("IDC_DIFFVIEWER_OFF", "IDC_DIFFVIEWER_ON")
         # 默认选中 TortoiseGitMerge / TortoiseGitUDiff（对齐原版）
@@ -403,8 +414,15 @@ class _DiffPage(_SettingPage):
 class _MergePage(_SettingPage):
     TEMPLATE = "IDD_SETTINGSPROGSMERGE"
 
+    # 注意：RC 中首个 IDC_STATIC 提示未被去重，勿重复添加
+    _LABELS = [
+        (7, 108, 160, 33, "set_merge_adv_hint",
+         'Click on "Advanced" to specify alternate merge programs based on file extension'),
+    ]
+
     def _build_ui(self):
         super()._build_ui()
+        _add_static_labels(self)
         from PySide6.QtWidgets import QButtonGroup
         g = QButtonGroup(self)
         for i in ("IDC_EXTMERGE_OFF", "IDC_EXTMERGE_ON"):

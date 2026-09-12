@@ -184,7 +184,6 @@ STRINGS: Dict[str, str] = {
     "confirm": "确认",
 
     # ---- 设置 - General 页 ----
-    "set_group_tortoisegit": "TortoiseGit",
     "set_group_gitwin": "Git for Windows",
     "set_lang": "&语言：",
     "set_gitexe": "&Git.exe 路径：",
@@ -1183,6 +1182,10 @@ STRINGS: Dict[str, str] = {
     "set_adv_key": "键",
     "set_adv_value": "值",
     "set_selectssh": "选择 SSH 客户端",
+    "set_diff_group": "配置用于比较文件不同版本的程序",
+    "set_diff_adv_hint": "点击“高级”可按文件扩展名指定备用差异程序",
+    "set_viewer_group": "配置用于 GNU diff 文件（补丁文件）的查看程序",
+    "set_merge_adv_hint": "点击“高级”可按文件扩展名指定备用合并程序",
     "set_default_log_limit": "日志消息默认条数上限：",
     "set_font_log": "日志消息字体(&F)：",
     "set_describe": "Describe",

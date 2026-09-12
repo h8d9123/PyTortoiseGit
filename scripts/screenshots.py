@@ -108,6 +108,7 @@ def main(argv):
                            ("color2", "settings_colors2"),
                            ("color3", "settings_colors3"),
                            ("diff", "settings_diff"),
+                           ("merge", "settings_merge"),
                            ("proxy", "settings_network"),
                            ("smtp", "settings_email"),
                            ("blame", "settings_blame"),

@@ -154,6 +154,21 @@ def main(argv):
         menu.close()
         dlg.deleteLater()
 
+    if should("wizard"):
+        from pytortoisegit.dialogs.firststartdlg import FirstStartWizard
+        wiz = FirstStartWizard()
+        wiz.show()
+        _pump(app, 0.8)
+        for i in range(len(wiz._pages)):
+            path = os.path.join(OUT, f"wizard_{i}.png")
+            wiz.grab().save(path)
+            print("saved", os.path.relpath(path, ROOT))
+            if i < len(wiz._pages) - 1:
+                wiz.next()
+            _pump(app, 0.4)
+        wiz.close()
+        wiz.deleteLater()
+
     print("done ->", os.path.relpath(OUT, ROOT))
     return 0
 

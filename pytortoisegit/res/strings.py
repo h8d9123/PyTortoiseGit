@@ -367,6 +367,14 @@ STRINGS: Dict[str, str] = {
 
     # ---- 仓库管理面板 (MainMenuDlg) ----
     "repo_manager_title": "仓库管理",
+    "repo_col_name": "名称",
+    "repo_col_status": "状态",
+    "repo_col_commit": "提交信息",
+    "repo_col_path": "路径",
+    "fs_col_name": "名称",
+    "fs_col_size": "大小",
+    "fs_col_type": "类型",
+    "fs_col_date": "日期",
     "repo_manager_hint": "双击仓库切换；展开可查看子模块",
     "repo_menu_commit": "提交…",
     "repo_menu_log": "显示日志",

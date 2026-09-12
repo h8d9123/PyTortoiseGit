@@ -259,11 +259,12 @@ class MainMenuDlg(QMainWindow):
         panel_lay.addWidget(
             QLabel(tr("repo_manager_title", "Repository Manager"), self.repo_manager_panel))
         self.repo_tree = QTreeWidget(self.repo_manager_panel)
-        self.repo_tree.setColumnCount(3)
+        self.repo_tree.setColumnCount(4)
         self.repo_tree.setHeaderLabels([
-            tr("submodule_path", "Path"),
-            tr("submodule_status", "Status"),
-            tr("submodule_sha", "SHA"),
+            tr("repo_col_name", "Name"),
+            tr("repo_col_status", "Status"),
+            tr("repo_col_commit", "Commit"),
+            tr("repo_col_path", "Path"),
         ])
         self.repo_tree.setRootIsDecorated(True)
         self.repo_tree.setIndentation(16)
@@ -335,17 +336,17 @@ class MainMenuDlg(QMainWindow):
         nav.addWidget(self.btn_refresh)
         nav.addStretch(1)
         right_lay.addLayout(nav)
-        self.fs_model = QFileSystemModel(right)
+        self.fs_model = _FsModel(right)
         self.fs_model.setIconProvider(_GitIconProvider(self))
         self.content_list = QTreeView(right)
         self.content_list.setModel(self.fs_model)
         self.content_list.setRootIsDecorated(False)
         self.content_list.setItemsExpandable(False)
-        self.content_list.setHeaderHidden(True)
-        # 只需要名称列
+        self.content_list.setHeaderHidden(False)
+        # 显示 名称/日期/类型/大小（文件夹不显示大小）
         for c in range(self.fs_model.columnCount()):
-            if c != 0:
-                self.content_list.setColumnHidden(c, True)
+            self.content_list.setColumnHidden(c, False)
+        self._reorder_content_columns()
         self.content_list.doubleClicked.connect(self._on_content_double_clicked)
         self.content_list.setContextMenuPolicy(
             Qt.ContextMenuPolicy.CustomContextMenu)
@@ -362,6 +363,19 @@ class MainMenuDlg(QMainWindow):
     def _build_statusbar(self):
         self.status = QLabel("")
         self.statusBar().addWidget(self.status)
+
+    def _reorder_content_columns(self):
+        """把 QFileSystemModel 列序调整为 名称/日期/类型/大小。"""
+        from PySide6.QtWidgets import QHeaderView
+        header = self.content_list.header()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        # 模型列：0 Name, 1 Size, 2 Type, 3 Date；目标视觉序 [0,3,2,1]
+        try:
+            header.moveSection(3, 1)
+            header.moveSection(3, 2)
+        except Exception:  # noqa: BLE001
+            pass
 
     # ---- 右侧内容浏览（资源管理器中间窗格，基于 QFileSystemModel）----
     def _show_content(self, path: str):
@@ -860,8 +874,9 @@ class MainMenuDlg(QMainWindow):
                 repo = Repository.open(path)
             except Exception:
                 continue
-            display = f"{repo.name}  ({path})"
-            item = QTreeWidgetItem([display])
+            item = QTreeWidgetItem([
+                repo.name, repo.current_branch(),
+                self._commit_subject(path), path])
             item.setData(0, ROLE_PATH, path)
             item.setData(0, ROLE_KIND, "repo")
             self.repo_tree.addTopLevelItem(item)
@@ -893,7 +908,9 @@ class MainMenuDlg(QMainWindow):
             repo = _Repo.open(repo_path)
             for e in GitSubmodule(repo).list(recursive=False):
                 sub_abs = os.path.join(repo_path, e.path)
-                sub = QTreeWidgetItem([e.path, e.status_text, (e.sha1 or "")[:8]])
+                name = os.path.basename(e.path.rstrip("/\\"))
+                sub = QTreeWidgetItem([
+                    name, e.status_text, (e.sha1 or "")[:8], sub_abs])
                 sub.setData(0, ROLE_PATH, sub_abs)
                 sub.setData(0, ROLE_KIND, "submodule")
                 sub.setData(0, ROLE_PARENT, repo_path)
@@ -901,6 +918,16 @@ class MainMenuDlg(QMainWindow):
         except Exception:
             pass
         item.setData(0, ROLE_LOADED, True)
+
+    @staticmethod
+    def _commit_subject(repo_path: str) -> str:
+        try:
+            from ..git.repo import Repository as _Repo
+            out = _Repo.open(repo_path).runner.run(
+                "log", "-1", "--format=%s").stdout or ""
+            return out.strip()
+        except Exception:  # noqa: BLE001
+            return ""
 
     def _on_repo_double_clicked(self, item, _col):
         """双击仓库→切换；双击子模块→打开。"""
@@ -1203,6 +1230,27 @@ class MainMenuDlg(QMainWindow):
 
 def _noop(*_a, **_k):
     return None
+
+
+class _FsModel(QFileSystemModel):
+    """QFileSystemModel：文件夹大小列留空；表头中文化。"""
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if (role == Qt.ItemDataRole.DisplayRole and index.column() == 1
+                and self.isDir(index)):
+            return ""
+        return super().data(index, role)
+
+    def headerData(self, section, orientation,  # noqa: N802
+                   role=Qt.ItemDataRole.DisplayRole):
+        if (orientation == Qt.Orientation.Horizontal
+                and role == Qt.ItemDataRole.DisplayRole):
+            labels = [tr("fs_col_name", "Name"), tr("fs_col_size", "Size"),
+                      tr("fs_col_type", "Type"),
+                      tr("fs_col_date", "Date modified")]
+            if 0 <= section < len(labels):
+                return labels[section]
+        return super().headerData(section, orientation, role)
 
 
 class _GitIconProvider(QFileIconProvider):

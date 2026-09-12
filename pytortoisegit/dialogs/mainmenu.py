@@ -603,17 +603,35 @@ class MainMenuDlg(QMainWindow):
         self._populate_tortoisegit_menu(menu, path, shift)
         return menu
 
+    def _menu_top_commands(self):
+        """Context Menu 页勾选的“第一层”命令集合；未设置返回 None（全部显示）。"""
+        try:
+            from .settingsdlg import general_settings
+            saved = general_settings().value(
+                "contextMenuEntries", [], type=list)
+            return set(saved) if saved else None
+        except Exception:  # noqa: BLE001
+            return None
+
     def _populate_tortoisegit_menu(self, menu, path: str,
                                    shift: bool | None = None):
-        """把状态驱动的 TortoiseGit 菜单项填入给定菜单。"""
+        """把状态驱动的 TortoiseGit 菜单项填入给定菜单（按“第一层”设置过滤）。"""
         from .. import menuitems as mi
         if shift is None:
             shift = self._shift_pressed()
+        enabled = self._menu_top_commands()
         states = mi.compute_item_states(path, extended=shift)
+        pending_sep = False
         for entry in mi.menu_entries(states, extended=shift):
             if entry.command == "separator":
-                menu.addSeparator()
+                if menu.actions():
+                    pending_sep = True
                 continue
+            if enabled is not None and entry.command not in enabled:
+                continue
+            if pending_sep:
+                menu.addSeparator()
+                pending_sep = False
             act = menu.addAction(tr(entry.label_key, entry.label))
             icon_id = entry.icon_id or _CMD_ICON.get(entry.command)
             if icon_id:

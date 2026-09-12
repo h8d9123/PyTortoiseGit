@@ -598,6 +598,10 @@ class _MenuListPage(_SettingPage):
             tree.setHeaderHidden(True)
             tree.setRootIsDecorated(False)
             self._populate_menu_list(tree)
+            # 减小与分组框标题的间距：上移并加高列表（补偿 QGroupBox 的 QSS margin）
+            g = tree.geometry()
+            dy = self._fu.px(0, 0, 0, 12).height()
+            tree.setGeometry(g.x(), g.y() - dy, g.width(), g.height() + dy)
         if cb := self._ctl.get("IDC_SELECTALL"):
             cb.clicked.connect(self._on_select_all)
         if b := self._ctl.get("IDC_RESTORE"):

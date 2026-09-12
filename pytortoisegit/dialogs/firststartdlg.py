@@ -174,9 +174,11 @@ class _UserPage(_WizardPage):
             "are used as meta data for your commits (not for authentication)."),
             17, 7, 289, 25, wrap=True)
         self._label(tr("firststart_name", "&Name:"), 17, 42, 47, 8)
-        self.name_edit = self._place(QLineEdit("", self), 71, 40, 150, 12)
+        self.name_edit = self._place(
+            QLineEdit(self._detect("user.name"), self), 71, 40, 150, 12)
         self._label(tr("fs_email_label", "&Email:"), 17, 60, 50, 8)
-        self.email_edit = self._place(QLineEdit("", self), 71, 57, 150, 12)
+        self.email_edit = self._place(
+            QLineEdit(self._detect("user.email"), self), 71, 57, 150, 12)
         self._label(tr(
             "fs_user_footer",
             "These settings will be stored to your global git configuration "
@@ -185,6 +187,19 @@ class _UserPage(_WizardPage):
         self.chk_dontsave = self._place(QCheckBox(
             tr("firststart_dontsave", "&Don't store these settings now."), self),
             17, 118, 289, 11)
+
+    @staticmethod
+    def _detect(key: str) -> str:
+        """从系统/全局 git 配置读取 user.name / user.email；没有则留空。"""
+        try:
+            from ..git.git import GitRunner
+            r = GitRunner(cwd=os.path.expanduser("~")).run(
+                "config", "--get", key)
+            if r.returncode == 0 and r.stdout:
+                return r.stdout.strip()
+        except Exception:  # noqa: BLE001
+            pass
+        return ""
 
 
 class _AuthPage(_WizardPage):

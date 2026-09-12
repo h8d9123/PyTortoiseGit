@@ -144,9 +144,6 @@ class MainMenuDlg(QMainWindow):
           "lfslocks", "lfsunlock"]),
         ("menu_grp_format", "Patch/Export",
          ["export", "formatpatch", "importpatch", "showcompare"]),
-        ("menu_grp_utils", "Tools/Other",
-         ["settings", "firststart", "updatecheck", "help", "shell",
-          "daemon", "rtfm", "changed", "revision"]),
     ]
 
     @staticmethod

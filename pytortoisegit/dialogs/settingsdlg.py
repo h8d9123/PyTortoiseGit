@@ -361,6 +361,27 @@ class _RcPage(_SettingPage):
 class _GitPage(_SettingPage):
     TEMPLATE = "IDD_SETTINGIT_CONFIG"
 
+    # 注意：RC 中首个 IDC_STATIC（"|" 分隔符）未被去重，勿重复添加
+    _GROUPS = [
+        (7, 7, 286, 26, "set_config_source", "Config source"),
+        (7, 35, 286, 68, "set_git_userinfo_group", "User Info"),
+        (7, 106, 286, 29, "set_git_autocrlf_group", "Auto CrLf convert"),
+    ]
+    _LABELS = [
+        (153, 18, 13, 11, None, "<<"),
+        (218, 18, 13, 11, None, "<<"),
+        (14, 49, 47, 8, "set_git_name", "&Name:"),
+        (14, 67, 50, 8, "set_git_email", "&Email:"),
+        (14, 84, 49, 8, "set_git_signingkey", "&Signing key ID:"),
+        (14, 119, 37, 8, "set_git_autocrlf", "Auto&CrLf:"),
+        (112, 119, 32, 8, "set_git_safecrlf", "Sa&feCrLf:"),
+        (14, 157, 98, 11, "set_save_to", "Save to:"),
+    ]
+
+    def _build_ui(self):
+        super()._build_ui()
+        _add_static_labels(self)
+
     @property
     def name_edit(self):
         return self._ctl.get("IDC_GIT_USERNAME")

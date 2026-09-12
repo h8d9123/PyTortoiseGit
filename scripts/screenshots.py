@@ -111,6 +111,7 @@ def main(argv):
                            ("merge", "settings_merge"),
                            ("win11menu", "settings_win11menu"),
                            ("alternativeeditor", "settings_alternativeeditor"),
+                           ("gitconfig", "settings_git"),
                            ("gitremote", "settings_gitremote"),
                            ("gitcredential", "settings_gitcredential"),
                            ("hooks", "settings_hooks"),

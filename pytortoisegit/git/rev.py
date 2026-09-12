@@ -57,6 +57,7 @@ class GitRev:
     author_date: str = ""
     message: str = ""
     refs: List[str] = field(default_factory=list)
+    ref_infos: List["RefInfo"] = field(default_factory=list)  # 带类型的引用
     actions: str = ""  # 该提交文件变更字母：M/A/D/R/C
     lanes: List = field(default_factory=list)  # List[LaneType]
 
@@ -155,13 +156,18 @@ class GitRevLoglist:
     def load(self, limit: int = 500, search: str | None = None,
              pathspec: str | None = None,
              ordering: str = "default",
-             all_branches: bool = False) -> None:
+             all_branches: bool = False,
+             simplify: bool = False) -> None:
         """加载提交。search 非空时按 grep 过滤（作者/信息），pathspec 限定路径。
         ordering: default/topo-order/date-order/author-date-order。
+        simplify: 传 --simplify-by-decoration，只保留被引用标注的提交与
+        分叉/合并点（对齐 C++ 修订图的 LOG_INFO_SIMPILFY_BY_DECORATION）。
         """
         args: List[str] = []
         if all_branches:
             args.append("--all")
+        if simplify:
+            args.append("--simplify-by-decoration")
         if limit and limit > 0:
             args += ["-n", str(limit)]
         if search:
@@ -185,8 +191,9 @@ class GitRevLoglist:
         self._by_hash = {}
         for rec in records:
             comm = _parse_record(rec)
-            refs = [r.shortname for r in self._refs_for(comm.hash)]
-            comm.refs = list(refs)
+            infos = self._refs_for(comm.hash)
+            comm.refs = [r.shortname for r in infos]
+            comm.ref_infos = list(infos)
             self.commits.append(comm)
             self._by_hash[comm.hash] = comm
         self._compute_lanes()

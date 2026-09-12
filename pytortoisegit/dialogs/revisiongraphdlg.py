@@ -1,7 +1,14 @@
 """revisiongraphdlg.py —— RevisionGraphDlg：绘制的分支节点图。
 
-以 GitRevLoglist 计算 lane 布局，用 QPainter 画出提交节点（圆点）与父子连线
-（贝塞尔曲线），右侧标注 refs 与提交主题，对齐原版 Revision Graph 的节点图。
+对齐 TortoiseGit 原版 Revision Graph：
+
+* 提交按 Sugiyama 分层布局（见 ``git/revgraph.py``），新提交在上、父提交在下。
+* 节点为圆角矩形，每个引用一行，按引用类型着色（当前分支红、本地分支绿、
+  远程分支米黄、标签黄、无引用浅粉并显示短 hash）。
+* 父子连线沿折点绘制，两端裁剪到节点边界并带箭头。
+
+默认使用 ``--simplify-by-decoration`` 只保留被引用标注的提交与分叉/合并点，
+与原版 ``LOG_INFO_SIMPILFY_BY_DECORATION`` 一致。
 """
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
@@ -18,15 +25,25 @@
 # details.
 #
 # You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc., 51
-# Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # This program is derived from and mirrors the TortoiseGit project.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen
+import math
+
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QFontMetricsF,
+    QPainter,
+    QPainterPath,
+    QPen,
+)
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -39,87 +56,218 @@ from PySide6.QtWidgets import (
 from ..asyncfw import run_async
 from ..git.repo import Repository
 from ..git.rev import GitRevLoglist
+from ..git.revgraph import GraphLayout, build_layout
 from ..res.strings import tr
 from .statgraphdlg import StatGraphDlg
 
-_NODE_R = 7
-_COL_W = 28
-_ROW_H = 26
-_MARGIN_X = 26
-_MARGIN_Y = 22
-_TEXT_W = 360
+# C++：默认缩放字体 9；左上/右下内边距 20 / 5
+_FONT_SIZE = 9
+_MARGIN_X = 20.0
+_MARGIN_Y = 5.0
+_CORNER = 12.0
+_ARROW_SIZE = 8.0
+_ARROW_COS = math.cos(math.pi / 8)
+_ARROW_SIN = math.sin(math.pi / 8)
 
-_LANE_COLORS = (
-    QColor(0x0A, 0x24, 0x36), QColor(0xC0, 0x00, 0x00),
-    QColor(0x00, 0x80, 0x00), QColor(0x00, 0x00, 0xC0),
-    QColor(0x80, 0x80, 0x80), QColor(0x80, 0x80, 0x00),
-    QColor(0x00, 0x80, 0x80), QColor(0x80, 0x00, 0x80),
-)
+# Colors.cpp 默认色
+_COLORS = {
+    "current_branch": QColor(200, 0, 0),
+    "branch": QColor(0, 195, 0),
+    "remote": QColor(255, 221, 170),
+    "tag": QColor(255, 255, 0),
+    "stash": QColor(128, 128, 128),
+    "commit": QColor(255, 229, 229),
+}
+
+
+def _best_text_color(bg: QColor) -> QColor:
+    """按亮度选择黑/白文字（对齐 GetBestContrastColor）。"""
+    r = bg.redF()
+    g = bg.greenF()
+    b = bg.blueF()
+
+    def chan(c: float) -> float:
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    lum = 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
+    return QColor(0, 0, 0) if lum > 0.5 else QColor(255, 255, 255)
+
+
+def _line_path(rect: QRectF, r: float, top: bool, bottom: bool) -> QPainterPath:
+    """一行字形的路径：仅首行圆上角、末行圆下角，其余为直角。"""
+    x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
+    r = max(0.0, min(r, w / 2, h / 2))
+    p = QPainterPath()
+    if top:
+        p.moveTo(x + r, y)
+        p.arcTo(QRectF(x, y, 2 * r, 2 * r), 90, 90)
+    else:
+        p.moveTo(x, y)
+    p.lineTo(x, y + h - (r if bottom else 0))
+    if bottom:
+        p.arcTo(QRectF(x, y + h - 2 * r, 2 * r, 2 * r), 180, 90)
+    else:
+        p.lineTo(x, y + h)
+    p.lineTo(x + w - (r if bottom else 0), y + h)
+    if bottom:
+        p.arcTo(QRectF(x + w - 2 * r, y + h - 2 * r, 2 * r, 2 * r), 270, 90)
+    else:
+        p.lineTo(x + w, y + h)
+    p.lineTo(x + w, y + (r if top else 0))
+    if top:
+        p.arcTo(QRectF(x + w - 2 * r, y, 2 * r, 2 * r), 0, 90)
+    else:
+        p.lineTo(x + w, y)
+    p.closeSubpath()
+    return p
+
+
+def _cut_point(cx: float, cy: float, w: float, h: float, lw: float,
+               ps: QPointF, pt: QPointF) -> QPointF:
+    """把线段 ps->pt 裁剪到以 (cx,cy) 为中心、尺寸 w×h 的节点边界。"""
+    xmin = cx - w / 2 - lw / 2
+    xmax = cx + w / 2 + lw / 2
+    ymin = cy - h / 2 - lw / 2
+    ymax = cy + h / 2 + lw / 2
+    dx = pt.x() - ps.x()
+    dy = pt.y() - ps.y()
+    if dy != 0:
+        if pt.y() > ymax:
+            x = ps.x() + (ymax - ps.y()) / dy * dx
+            if xmin <= x <= xmax:
+                return QPointF(x, ymax)
+        elif pt.y() < ymin:
+            x = ps.x() + (ymin - ps.y()) / dy * dx
+            if xmin <= x <= xmax:
+                return QPointF(x, ymin)
+    if dx != 0:
+        if pt.x() > xmax:
+            y = ps.y() + (xmax - ps.x()) / dx * dy
+            if ymin <= y <= ymax:
+                return QPointF(xmax, y)
+        elif pt.x() < xmin:
+            y = ps.y() + (xmin - ps.x()) / dx * dy
+            if ymin <= y <= ymax:
+                return QPointF(xmin, y)
+    return pt
 
 
 class _GraphCanvas(QWidget):
-    """绘制提交节点图：x=lane，y=提交顺序。"""
+    """绘制提交节点图（x=lane/层坐标，y=层）。"""
 
-    def __init__(self, commits, parent=None):
+    def __init__(self, layout: GraphLayout | None = None,
+                 current_branch: str | None = None, parent=None):
         super().__init__(parent)
-        self._commits = list(commits)
-        self._index = {c.hash: i for i, c in enumerate(self._commits)}
-        max_lane = max((c.lane for c in self._commits), default=0)
-        w = _MARGIN_X * 2 + (max_lane + 1) * _COL_W + _TEXT_W
-        h = _MARGIN_Y * 2 + max(1, len(self._commits)) * _ROW_H
-        self.setMinimumSize(w, h)
+        self._layout = layout
+        self._current_branch = current_branch or ""
+        if layout is not None:
+            self.setMinimumSize(int(layout.width) + 2,
+                                int(layout.height) + 2)
 
     def node_count(self) -> int:
-        return len(self._commits)
+        return len(self._layout.order) if self._layout is not None else 0
 
-    def _pos(self, commit) -> QPointF:
-        i = self._index[commit.hash]
-        return QPointF(_MARGIN_X + commit.lane * _COL_W,
-                       _MARGIN_Y + i * _ROW_H + _ROW_H / 2)
+    def set_layout(self, layout: GraphLayout, current_branch: str | None,
+                   font: QFont):
+        self._layout = layout
+        self._current_branch = current_branch or ""
+        self.setFont(font)
+        self.setMinimumSize(int(layout.width) + 2, int(layout.height) + 2)
+        self.update()
 
+    # ---- 颜色 ----
+    def _ref_color(self, text: str, ref_type: str) -> QColor:
+        if ref_type == "branch":
+            if text == self._current_branch:
+                return _COLORS["current_branch"]
+            return _COLORS["branch"]
+        return _COLORS.get(ref_type, _COLORS["commit"])
+
+    # ---- 绘制 ----
     def paintEvent(self, _event):  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        p.fillRect(self.rect(), self.palette().base())
+        p.fillRect(self.rect(), QColor(255, 255, 255))
+        if self._layout is None:
+            return
+        self._draw_edges(p)
+        self._draw_nodes(p)
 
-        # 连线（子 -> 父，贝塞尔）
-        for c in self._commits:
-            a = self._pos(c)
-            for parent in c.parents:
-                idx = self._index.get(parent)
-                if idx is None:
-                    continue
-                b = self._pos(self._commits[idx])
-                col = _LANE_COLORS[c.lane % len(_LANE_COLORS)]
-                p.setPen(QPen(col, 2, Qt.PenStyle.SolidLine,
-                              Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-                mid = (a.y() + b.y()) / 2
-                path = QPainterPath(a)
-                path.cubicTo(QPointF(a.x(), mid), QPointF(b.x(), mid), b)
+    def _draw_edges(self, p: QPainter):
+        assert self._layout is not None
+        pen = QPen(QColor(0, 0, 0), 2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        for e in self._layout.edges:
+            pts = [QPointF(x, y) for x, y in e.points]
+            if len(pts) < 2:
+                continue
+            src = self._layout.node(e.source)
+            dst = self._layout.node(e.target)
+            if src is not None:
+                pts[0] = _cut_point(src.x, src.y, src.width, src.height, 1,
+                                    pts[0], pts[1])
+            if dst is not None:
+                pts[-1] = _cut_point(dst.x, dst.y, dst.width, dst.height, 1,
+                                     pts[-1], pts[-2])
+            path = QPainterPath(pts[0])
+            for q in pts[1:]:
+                path.lineTo(q)
+            p.drawPath(path)
+            self._draw_arrow(p, pts[-1], pts[-2])
+
+    def _draw_arrow(self, p: QPainter, tip: QPointF, prev: QPointF):
+        dx = (prev.x() - tip.x()) * -1
+        dy = (prev.y() - tip.y()) * -1
+        length = math.hypot(dx, dy)
+        if length == 0:
+            return
+        dx = _ARROW_SIZE * dx / length
+        dy = _ARROW_SIZE * dy / length
+        p1x = dx * _ARROW_COS - dy * _ARROW_SIN
+        p1y = dx * _ARROW_SIN + dy * _ARROW_COS
+        p2x = dx * _ARROW_COS + dy * _ARROW_SIN
+        p2y = -dx * _ARROW_SIN + dy * _ARROW_COS
+        d = -1.0
+        a0 = QPointF(tip.x() + d * dx * 3 / 5, tip.y() + d * dy * 3 / 5)
+        a1 = QPointF(tip.x() + d * p1x, tip.y() + d * p1y)
+        a2 = tip
+        a3 = QPointF(tip.x() + d * p2x, tip.y() + d * p2y)
+        arrow = QPainterPath(a0)
+        arrow.lineTo(a1)
+        arrow.lineTo(a2)
+        arrow.lineTo(a3)
+        arrow.lineTo(a0)
+        p.drawPath(arrow)
+
+    def _draw_nodes(self, p: QPainter):
+        assert self._layout is not None
+        for key in self._layout.order:
+            node = self._layout.nodes.get(key)
+            if node is None:
+                continue
+            lines = node.lines or [(key[:8], "commit")]
+            n = len(lines)
+            lh = node.height / n
+            left = node.x - node.width / 2
+            top = node.y - node.height / 2
+            for i, (text, ref_type) in enumerate(lines):
+                rect = QRectF(left, top + i * lh, node.width, lh)
+                fill = self._ref_color(text, ref_type)
+                path = _line_path(rect, _CORNER, i == 0, i == n - 1)
+                p.setPen(QPen(QColor(0, 0, 0, 0), 0))
+                p.setBrush(QBrush(fill))
                 p.drawPath(path)
-
-        # 节点 + 文本
-        fm = p.fontMetrics()
-        ref_font = QFont(self.font())
-        ref_font.setBold(True)
-        for c in self._commits:
-            a = self._pos(c)
-            col = _LANE_COLORS[c.lane % len(_LANE_COLORS)]
-            p.setBrush(QBrush(col))
-            p.setPen(QPen(col, 1))
-            p.drawEllipse(a, _NODE_R, _NODE_R)
-
-            x = a.x() + _NODE_R + 6
-            y = a.y() + fm.ascent() / 2 - 1
-            if c.refs_str:
-                p.setFont(ref_font)
-                p.setPen(QPen(QColor(0x00, 0x60, 0x00)))
-                ref_text = f"[{c.refs_str}] "
-                p.drawText(QPointF(x, y), ref_text)
-                x += fm.horizontalAdvance(ref_text)
-            p.setFont(self.font())
-            p.setPen(QPen(self.palette().text().color()))
-            p.drawText(QPointF(x, y), c.subject)
+                p.setPen(QPen(_best_text_color(fill)))
+                p.setFont(self.font())
+                p.drawText(QRectF(rect.x() + _MARGIN_X, rect.y() + _MARGIN_Y,
+                                  rect.width() - 2 * _MARGIN_X,
+                                  rect.height() - 2 * _MARGIN_Y),
+                           int(Qt.AlignmentFlag.AlignLeft
+                               | Qt.AlignmentFlag.AlignVCenter),
+                           text)
 
 
 class RevisionGraphDlg(QDialog):
@@ -133,7 +281,7 @@ class RevisionGraphDlg(QDialog):
         lay = QVBoxLayout(self)
         self.scroll = QScrollArea(self)
         self.scroll.setWidgetResizable(True)
-        self.canvas = _GraphCanvas([], self.scroll)
+        self.canvas = _GraphCanvas(None, None, self.scroll)
         self.scroll.setWidget(self.canvas)
         lay.addWidget(self.scroll, 1)
 
@@ -151,12 +299,19 @@ class RevisionGraphDlg(QDialog):
 
     def _load_bg(self) -> list:
         log = GitRevLoglist(self.repo)
-        log.load(limit=300)
+        log.load(limit=0, all_branches=True, simplify=True)
         return list(log)
 
     def _on_loaded(self, commits):
-        self.canvas = _GraphCanvas(commits, self.scroll)
-        self.scroll.setWidget(self.canvas)
+        font = QFont()
+        font.setPointSize(_FONT_SIZE)
+        fm = QFontMetricsF(font)
+
+        def measure(text: str):
+            return float(fm.horizontalAdvance(text)), float(fm.height())
+
+        layout = build_layout(commits, measure)
+        self.canvas.set_layout(layout, self.repo.current_branch(), font)
 
     def _open_stats(self):
         StatGraphDlg(self.repo, parent=self).exec()

@@ -155,3 +155,22 @@ def test_search_filter(repo):
     subjects = [c.subject for c in log.commits]
     assert all("Merge" in s for s in subjects)
     assert subjects, "应至少筛到合并提交"
+
+
+def test_ref_infos_typed(repo):
+    log = _log(repo)
+    by_hash = {c.hash: c for c in log.commits}
+    infos = by_hash[repo["sha"]["E"]].ref_infos
+    assert all(ri.ref_type for ri in infos)
+    assert ("main", "branch") in {(ri.shortname, ri.ref_type) for ri in infos}
+
+
+def test_load_simplify_by_decoration(repo):
+    full = _log(repo)
+    r = Repository.open(repo["root"])
+    log = GitRevLoglist(r)
+    log.load(limit=100, all_branches=True, simplify=True)
+    hashes = {c.hash for c in log.commits}
+    assert repo["sha"]["E"] in hashes       # main 指向的提交
+    assert repo["sha"]["D"] in hashes       # feature 指向的提交
+    assert len(hashes) <= len(full.commits)

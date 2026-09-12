@@ -523,6 +523,43 @@ class _SmtpPage(_SettingPage):
         return self._ctl.get("IDC_SMTP_USER")
 
 
+class _OverlayPage(_SettingPage):
+    """IDD_SETTINGSOVERLAY —— Icon Overlays（补回被去重的标签/分组框）。"""
+
+    TEMPLATE = "IDD_SETTINGSOVERLAY"
+
+    # 注意：RC 中首个 IDC_STATIC（"Icon Overlays" 分组框）未被去重，勿重复添加
+    _GROUPS = [(12, 78, 274, 22, "set_overlay_status_group", "Status cache")]
+    _LABELS = [
+        (18, 172, 95, 8, "set_overlay_exclude", "E&xclude paths:"),
+        (18, 198, 95, 8, "set_overlay_include", "I&nclude paths:"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+
+
+class _OverlayHandlersPage(_SettingPage):
+    """IDD_SETTINGSOVERLAYHANDLERS —— Overlay Handlers。"""
+
+    TEMPLATE = "IDD_SETTINGSOVERLAYHANDLERS"
+
+    # 注意：RC 中首个 IDC_STATIC（分组框）未被去重，勿重复添加
+    _LABELS = [
+        (14, 18, 270, 32, "set_overlayhandlers_hint",
+         "You can disable specific Overlay handlers here.\n"
+         "Disabled handlers won't use up an overlay slot and give other "
+         "shell extensions a chance to show their overlays."),
+        (14, 54, 270, 8, "set_overlayhandlers_note",
+         "Note: this affects all Tortoise clients, not just TortoiseGit!"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+
+
 class _AdvancedPage(_SettingPage):
     """IDD_SETTINGS_CONFIG —— Advanced：列出/编辑全局 git config。"""
 
@@ -1019,11 +1056,11 @@ class SettingsDlg(QDialog):
                 hooks,
             )
 
-        overlay = self._add_page("overlay", _RcPage("IDD_SETTINGSOVERLAY", self), "IDI_SET_OVERLAYS")
+        overlay = self._add_page("overlay", _OverlayPage(self), "IDI_SET_OVERLAYS")
         self._add_page("overlays", _RcPage("IDD_SETOVERLAYICONS", self), "IDI_ICONSET", overlay)
         self._add_page(
             "overlayshandlers",
-            _RcPage("IDD_SETTINGSOVERLAYHANDLERS", self),
+            _OverlayHandlersPage(self),
             "IDI_SET_OVERLAYS",
             overlay,
         )

@@ -666,16 +666,13 @@ class _MenuListPage(_SettingPage):
 
     def _build_ui(self):
         super()._build_ui()
+        _add_static_labels(self)
         tree = self._ctl.get("IDC_MENULIST")
         if tree is not None:
             tree.setColumnCount(1)
             tree.setHeaderHidden(True)
             tree.setRootIsDecorated(False)
             self._populate_menu_list(tree)
-            # 减小与分组框标题的间距：上移并加高列表（补偿 QGroupBox 的 QSS margin）
-            g = tree.geometry()
-            dy = self._fu.px(0, 0, 0, 12).height()
-            tree.setGeometry(g.x(), g.y() - dy, g.width(), g.height() + dy)
         if cb := self._ctl.get("IDC_SELECTALL"):
             cb.clicked.connect(self._on_select_all)
         if b := self._ctl.get("IDC_RESTORE"):
@@ -737,12 +734,31 @@ class _ContextMenuPage(_MenuListPage):
     TEMPLATE = "IDD_SETTINGSLOOKANDFEEL"
     SETTINGS_KEY = "contextMenuEntries"
 
+    # 注意：RC 中首个 IDC_STATIC（第一个分组框）未被去重，勿重复添加
+    _GROUPS = [
+        (7, 161, 286, 56, "set_ctx_no_menu_group",
+         "Do not show the context menu for the following paths:"),
+    ]
+    _LABELS = [
+        (12, 18, 274, 18, "set_ctx_hint",
+         "Unchecked items will appear in the TortoiseGit submenu, checked "
+         "items directly in the main context menu."),
+    ]
+
 
 class _ContextMenu2Page(_MenuListPage):
     """IDD_SETTINGSEXTMENU —— Context Menu 2。"""
 
     TEMPLATE = "IDD_SETTINGSEXTMENU"
     SETTINGS_KEY = "contextMenuHideEntries"
+
+    # 注意：RC 中首个 IDC_STATIC（分组框）未被去重，勿重复添加
+    _LABELS = [
+        (12, 18, 274, 18, "set_ctx2_hint",
+         "Checked items will be hidden in the context menu by default and "
+         "will only be visible if the shift key is pressed while opening the "
+         "context menu."),
+    ]
 
 
 class _DialogsPage(_SettingPage):

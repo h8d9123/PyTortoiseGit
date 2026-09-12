@@ -35,16 +35,26 @@ def _merge_dlg(ui, repo, branch="feature"):
     from pytortoisegit.dialogs.mergedlg import MergeDlg
     dlg = MergeDlg(repo)
     dlg.show()
+    dlg.rd_branch.setChecked(True)
     idx = dlg.branch_combo.findText(branch)
     dlg.branch_combo.setCurrentIndex(max(0, idx))
     return dlg
+
+
+def _suppress_conflict_ui(monkeypatch):
+    """冲突时会弹信息框 + 冲突对话框，测试中屏蔽。"""
+    from PySide6.QtWidgets import QMessageBox
+    from pytortoisegit.dialogs.mergedlg import MergeDlg
+    monkeypatch.setattr(QMessageBox, "information",
+                        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok))
+    monkeypatch.setattr(MergeDlg, "_show_conflicts", lambda self: None)
 
 
 def test_TC_MERGE_001_no_conflict(qapp, ui, git_repo, auto_progress):
     """无冲突合并 → 文件合并进来。"""
     _feature_no_conflict(git_repo)
     dlg = _merge_dlg(ui, git_repo)
-    ui.click(dlg.btn_start)
+    ui.click(dlg.btn_ok)
     assert (Path(git_repo.root) / "b.txt").exists()
 
 
@@ -52,24 +62,26 @@ def test_TC_MERGE_002_fast_forward(qapp, ui, git_repo, auto_progress):
     """快进合并 → HEAD 前进到 feature。"""
     feat = _feature_no_conflict(git_repo)
     dlg = _merge_dlg(ui, git_repo)
-    ui.click(dlg.btn_start)
+    ui.click(dlg.btn_ok)
     assert git_repo.runner.run("rev-parse", "HEAD").stdout.strip() == feat
 
 
-def test_TC_MERGE_003_conflict(qapp, ui, git_repo, auto_progress):
+def test_TC_MERGE_003_conflict(qapp, ui, git_repo, auto_progress, monkeypatch):
     """冲突合并 → 产生冲突条目。"""
     _feature_conflict(git_repo)
+    _suppress_conflict_ui(monkeypatch)
     dlg = _merge_dlg(ui, git_repo)
-    ui.click(dlg.btn_start)
+    ui.click(dlg.btn_ok)
     unmerged = git_repo.runner.run("ls-files", "-u").stdout
     assert "a.txt" in unmerged
 
 
-def test_TC_MERGE_004_abort(qapp, ui, git_repo, auto_progress):
+def test_TC_MERGE_004_abort(qapp, ui, git_repo, auto_progress, monkeypatch):
     """中止合并 → 回到合并前。"""
     _feature_conflict(git_repo)
+    _suppress_conflict_ui(monkeypatch)
     dlg = _merge_dlg(ui, git_repo)
-    ui.click(dlg.btn_start)
+    ui.click(dlg.btn_ok)
     assert git_repo.runner.run("ls-files", "-u").stdout.strip() != ""
     dlg._on_abort()
     assert git_repo.runner.run("rev-parse", "--verify", "-q", "MERGE_HEAD").returncode != 0

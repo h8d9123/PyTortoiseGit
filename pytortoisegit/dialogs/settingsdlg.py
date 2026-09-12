@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFileDialog,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -671,6 +672,47 @@ class _ContextMenu2Page(_MenuListPage):
     SETTINGS_KEY = "contextMenuHideEntries"
 
 
+class _DialogsPage(_SettingPage):
+    """IDD_SETTINGSDIALOGS —— Dialogs 1（补回被去重的 IDC_STATIC 标签）。"""
+
+    TEMPLATE = "IDD_SETTINGSDIALOGS"
+
+    _LABELS = [
+        (14, 20, 140, 8, "set_default_log_limit",
+         "Default limitation of log messages:"),
+        (14, 34, 92, 13, "set_font_log", "&Font for log messages:"),
+        (19, 211, 84, 8, "set_describe_strategy", "Describe Strategy"),
+        (19, 228, 84, 8, "set_describe_size", "Abbreviated size"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        gb = QGroupBox(tr("set_describe", "Describe"), self)
+        gb.setGeometry(self._fu.px(14, 183, 272, 76))
+        gb.lower()
+        for x, y, w, h, key, default in self._LABELS:
+            lbl = QLabel(tr(key, default), self)
+            lbl.setGeometry(self._fu.px(x, y, w, h))
+
+
+class _Dialogs2Page(_SettingPage):
+    """IDD_SETTINGSDIALOGS2 —— Dialogs 2（补回被去重的 IDC_STATIC 标签）。"""
+
+    TEMPLATE = "IDD_SETTINGSDIALOGS2"
+
+    _LABELS = [
+        (14, 16, 85, 16, "set_autoclose", "&Autoclose Git.exe dialog:"),
+        (14, 257, 270, 9, "set_dialogs3_hint",
+         "Further options for the commit dialog are on Dialogs 3 page."),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        for x, y, w, h, key, default in self._LABELS:
+            lbl = QLabel(tr(key, default), self)
+            lbl.setGeometry(self._fu.px(x, y, w, h))
+
+
 # ---------------------------------------------------------------------------
 # 设置主对话框
 # ---------------------------------------------------------------------------
@@ -744,8 +786,8 @@ class SettingsDlg(QDialog):
                 "IDI_MISC",
                 main,
             )
-        self._add_page("dialog", _RcPage("IDD_SETTINGSDIALOGS", self), "IDI_DIALOGS", main)
-        self._add_page("dialog2", _RcPage("IDD_SETTINGSDIALOGS2", self), "IDI_DIALOGS", main)
+        self._add_page("dialog", _DialogsPage(self), "IDI_DIALOGS", main)
+        self._add_page("dialog2", _Dialogs2Page(self), "IDI_DIALOGS", main)
         self._add_page("dialog3", _RcPage("IDD_SETTINGSDIALOGS3", self), "IDI_DIALOGS", main)
         self._add_page("color1", _RcPage("IDD_SETTINGSCOLORS_1", self), "IDI_LOOKANDFEEL", main)
         self._add_page("color2", _RcPage("IDD_SETTINGSCOLORS_2", self), "IDI_LOOKANDFEEL", main)

@@ -101,6 +101,8 @@ def main(argv):
         for key, label in (("main", "settings_general"),
                            ("look", "settings_contextmenu"),
                            ("extmenu", "settings_contextmenu2"),
+                           ("dialog", "settings_dialogs1"),
+                           ("dialog2", "settings_dialogs2"),
                            ("diff", "settings_diff"),
                            ("proxy", "settings_network"),
                            ("smtp", "settings_email"),

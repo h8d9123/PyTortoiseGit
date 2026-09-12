@@ -1181,6 +1181,13 @@ STRINGS: Dict[str, str] = {
     "set_adv_key": "键",
     "set_adv_value": "值",
     "set_selectssh": "选择 SSH 客户端",
+    "set_default_log_limit": "日志消息默认条数上限：",
+    "set_font_log": "日志消息字体(&F)：",
+    "set_describe": "Describe",
+    "set_describe_strategy": "Describe 策略",
+    "set_describe_size": "缩写长度",
+    "set_autoclose": "自动关闭 Git.exe 对话框(&A)：",
+    "set_dialogs3_hint": "提交对话框的更多选项在「对话框 3」页。",
     # ---- 合并对话框补充 ----
     "merge_current": "当前分支：",
     "merge_from": "来自",

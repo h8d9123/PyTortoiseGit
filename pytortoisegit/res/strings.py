@@ -588,6 +588,13 @@ STRINGS: Dict[str, str] = {
     "tag_msg_hint": "仅附注标签需要",
     "tag_message": "附注",
     "tag_annotated": "创建附注标签",
+    "grp_name": "名称(&N)",
+    "grp_baseon": "基点",
+    "choose_head": "HEAD(&H)",
+    "force": "强制(&F)",
+    "push": "推送(&P)",
+    "tag_label": "标签(&T):",
+    "description": "描述(&D)",
     # ---- 右键菜单集成（shelldlg）----
     "shell_title": "右键菜单集成",
     "shell_install": "安装右键菜单",

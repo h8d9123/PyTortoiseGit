@@ -5,12 +5,11 @@
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QInputDialog, QMessageBox
+from PySide6.QtWidgets import QDialog, QInputDialog, QMessageBox
 
 
 def _click_ok(dlg):
-    box = dlg.findChild(QDialogButtonBox)
-    box.button(QDialogButtonBox.StandardButton.Ok).click()
+    dlg.btn_ok.click()
 
 
 # ---- TC-REF：新建分支 ----

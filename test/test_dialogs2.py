@@ -119,6 +119,25 @@ def test_create_branch_dialog(qapp, repo):
     _smoke(qapp, lambda: CreateBranchDlg(repo))
 
 
+def test_create_branch_dialog_layout(qapp, repo):
+    """对齐 IDD_NEW_BRANCH_TAG：Base On 单选/组合框、Options 可见性。"""
+    from pytortoisegit.dialogs.createbranchdlg import CreateBranchDlg, CreateTagDlg
+    dlg = CreateBranchDlg(repo)
+    assert dlg.rd_head.isChecked()
+    assert "(" in dlg.rd_head.text()          # HEAD (当前分支)
+    assert dlg.branch_combo.isEnabled() is False
+    assert dlg.switch_box.isVisibleTo(dlg)    # 分支模式显示“切换”
+    assert not dlg.sign_box.isVisibleTo(dlg)
+    assert dlg.grp_message.title().startswith("描述") or "D" in dlg.grp_message.title()
+
+    tag = CreateTagDlg(repo)
+    assert tag.annotated_box is tag.sign_box
+    assert tag.annotated_box.isVisibleTo(tag)  # 标签模式显示“附注”
+    assert not tag.switch_box.isVisibleTo(tag)
+    assert tag.track_box.isVisibleTo(tag) is False
+
+
+
 def test_sync_dialog(qapp, repo):
     from pytortoisegit.dialogs.sync import SyncDlg
     dlg = _smoke(qapp, lambda: SyncDlg(repo))

@@ -114,6 +114,7 @@ class MergeDlg(QDialog):
         # 冲突解决控件：默认不显示，冲突时弹窗
         self.conflicts = ConflictsWidget(self.repo, self)
         self.conflicts.resolved.connect(self._on_conflicts_resolved)
+        self.conflicts.hide()
 
         mapping = {
             "IDC_STATIC": self.cur_label,
@@ -278,6 +279,10 @@ class MergeDlg(QDialog):
         lay = QVBoxLayout(dlg)
         lay.addWidget(self.conflicts)
         dlg.exec()
+        # 弹窗关闭后把冲突视图收回本对话框，避免随弹窗析构
+        self.conflicts.setParent(self)
+        self.conflicts.hide()
+        dlg.deleteLater()
 
 
 # 锚点：可拉伸的控件（右缘/底部随窗口）

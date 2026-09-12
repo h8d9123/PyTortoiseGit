@@ -1198,6 +1198,7 @@ STRINGS: Dict[str, str] = {
     "set_overlayhandlers_note": "注意：这会影响所有 Tortoise 客户端，而不仅是 TortoiseGit！",
     "set_saved_actionlog_group": "操作日志",
     "set_saved_maxlines": "操作日志最大行数",
+    "set_bugtraq_group": "BugTraq",
     "set_blame_font_group": "字体",
     "set_blame_group": "Blame",
     "set_blame_log_group": "日志",

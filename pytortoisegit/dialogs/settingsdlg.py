@@ -560,6 +560,35 @@ class _OverlayHandlersPage(_SettingPage):
         _add_static_labels(self)
 
 
+class _BugtraqConfigPage(_SettingPage):
+    """IDD_SETTINGSBUGTRAQ_CONFIG —— Issue Tracker Config。"""
+
+    TEMPLATE = "IDD_SETTINGSBUGTRAQ_CONFIG"
+
+    # 注意：RC 中首个 IDC_STATIC（"|" 分隔符）未被去重，勿重复添加
+    _GROUPS = [
+        (7, 7, 287, 26, "set_config_source", "Config source"),
+        (7, 34, 287, 153, "set_bugtraq_group", "BugTraq"),
+    ]
+    _LABELS = [
+        (173, 18, 13, 11, None, "<<"),
+        (233, 18, 13, 11, None, "<<"),
+        (112, 18, 13, 11, None, "<<"),
+        (14, 44, 89, 8, None, "bugtraq.url"),
+        (14, 60, 91, 10, None, "bugtraq.warningifnoissue"),
+        (14, 77, 86, 10, None, "bugtraq.message"),
+        (14, 94, 84, 10, None, "bugtraq.append"),
+        (14, 111, 77, 10, None, "bugtraq.label"),
+        (14, 128, 72, 10, None, "bugtraq.number"),
+        (14, 144, 79, 10, None, "bugtraq.logregex"),
+        (14, 256, 99, 11, "set_save_to", "Save to:"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+
+
 class _SavedDataPage(_SettingPage):
     """IDD_SETTINGSSAVEDDATA —— Saved Data（补回被去重的标签/分组框）。"""
 
@@ -1067,7 +1096,7 @@ class SettingsDlg(QDialog):
         if has_repo:
             self._add_page(
                 "bugtraqconfig",
-                _RcPage("IDD_SETTINGSBUGTRAQ_CONFIG", self),
+                _BugtraqConfigPage(self),
                 "IDI_BUGTRAQ",
                 hooks,
             )

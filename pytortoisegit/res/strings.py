@@ -184,6 +184,8 @@ STRINGS: Dict[str, str] = {
     "confirm": "确认",
 
     # ---- 设置 - General 页 ----
+    "set_group_tortoisegit": "TortoiseGit",
+    "set_group_gitwin": "Git for Windows",
     "set_lang": "&语言：",
     "set_gitexe": "&Git.exe 路径：",
     "set_extrapath": "&额外 PATH：",

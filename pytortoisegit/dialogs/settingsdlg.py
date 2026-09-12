@@ -182,6 +182,15 @@ class _GeneralPage(_SettingPage):
     # -- 静态标签：RC 中多个标签共用 IDC_STATIC 被去重丢弃，手动补回 -----
     def _add_static_labels(self):
         # (x, y, w, h, 字符串键, 默认文本) —— 坐标来自 TortoiseProcENG.rc
+        groups = [
+            (7, 7, 286, 92, "set_group_tortoisegit", "TortoiseGit"),
+            (7, 113, 286, 98, "set_group_gitwin", "Git for Windows"),
+        ]
+        for x, y, w, h, key, default in groups:
+            gb = QGroupBox(tr(key, default), self)
+            gb.setGeometry(self._fu.px(x, y, w, h))
+            gb.lower()
+            self._ctl[f"group_{key}"] = gb
         labels = [
             (14, 20, 86, 8, "set_lang", "&Language:"),
             (16, 132, 58, 8, "set_gitexe", "&Git.exe Path:"),

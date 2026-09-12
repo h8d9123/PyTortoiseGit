@@ -560,6 +560,63 @@ class _OverlayHandlersPage(_SettingPage):
         _add_static_labels(self)
 
 
+class _Win11MenuPage(_SettingPage):
+    """IDD_SETTINGSWIN11CONTEXTMENU —— Windows 11 Context Menu。"""
+
+    TEMPLATE = "IDD_SETTINGSWIN11CONTEXTMENU"
+
+    # 注意：RC 中首个 IDC_STATIC（分组框）未被去重，勿重复添加
+    _LABELS = [
+        (12, 16, 274, 18, "set_win11_hint",
+         "Unchecked items are not shown in the top menu but only in the "
+         "original menu"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+
+
+class _GitRemotePage(_SettingPage):
+    """IDD_SETTINREMOTE —— Remote（功能暂未开发，整页置灰）。"""
+
+    TEMPLATE = "IDD_SETTINREMOTE"
+    READONLY = True
+
+    # 注意：RC 中首个 IDC_STATIC（"Remote:"）未被去重，勿重复添加
+    _LABELS = [
+        (96, 47, 48, 8, "set_remote_url", "URL:"),
+        (96, 64, 48, 8, "set_remote_pushurl", "Push URL:"),
+        (96, 82, 48, 8, "set_remote_puttykey", "Putty Key:"),
+        (96, 103, 40, 8, "set_remote_tags", "Tags:"),
+        (7, 10, 76, 8, "set_remote_label", "Remote:"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+
+
+class _CredentialPage(_SettingPage):
+    """IDD_SETTINGSCREDENTIAL —— Credential（功能暂未开发，整页置灰）。"""
+
+    TEMPLATE = "IDD_SETTINGSCREDENTIAL"
+    READONLY = True
+
+    # 注意：RC 中首个 IDC_STATIC（"Credential helper:"）未被去重，勿重复添加
+    _LABELS = [
+        (7, 24, 76, 8, "set_cred_helpers", "Helpers:"),
+        (97, 38, 40, 8, "set_cred_configtype", "Config type:"),
+        (97, 58, 16, 8, "set_cred_url", "URL:"),
+        (97, 74, 40, 8, "set_cred_helper", "Helper:"),
+        (97, 92, 36, 8, "set_cred_username", "Username:"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+
+
 class _BugtraqConfigPage(_SettingPage):
     """IDD_SETTINGSBUGTRAQ_CONFIG —— Issue Tracker Config。"""
 
@@ -1064,7 +1121,7 @@ class SettingsDlg(QDialog):
         if _is_win11():
             self._add_page(
                 "win11menu",
-                _RcPage("IDD_SETTINGSWIN11CONTEXTMENU", self),
+                _Win11MenuPage(self),
                 "IDI_MISC",
                 main,
             )
@@ -1084,11 +1141,11 @@ class SettingsDlg(QDialog):
         git = self._add_page("gitconfig", _GitPage(self), "IDI_GITCONFIG")
         if has_repo:
             self._add_page(
-                "gitremote", _RcPage("IDD_SETTINREMOTE", self, readonly=True),
+                "gitremote", _GitRemotePage(self),
                 "IDI_GITREMOTE", git)
         self._add_page(
             "gitcredential",
-            _RcPage("IDD_SETTINGSCREDENTIAL", self, readonly=True),
+            _CredentialPage(self),
             "IDI_GITCREDENTIAL", git)
 
         hooks = self._add_page("hooks", _RcPage("IDD_SETTINGSHOOKS", self), "IDI_HOOK")

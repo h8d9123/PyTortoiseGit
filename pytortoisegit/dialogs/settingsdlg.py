@@ -482,8 +482,13 @@ class _SmtpPage(_SettingPage):
 
     TEMPLATE = "IDD_SETTINGSMTP"
 
+    # 注意：RC 中首个 IDC_STATIC（"Delivery:"）未被去重，勿重复添加
+    _GROUPS = [(17, 97, 268, 51, "set_smtp_credentials", "Credentials")]
+    _LABELS = [(7, 47, 47, 8, "set_smtp_from", "From")]
+
     def _build_ui(self):
         super()._build_ui()
+        _add_static_labels(self)
         if c := self._ctl.get("IDC_SMTPDELIVERYCOMBO"):
             c.addItems(["", "smtp", "smtps", "sendmail", "mailto", "auto"])
         if c := self._ctl.get("IDC_SMTPENCRYPTIONCOMBO"):
@@ -544,6 +549,25 @@ class _BlamePage(_SettingPage):
 
     TEMPLATE = "IDD_SETTINGSTBLAME"
 
+    # 注意：RC 中首个 IDC_STATIC（"Colors" 分组框）未被去重，勿重复添加
+    _GROUPS = [
+        (7, 77, 286, 46, "set_blame_font_group", "Font"),
+        (7, 126, 286, 79, "set_blame_group", "Blame"),
+        (7, 208, 286, 42, "set_blame_log_group", "Log"),
+    ]
+    _LABELS = [
+        (14, 21, 148, 8, "set_blame_recent", "Recently modified lines"),
+        (14, 37, 148, 8, "set_blame_older", "Older lines"),
+        (14, 85, 92, 17, "set_blame_font", "&Font:"),
+        (14, 108, 92, 8, "set_blame_tabsize", "Tab size:"),
+        (14, 136, 108, 12, "set_blame_detect",
+         "&Detect moved or copied lines:"),
+        (14, 153, 247, 8, "set_blame_detect_chars",
+         "Number of characters required for moved or copied line detection:"),
+        (32, 165, 60, 8, "set_blame_within", "Within a file:"),
+        (172, 165, 70, 8, "set_blame_between", "Between files:"),
+    ]
+
     _DEFAULT_COLORS = {
         "IDC_NEWLINESCOLOR": "#ffff88",
         "IDC_OLDLINESCOLOR": "#ffffff",
@@ -551,6 +575,7 @@ class _BlamePage(_SettingPage):
 
     def _build_ui(self):
         super()._build_ui()
+        _add_static_labels(self)
         self._fill_fonts()
         self._apply_colors()
         if c := self._ctl.get("IDC_DETECT_MOVED_OR_COPIED_LINES"):
@@ -578,6 +603,26 @@ class _UDiffPage(_SettingPage):
 
     TEMPLATE = "IDD_SETTINGSUDIFF"
 
+    # 注意：RC 中首个 IDC_STATIC（"Colors" 分组框）未被去重，勿重复添加
+    _GROUPS = [(7, 148, 286, 40, "set_udiff_font_group", "Font")]
+    _LABELS = [
+        (126, 15, 76, 8, "set_udiff_foreground", "Foreground"),
+        (209, 14, 75, 8, "set_udiff_background", "Background"),
+        (14, 32, 112, 8, "set_udiff_command", "Diff command"),
+        (14, 48, 112, 8, "set_udiff_position", "Diff position"),
+        (14, 64, 112, 8, "set_udiff_header", "Diff header"),
+        (14, 80, 112, 8, "set_udiff_comment", "Diff comment"),
+        (14, 96, 112, 8, "set_udiff_added", "Diff added lines"),
+        (14, 112, 112, 8, "set_udiff_removed", "Diff removed lines"),
+        (14, 156, 92, 14, "set_udiff_font", "&Font:"),
+        (14, 174, 92, 8, "set_udiff_tabsize", "Tab size:"),
+        (7, 193, 287, 46, "set_udiff_note",
+         "Note: These settings also apply to the Patch Viewer dialog.\n"
+         "To select whether you would like to use the build-in or any "
+         "alternative diff viewer program go to \"Diff Viewer\" preferences "
+         "section in the leftward tree."),
+    ]
+
     # 对齐 DiffView.LIGHT 默认配色
     _DEFAULT_COLORS = {
         "IDC_FORECOMMANDCOLOR": "#0a2436",
@@ -596,6 +641,7 @@ class _UDiffPage(_SettingPage):
 
     def _build_ui(self):
         super()._build_ui()
+        _add_static_labels(self)
         from PySide6.QtGui import QFontDatabase
         if c := self._ctl.get("IDC_FONTNAMES"):
             c.addItems(QFontDatabase.families())

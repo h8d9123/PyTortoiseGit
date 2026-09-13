@@ -98,30 +98,45 @@ class BlameDlg(QDialog):
             items[1].setData(Qt.ItemDataRole.UserRole, bl.sha)
         self._header_set(f" {self.filepath} — {len(lines)} {tr('blame_lines', 'lines')}")
 
-    def _on_menu(self, pos):
+    def _sha_at(self, pos):
         item = self.table.itemAt(pos)
         if item is None:
-            return
-        row = item.row()
-        sha_item = self.table.item(row, 1)
+            return None
+        sha_item = self.table.item(item.row(), 1)
         if sha_item is None:
-            return
-        sha = sha_item.data(Qt.ItemDataRole.UserRole) or sha_item.text()
+            return None
+        return sha_item.data(Qt.ItemDataRole.UserRole) or sha_item.text()
+
+    def _build_menu(self):
+        """构建 blame 右键菜单，返回 (menu, {action: key})，便于测试。"""
         menu = QMenu(self)
-        act_copy = menu.addAction(tr("log_copyhash", "Copy full hash"))
-        act_log = menu.addAction(tr("menu_show_log", "Show log for this commit"))
-        act_copy_short = menu.addAction(tr("log_copyshort", "Copy short hash"))
+        acts = {}
+        acts[menu.addAction(tr("log_copyhash", "Copy full hash"))] = "copy"
+        acts[menu.addAction(tr("menu_show_log", "Show log for this commit"))] = "log"
+        acts[menu.addAction(tr("log_copyshort", "Copy short hash"))] = "copy_short"
+        return menu, acts
+
+    def _handle_menu(self, key: str, sha):
+        from ..utils.clipboard import ClipboardHelper
+        if key == "copy":
+            ClipboardHelper().copy_text(sha)
+        elif key == "copy_short":
+            ClipboardHelper().copy_text(str(sha)[:8])
+        elif key == "log":
+            from .logdlg import LogDlg
+            LogDlg(self.repo, pathspec=None, rev=str(sha), parent=self).exec()
+
+    def _on_menu(self, pos):
+        sha = self._sha_at(pos)
+        if sha is None:
+            return
+        menu, acts = self._build_menu()
         chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
         if chosen is None:
             return
-        from ..utils.clipboard import ClipboardHelper
-        if chosen is act_copy:
-            ClipboardHelper().copy_text(sha)
-        elif chosen is act_copy_short:
-            ClipboardHelper().copy_text(sha[:8])
-        elif chosen is act_log:
-            from .logdlg import LogDlg
-            LogDlg(self.repo, pathspec=None, rev=str(sha), parent=self).exec()
+        key = acts.get(chosen)
+        if key:
+            self._handle_menu(key, sha)
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
 # Copyright (C) 2026  PyTortoiseGit contributors

@@ -134,6 +134,34 @@ class ResolveDlg(QDialog):
         p = item.data(0, Qt.ItemDataRole.UserRole)
         self._do_resolve([p])
 
+    def _build_menu(self):
+        """构建冲突列表右键菜单，返回 (menu, {action: key})，便于测试。"""
+        menu = QMenu(self)
+        acts = {}
+        acts[menu.addAction(tr("menu_open", "Open in editor"))] = "open"
+        acts[menu.addAction(tr("menu_copy_path", "Copy path"))] = "copy"
+        acts[menu.addAction(tr("resolve_edit", "Resolve/Mark as resolved"))] = "edit"
+        menu.addSeparator()
+        acts[menu.addAction(tr("resolve_merge", "Resolve with merge tool"))] = "merge"
+        acts[menu.addAction(tr("resolve_diff", "View conflict"))] = "diff"
+        return menu, acts
+
+    def _handle_menu(self, key: str, p: str):
+        import os
+        from ..utils.clipboard import ClipboardHelper
+        if key == "copy":
+            ClipboardHelper().copy_text(p)
+        elif key == "open":
+            full = self.repo.full_path(p)
+            if os.path.isfile(full):
+                os.startfile(full)  # noqa: S606
+        elif key == "edit":
+            self._do_resolve([p])
+        elif key == "merge":
+            self._launch_merge(p)
+        elif key == "diff":
+            self._show_conflict(p)
+
     def _on_resolve_menu(self, pos):
         item = self.resolve_list.itemAt(pos)
         if item is None:
@@ -141,30 +169,13 @@ class ResolveDlg(QDialog):
         p = item.data(0, Qt.ItemDataRole.UserRole)
         if not p:
             return
-        menu = QMenu(self)
-        act_open = menu.addAction(tr("menu_open", "Open in editor"))
-        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
-        act_edit = menu.addAction(tr("resolve_edit", "Resolve/Mark as resolved"))
-        menu.addSeparator()
-        act_merge = menu.addAction(tr("resolve_merge", "Resolve with merge tool"))
-        act_diff = menu.addAction(tr("resolve_diff", "View conflict"))
+        menu, acts = self._build_menu()
         chosen = menu.exec(self.resolve_list.viewport().mapToGlobal(pos))
         if chosen is None:
             return
-        from ..utils.clipboard import ClipboardHelper
-        full = self.repo.full_path(p)
-        if chosen is act_copy:
-            ClipboardHelper().copy_text(p)
-        elif chosen is act_open:
-            import os
-            if os.path.isfile(full):
-                os.startfile(full)  # noqa: S606
-        elif chosen is act_edit:
-            self._do_resolve([p])
-        elif chosen is act_merge:
-            self._launch_merge(p)
-        elif chosen is act_diff:
-            self._show_conflict(p)
+        key = acts.get(chosen)
+        if key:
+            self._handle_menu(key, p)
 
     def _launch_merge(self, path: str):
         try:

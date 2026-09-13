@@ -437,57 +437,10 @@ class ChangedDlg(QDialog):
         r = item.data(0, Qt.ItemDataRole.UserRole + 1) if item else None
         if not isinstance(r, StatusRow):
             return
-        e = r.entry
-        menu = QMenu(self)
-        if e.is_staged:
-            act_unstage = menu.addAction(tr("changes_unstage", "Unstage"))
-        else:
-            act_stage = menu.addAction(tr("changes_stage", "Stage"))
-        act_diff_head = menu.addAction(tr("changes_diff_head", "Compare with HEAD"))
-        act_revert = menu.addAction(tr("changes_revert", "Revert changes…"))
-        menu.addSeparator()
-        act_open = menu.addAction(tr("menu_open", "Open in editor"))
-        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
-        act_blame = menu.addAction(tr("menu_blame", "Blame this file"))
-        act_patch = menu.addAction(tr("changes_save_unified", "Show patch for this file"))
-        chosen = menu.exec(self.status_tree.viewport().mapToGlobal(pos))
-        if chosen is None:
-            return
-        import os
-        from ..utils.clipboard import ClipboardHelper
-        full = os.path.join(self.repo.root, str(e.path).replace("/", os.sep))
-        if chosen is act_copy:
-            ClipboardHelper().copy_text(e.path)
-        elif chosen is act_open:
-            if os.path.isfile(full):
-                os.startfile(full)  # noqa: S606
-        elif chosen is act_blame:
-            from .blamedlg import BlameDlg
-            BlameDlg(self.repo, str(e.path), parent=self).exec()
-        elif chosen is act_patch:
-            try:
-                text = self.repo.runner.run_checked("diff", "HEAD", "--", str(e.path))
-                from .patchviewdlg import PatchViewDlg
-                PatchViewDlg(text, title=str(e.path), parent=self).exec()
-            except Exception:
-                pass
-        elif (e.is_staged and chosen is act_unstage) or ((not e.is_staged) and (chosen is act_stage)):
-            if e.is_staged:
-                self.index.reset([e.path])
-            else:
-                self.index.add([e.path])
-            self.refresh()
-        elif chosen is act_diff_head:
-            from ..merge.mergefrm import MergeFrm
-            MergeFrm(self.repo, str(e.path), "HEAD", None, parent=self).show()
-        elif chosen is act_revert:
-            resp = QMessageBox.question(
-                self, tr("confirm"),
-                format_string(tr("changes_revert_q", "Revert changes to {path}?"), path=e.path),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if resp == QMessageBox.StandardButton.Yes:
-                self.repo.runner.run("checkout", "--", e.path)
-                self.refresh()
+        from .statusmenu import build_status_menu
+        menu = build_status_menu(self, self.repo, str(r.entry.path),
+                                 on_refresh=self.refresh)
+        menu.exec(self.status_tree.viewport().mapToGlobal(pos))
 
     def _on_file_double_clicked(self, item, _col):
         """双击文件行：对齐 CGitStatusListCtrl::StartDiff，打开 TortoiseGitMerge 并排比较。"""

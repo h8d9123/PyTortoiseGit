@@ -24,6 +24,26 @@ def _english_ui():
     strings.set_language("zh")
 
 
+def test_status_menu_items(qapp, repo):
+    """文件右键菜单：git 管理文件与未版本控制文件的项目不同。"""
+    from PySide6.QtWidgets import QWidget
+    from pytortoisegit.dialogs.statusmenu import build_status_menu
+    w = QWidget()
+    ver = [a.text() for a in build_status_menu(w, repo, "mod.txt").actions()
+           if a.text()]
+    for item in ("Compare with base", "Show changes as unified diff",
+                 "Commit...", "Revert...", "Skip worktree",
+                 "Assume Unchanged", "Show log", "Blame",
+                 "Copy to clipboard"):
+        assert item in ver, (item, ver)
+    unver = [a.text() for a in build_status_menu(w, repo, "new.txt").actions()
+             if a.text()]
+    for item in ("Add", "Commit...", "Delete", "Ignore"):
+        assert item in unver, (item, unver)
+    assert "Compare with base" not in unver
+    assert "Revert..." not in unver
+
+
 @pytest.fixture(scope="module")
 def repo(tmp_path_factory):
     root = tmp_path_factory.mktemp("changedrepo")

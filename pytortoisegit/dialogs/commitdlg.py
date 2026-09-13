@@ -659,32 +659,10 @@ class CommitDlg(QDialog):
         row = item.data(0, Qt.ItemDataRole.UserRole + 1)
         if not isinstance(row, StatusRow):
             return
-        path = row.path
-        menu = QMenu(self)
-        act_open = menu.addAction(tr("menu_open", "Open in editor"))
-        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
-        menu.addSeparator()
-        act_diff = menu.addAction(tr("menu_diff_file", "View diff"))
-        act_viewpatch = menu.addAction(tr("commit_view_patch", "View patch"))
-        act_blame = menu.addAction(tr("menu_blame", "Blame this file"))
-        chosen = menu.exec(self.status_tree.viewport().mapToGlobal(pos))
-        if chosen is None:
-            return
-        from ..utils.clipboard import ClipboardHelper
-        full = self._full_path(path)
-        if chosen is act_copy:
-            ClipboardHelper().copy_text(path)
-        elif chosen is act_open:
-            import os
-            if full and os.path.isfile(full):
-                os.startfile(full)  # noqa: S606
-        elif chosen is act_diff:
-            self._show_diff(path)
-        elif chosen is act_viewpatch:
-            self._show_patch(path)
-        elif chosen is act_blame:
-            from .blamedlg import BlameDlg
-            BlameDlg(self.repo, path, parent=self).exec()
+        from .statusmenu import build_status_menu
+        menu = build_status_menu(self, self.repo, row.path,
+                                 on_refresh=self.refresh)
+        menu.exec(self.status_tree.viewport().mapToGlobal(pos))
 
     def _full_path(self, path: str) -> str:
         import os

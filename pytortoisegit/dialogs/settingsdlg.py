@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QSplitter,
     QStackedWidget,
     QTreeWidget,
@@ -56,6 +57,15 @@ from ..git.repo import Repository
 from ..res.strings import set_language, tr, tr_settings
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
+from .settings_data import (
+    HOOK_TYPES,
+    BugTraqAssociation,
+    Hook,
+    load_bugtraq_associations,
+    load_hooks,
+    save_bugtraq_associations,
+    save_hooks,
+)
 
 
 def _is_win11() -> bool:
@@ -1595,6 +1605,421 @@ class _Colors3Page(_ColorPage):
 
 
 # ---------------------------------------------------------------------------
+# RC 模板独立对话框基类 + 钩子/问题跟踪 子对话框与页面
+# ---------------------------------------------------------------------------
+
+
+class _RcDialog(QDialog):
+    """按 rc 模板构建的独立对话框（IDOK/IDCANCEL 自动接线）。"""
+
+    TEMPLATE = ""
+
+    def __init__(self, parent=None):
+        super().__init__(parent, Qt.WindowType.Window)
+        self._ctl: dict = {}
+        spec = rc_mod.load_spec(self.TEMPLATE)
+        fu = DialogUnits(spec.font_size or 9, spec.font or "Segoe UI")
+        r = fu.px(0, 0, spec.width, spec.height)
+        self.setMinimumSize(r.width(), r.height())
+        self._fu = fu
+        self._spec = spec
+        if spec.caption:
+            self.setWindowTitle(tr_settings(spec.caption))
+        for ctrl in spec.controls:
+            wgt = rc_mod.make_widget(ctrl, self)
+            if wgt is None:
+                continue
+            if ctrl.text:
+                self._translate(wgt, tr_settings(ctrl.text))
+            wgt.setParent(self)
+            rc_mod.place_widget(self, fu, ctrl, wgt)
+            self._ctl[ctrl.ctrl_id] = wgt
+        if ok := self._ctl.get("IDOK"):
+            ok.clicked.connect(self.accept)
+        if cancel := self._ctl.get("IDCANCEL"):
+            cancel.clicked.connect(self.reject)
+        self._build()
+
+    @staticmethod
+    def _translate(wgt, text: str):
+        if isinstance(wgt, QGroupBox):
+            wgt.setTitle(text)
+        elif isinstance(wgt, (QCheckBox, QRadioButton, QPushButton)):
+            wgt.setText(text)
+        elif isinstance(wgt, QLabel):
+            wgt.setText(text)
+
+    def _build(self):
+        pass
+
+
+class HookConfigDlg(_RcDialog):
+    """IDD_SETTINGSHOOKCONFIG —— 配置钩子脚本。"""
+
+    TEMPLATE = "IDD_SETTINGSHOOKCONFIG"
+
+    def __init__(self, parent=None, hook: Hook | None = None):
+        self._hook = Hook.from_dict(hook.to_dict()) if hook else Hook()
+        super().__init__(parent)
+
+    def _build(self):
+        h = self._hook
+        if combo := self._ctl.get("IDC_HOOKTYPECOMBO"):
+            for key, tr_key, default in HOOK_TYPES:
+                combo.addItem(tr(tr_key, default), key)
+            idx = combo.findData(h.htype)
+            combo.setCurrentIndex(idx if idx >= 0 else 0)
+        if e := self._ctl.get("IDC_ENABLE"):
+            e.setChecked(h.enabled)
+        if l := self._ctl.get("IDC_LOCALCHECK"):
+            l.setChecked(h.local)
+            l.toggled.connect(self._update_path_enabled)
+        if p := self._ctl.get("IDC_HOOKPATH"):
+            p.setText(h.path)
+        if c := self._ctl.get("IDC_HOOKCOMMANDLINE"):
+            c.setText(h.commandline)
+        if w := self._ctl.get("IDC_WAITCHECK"):
+            w.setChecked(h.wait)
+        if hd := self._ctl.get("IDC_HIDECHECK"):
+            hd.setChecked(not h.show)
+        if b := self._ctl.get("IDC_HOOKBROWSE"):
+            b.clicked.connect(self._browse_path)
+        if b := self._ctl.get("IDC_HOOKCOMMANDBROWSE"):
+            b.clicked.connect(self._browse_cmd)
+        self._update_path_enabled()
+
+    def _update_path_enabled(self, *_):
+        local = self._ctl.get("IDC_LOCALCHECK")
+        enabled = not (local is not None and local.isChecked())
+        for cid in ("IDC_HOOKPATH", "IDC_HOOKBROWSE"):
+            if w := self._ctl.get(cid):
+                w.setEnabled(enabled)
+
+    def _browse_path(self):
+        start = self._ctl["IDC_HOOKPATH"].text().strip()
+        p = QFileDialog.getExistingDirectory(
+            self, tr("hook_select_folder", "Select folder"), start)
+        if p:
+            self._ctl["IDC_HOOKPATH"].setText(p)
+
+    def _browse_cmd(self):
+        from ..utils.pick import pick_file
+        p = pick_file(self, tr("hook_select_script", "Select script file"), "")
+        if p:
+            self._ctl["IDC_HOOKCOMMANDLINE"].setText(p)
+
+    def accept(self):
+        cmd = self._ctl.get("IDC_HOOKCOMMANDLINE")
+        if cmd is not None and not cmd.text().strip():
+            QMessageBox.warning(self, tr("error", "Error"),
+                                tr("hook_cmd_required",
+                                   "Command line is required."))
+            return
+        h = self._hook
+        if combo := self._ctl.get("IDC_HOOKTYPECOMBO"):
+            h.htype = combo.currentData() or "pre_commit_hook"
+        h.enabled = bool(self._ctl["IDC_ENABLE"].isChecked())
+        h.local = bool(self._ctl["IDC_LOCALCHECK"].isChecked())
+        h.path = self._ctl["IDC_HOOKPATH"].text().strip()
+        h.commandline = cmd.text().strip() if cmd is not None else ""
+        h.wait = bool(self._ctl["IDC_WAITCHECK"].isChecked())
+        h.show = not bool(self._ctl["IDC_HIDECHECK"].isChecked())
+        super().accept()
+
+    def result_hook(self) -> Hook:
+        return self._hook
+
+
+class _HooksPage(_SettingPage):
+    """IDD_SETTINGSHOOKS —— 钩子脚本列表。"""
+
+    TEMPLATE = "IDD_SETTINGSHOOKS"
+
+    def _build_ui(self):
+        super()._build_ui()
+        self._hooks: List[Hook] = []
+        tree = self._ctl.get("IDC_HOOKLIST")
+        if tree is not None:
+            tree.setColumnCount(5)
+            tree.setHeaderLabels([
+                tr("hooks_col_type", "Type"), tr("hooks_col_path", "Path"),
+                tr("hooks_col_cmdline", "Command Line"),
+                tr("hooks_col_wait", "Wait"), tr("hooks_col_show", "Show"),
+            ])
+            tree.setRootIsDecorated(False)
+            tree.itemChanged.connect(self._on_item_changed)
+            tree.itemSelectionChanged.connect(self._update_buttons)
+            tree.itemDoubleClicked.connect(lambda *_: self._on_edit())
+        for cid, slot in (("IDC_HOOKADDBUTTON", self._on_add),
+                          ("IDC_HOOKEDITBUTTON", self._on_edit),
+                          ("IDC_HOOKCOPYBUTTON", self._on_copy),
+                          ("IDC_HOOKREMOVEBUTTON", self._on_remove)):
+            if b := self._ctl.get(cid):
+                b.clicked.connect(slot)
+        self._update_buttons()
+
+    @staticmethod
+    def _type_label(htype: str) -> str:
+        for key, tr_key, default in HOOK_TYPES:
+            if key == htype:
+                return tr(tr_key, default)
+        return htype
+
+    def load_settings(self):
+        self._hooks = load_hooks()
+        self._reload()
+
+    def save_settings(self):
+        save_hooks(self._hooks)
+
+    def _reload(self):
+        tree = self._ctl.get("IDC_HOOKLIST")
+        if tree is None:
+            return
+        tree.blockSignals(True)
+        tree.clear()
+        for h in self._hooks:
+            path = "local" if h.local else h.path
+            it = QTreeWidgetItem([
+                self._type_label(h.htype), path, h.commandline,
+                "true" if h.wait else "false",
+                "show" if h.show else "hide",
+            ])
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            it.setCheckState(0, Qt.CheckState.Checked if h.enabled
+                             else Qt.CheckState.Unchecked)
+            it.setData(0, Qt.ItemDataRole.UserRole, h)
+            tree.addTopLevelItem(it)
+        tree.blockSignals(False)
+        self._update_buttons()
+
+    def _selected(self):
+        tree = self._ctl.get("IDC_HOOKLIST")
+        return tree.selectedItems() if tree is not None else []
+
+    def _update_buttons(self):
+        n = len(self._selected())
+        if b := self._ctl.get("IDC_HOOKREMOVEBUTTON"):
+            b.setEnabled(n > 0)
+        if b := self._ctl.get("IDC_HOOKEDITBUTTON"):
+            b.setEnabled(n == 1)
+        if b := self._ctl.get("IDC_HOOKCOPYBUTTON"):
+            b.setEnabled(n == 1)
+
+    def _on_item_changed(self, item, col):
+        if col != 0:
+            return
+        h = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(h, Hook):
+            h.enabled = item.checkState(0) == Qt.CheckState.Checked
+
+    def _on_add(self):
+        dlg = HookConfigDlg(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._hooks.append(dlg.result_hook())
+            self._reload()
+
+    def _on_edit(self):
+        sel = self._selected()
+        if len(sel) != 1:
+            return
+        old = sel[0].data(0, Qt.ItemDataRole.UserRole)
+        dlg = HookConfigDlg(self, old)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            new = dlg.result_hook()
+            self._hooks = [h for h in self._hooks if h is not old]
+            self._hooks.append(new)
+            self._reload()
+
+    def _on_copy(self):
+        sel = self._selected()
+        if len(sel) != 1:
+            return
+        old = sel[0].data(0, Qt.ItemDataRole.UserRole)
+        dlg = HookConfigDlg(self, old)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._hooks.append(dlg.result_hook())
+            self._reload()
+
+    def _on_remove(self):
+        sel = self._selected()
+        if not sel:
+            return
+        remove = {id(it.data(0, Qt.ItemDataRole.UserRole)) for it in sel}
+        self._hooks = [h for h in self._hooks if id(h) not in remove]
+        self._reload()
+
+
+class BugTraqConfigDlg(_RcDialog):
+    """IDD_SETTINGSBUGTRAQADV —— 配置问题跟踪集成。"""
+
+    TEMPLATE = "IDD_SETTINGSBUGTRAQADV"
+
+    def __init__(self, parent=None, assoc: BugTraqAssociation | None = None):
+        self._assoc = (BugTraqAssociation.from_dict(assoc.to_dict())
+                       if assoc else BugTraqAssociation())
+        super().__init__(parent)
+
+    def _build(self):
+        a = self._assoc
+        if e := self._ctl.get("IDC_ENABLE"):
+            e.setChecked(a.enabled)
+        if p := self._ctl.get("IDC_BUGTRAQPATH"):
+            p.setText(a.path)
+        if combo := self._ctl.get("IDC_BUGTRAQPROVIDERCOMBO"):
+            combo.setEditable(True)
+            if a.provider:
+                combo.addItem(a.provider)
+            combo.setCurrentText(a.provider)
+        if pa := self._ctl.get("IDC_BUGTRAQPARAMETERS"):
+            pa.setText(a.parameters)
+        if b := self._ctl.get("IDC_BUGTRAQBROWSE"):
+            b.clicked.connect(self._browse_path)
+        if o := self._ctl.get("IDC_OPTIONS"):
+            o.clicked.connect(self._show_options)
+
+    def _browse_path(self):
+        start = self._ctl["IDC_BUGTRAQPATH"].text().strip()
+        p = QFileDialog.getExistingDirectory(
+            self, tr("bugtraq_select_folder", "Select working tree folder"),
+            start)
+        if p:
+            self._ctl["IDC_BUGTRAQPATH"].setText(p)
+
+    def _show_options(self):
+        QMessageBox.information(
+            self, tr("bugtraq_options", "Options"),
+            tr("bugtraq_options_msg",
+               "Provider-specific options are not available in this build."))
+
+    def accept(self):
+        a = self._assoc
+        a.enabled = bool(self._ctl["IDC_ENABLE"].isChecked())
+        a.path = self._ctl["IDC_BUGTRAQPATH"].text().strip()
+        combo = self._ctl.get("IDC_BUGTRAQPROVIDERCOMBO")
+        a.provider = combo.currentText().strip() if combo is not None else ""
+        pa = self._ctl.get("IDC_BUGTRAQPARAMETERS")
+        a.parameters = pa.text().strip() if pa is not None else ""
+        if not a.path:
+            QMessageBox.warning(self, tr("error", "Error"),
+                                tr("bugtraq_path_required",
+                                   "Working tree path is required."))
+            return
+        super().accept()
+
+    def result_assoc(self) -> BugTraqAssociation:
+        return self._assoc
+
+
+class _BugTraqPage(_SettingPage):
+    """IDD_SETTINGSBUGTRAQ —— 问题跟踪集成列表。"""
+
+    TEMPLATE = "IDD_SETTINGSBUGTRAQ"
+
+    def _build_ui(self):
+        super()._build_ui()
+        self._assocs: List[BugTraqAssociation] = []
+        tree = self._ctl.get("IDC_BUGTRAQLIST")
+        if tree is not None:
+            tree.setColumnCount(3)
+            tree.setHeaderLabels([
+                tr("bugtraq_col_path", "Path"),
+                tr("bugtraq_col_provider", "Provider"),
+                tr("bugtraq_col_params", "Parameters"),
+            ])
+            tree.setRootIsDecorated(False)
+            tree.itemChanged.connect(self._on_item_changed)
+            tree.itemSelectionChanged.connect(self._update_buttons)
+            tree.itemDoubleClicked.connect(lambda *_: self._on_edit())
+        for cid, slot in (("IDC_BUGTRAQADDBUTTON", self._on_add),
+                          ("IDC_BUGTRAQEDITBUTTON", self._on_edit),
+                          ("IDC_BUGTRAQCOPYBUTTON", self._on_copy),
+                          ("IDC_BUGTRAQREMOVEBUTTON", self._on_remove)):
+            if b := self._ctl.get(cid):
+                b.clicked.connect(slot)
+        self._update_buttons()
+
+    def load_settings(self):
+        self._assocs = load_bugtraq_associations()
+        self._reload()
+
+    def save_settings(self):
+        save_bugtraq_associations(self._assocs)
+
+    def _reload(self):
+        tree = self._ctl.get("IDC_BUGTRAQLIST")
+        if tree is None:
+            return
+        tree.blockSignals(True)
+        tree.clear()
+        for a in self._assocs:
+            it = QTreeWidgetItem([a.path, a.provider, a.parameters])
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            it.setCheckState(0, Qt.CheckState.Checked if a.enabled
+                             else Qt.CheckState.Unchecked)
+            it.setData(0, Qt.ItemDataRole.UserRole, a)
+            tree.addTopLevelItem(it)
+        tree.blockSignals(False)
+        self._update_buttons()
+
+    def _selected(self):
+        tree = self._ctl.get("IDC_BUGTRAQLIST")
+        return tree.selectedItems() if tree is not None else []
+
+    def _update_buttons(self):
+        n = len(self._selected())
+        if b := self._ctl.get("IDC_BUGTRAQREMOVEBUTTON"):
+            b.setEnabled(n > 0)
+        if b := self._ctl.get("IDC_BUGTRAQEDITBUTTON"):
+            b.setEnabled(n == 1)
+        if b := self._ctl.get("IDC_BUGTRAQCOPYBUTTON"):
+            b.setEnabled(n == 1)
+
+    def _on_item_changed(self, item, col):
+        if col != 0:
+            return
+        a = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(a, BugTraqAssociation):
+            a.enabled = item.checkState(0) == Qt.CheckState.Checked
+
+    def _on_add(self):
+        dlg = BugTraqConfigDlg(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._assocs.append(dlg.result_assoc())
+            self._reload()
+
+    def _on_edit(self):
+        sel = self._selected()
+        if len(sel) != 1:
+            return
+        old = sel[0].data(0, Qt.ItemDataRole.UserRole)
+        dlg = BugTraqConfigDlg(self, old)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            new = dlg.result_assoc()
+            self._assocs = [a for a in self._assocs if a is not old]
+            self._assocs.append(new)
+            self._reload()
+
+    def _on_copy(self):
+        sel = self._selected()
+        if len(sel) != 1:
+            return
+        old = sel[0].data(0, Qt.ItemDataRole.UserRole)
+        dlg = BugTraqConfigDlg(self, old)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._assocs.append(dlg.result_assoc())
+            self._reload()
+
+    def _on_remove(self):
+        sel = self._selected()
+        if not sel:
+            return
+        remove = {id(it.data(0, Qt.ItemDataRole.UserRole)) for it in sel}
+        self._assocs = [a for a in self._assocs if id(a) not in remove]
+        self._reload()
+
+
+# ---------------------------------------------------------------------------
 # 设置主对话框
 # ---------------------------------------------------------------------------
 
@@ -1690,8 +2115,8 @@ class SettingsDlg(QDialog):
             _CredentialPage(self),
             "IDI_GITCREDENTIAL", git)
 
-        hooks = self._add_page("hooks", _RcPage("IDD_SETTINGSHOOKS", self), "IDI_HOOK")
-        self._add_page("bugtraq", _RcPage("IDD_SETTINGSBUGTRAQ", self), "IDI_BUGTRAQ", hooks)
+        hooks = self._add_page("hooks", _HooksPage(self), "IDI_HOOK")
+        self._add_page("bugtraq", _BugTraqPage(self), "IDI_BUGTRAQ", hooks)
         if has_repo:
             self._add_page(
                 "bugtraqconfig",

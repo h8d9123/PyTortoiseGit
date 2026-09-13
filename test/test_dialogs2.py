@@ -95,6 +95,45 @@ def test_commit_dialog(qapp, repo):
     assert len(list(dlg._iter_file_items())) >= 2
 
 
+def test_commit_title_and_target_editing(qapp, repo):
+    """标题为 路径 - Commit - TortoiseGit；目标分支只读，勾选 new branch 才可编辑。"""
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    dlg = CommitDlg(repo)
+    assert dlg.windowTitle() == f"{repo.root} - Commit - TortoiseGit"
+    assert dlg.commit_to_edit.isReadOnly()
+    assert not dlg.commit_to_edit.isHidden()
+    assert dlg.newbranch_edit.isHidden()
+    dlg.chk_new_branch.setChecked(True)
+    assert not dlg.newbranch_edit.isHidden()
+    assert dlg.commit_to_edit.isHidden()
+    dlg.chk_new_branch.setChecked(False)
+    assert dlg.newbranch_edit.isHidden()
+    assert not dlg.commit_to_edit.isHidden()
+
+
+def test_commit_amend_loads_and_restores_message(qapp, repo):
+    """勾选 Amend 载入 HEAD 信息，取消后还原原信息。"""
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    dlg = CommitDlg(repo)
+    assert dlg.amend_box.isEnabled()          # 仓库有提交
+    dlg.message_edit.setPlainText("my new message")
+    dlg.amend_box.setChecked(True)
+    assert "second" in dlg.message_edit.toPlainText()   # HEAD 提交为 "second"
+    dlg.message_edit.setPlainText("amended")
+    dlg.amend_box.setChecked(False)
+    assert dlg.message_edit.toPlainText() == "my new message"
+
+
+def test_commit_amend_disabled_without_head(qapp, tmp_path):
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.git.repo import Repository
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    GitRunner(cwd=str(tmp_path)).run("init", "-b", "main", str(tmp_path))
+    repo = Repository.open(str(tmp_path))
+    dlg = CommitDlg(repo)
+    assert not dlg.amend_box.isEnabled()
+
+
 def test_commit_author_prefilled_visible(qapp, repo):
     """作者框始终显示当前 user.name <email>，未勾选时仅置灰。"""
     from pytortoisegit.dialogs.commitdlg import CommitDlg

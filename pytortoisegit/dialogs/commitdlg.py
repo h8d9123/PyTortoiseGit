@@ -124,7 +124,8 @@ class CommitDlg(QDialog):
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
         rc_mod.apply_min_size(self, r.width(), r.height())
-        self.setWindowTitle(spec.caption or "")
+        self.setWindowTitle(
+            f"{self.repo.root} - {spec.caption or 'Commit'} - TortoiseGit")
         font = self.font()
         font.setPointSize(spec.font_size or 9)
         self.setFont(font)
@@ -146,11 +147,12 @@ class CommitDlg(QDialog):
         add(QLabel(tr("commit_to_label", "Commit to:"), self), "IDC_COMMITLABEL")
         self.commit_to_edit = add(QLineEdit(self), "IDC_COMMIT_TO")
         self.commit_to_edit.setText(self.repo.current_branch())
+        self.commit_to_edit.setReadOnly(True)   # 对齐原版 ES_READONLY
         self.newbranch_edit = add(QLineEdit(self), "IDC_NEWBRANCH")
+        self.newbranch_edit.setVisible(False)
         self.chk_new_branch = add(QCheckBox(self), "IDC_CHECK_NEWBRANCH")
         self.chk_new_branch.setText(tr("commit_newbranch", "new branch"))
-        self.chk_new_branch.toggled.connect(
-            lambda on: self.newbranch_edit.setVisible(on))
+        self.chk_new_branch.toggled.connect(self._on_new_branch_toggled)
         add(QLabel(tr("commit_bugid_label", "Bug-ID/Issue-Nr:"), self),
             "IDC_BUGIDLABEL")
         self.bugid_edit = add(QLineEdit(self), "IDC_BUGID")
@@ -282,9 +284,19 @@ class CommitDlg(QDialog):
                 rc_mod.place_widget(self, fu, ctrl, wgt)
 
         self._init_author_and_bugid()
+        self._init_amend_state()
         self._fix_check_link_widths()
         self._setup_anchors()
         self._on_set_author_toggled(False)
+
+    def _init_amend_state(self):
+        """Amend 仅在有 HEAD 提交时可用（对齐原版）。"""
+        has_head = self.repo.runner.run(
+            "rev-parse", "--verify", "-q", "HEAD").returncode == 0
+        self.amend_box.setEnabled(has_head)
+        self.amend_diff_btn.setVisible(False)
+        self._no_amend_msg = ""
+        self._amend_msg = ""
 
     def _init_author_and_bugid(self):
         """对齐原版：作者框显示当前 user.name <email>；Bug-ID 仅在配置 bugtraq 时显示。"""
@@ -360,12 +372,27 @@ class CommitDlg(QDialog):
         super().keyPressEvent(event)
 
     # ---- 事件 ----
+    def _on_new_branch_toggled(self, on: bool):
+        """对齐 OnBnClickedCheckNewBranch：勾选后隐藏目标名、显示新分支名。"""
+        self.commit_to_edit.setVisible(not on)
+        self.newbranch_edit.setVisible(on)
+        if on:
+            self.newbranch_edit.setFocus()
+            self.newbranch_edit.selectAll()
+
     def _on_amend_toggled(self, on: bool):
+        """对齐 OnBnClickedCommitAmend：载入/还原上次提交信息。"""
         self.amend_diff_btn.setVisible(on)
-        if on and not self.message_edit.toPlainText().strip():
-            head = self.repo.runner.run("log", "-1", "--format=%B").stdout.rstrip("\n")
-            if head:
-                self.message_edit.setPlainText(head)
+        if on:
+            if not getattr(self, "_amend_msg", ""):
+                head = self.repo.runner.run(
+                    "log", "-1", "--format=%B").stdout.rstrip("\n")
+                self._amend_msg = head or ""
+            self._no_amend_msg = self.message_edit.toPlainText()
+            self.message_edit.setPlainText(self._amend_msg)
+        else:
+            self._amend_msg = self.message_edit.toPlainText()
+            self.message_edit.setPlainText(getattr(self, "_no_amend_msg", ""))
 
     def _prefill_message(self):
         """打开时若消息为空，按 commit.template / MERGE_MSG / SQUASH_MSG 预填。"""

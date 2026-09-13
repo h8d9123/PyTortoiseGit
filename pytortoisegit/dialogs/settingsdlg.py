@@ -148,6 +148,60 @@ class _SettingPage(QWidget):
     def set(self, key: str, value: str):
         pass
 
+    # -- 通用 QSettings 持久化：子类定义 _SETTINGS 列表 ----------------
+    # 每项 (setting_key, ctrl_id, kind, default)，kind ∈ {bool,int,text,index}
+    def _get_widget_text(self, w) -> str:
+        if hasattr(w, "currentText"):
+            return w.currentText()
+        if hasattr(w, "text"):
+            return w.text()
+        return ""
+
+    def _set_widget_text(self, w, val: str):
+        if hasattr(w, "setCurrentText"):
+            w.setCurrentText(val)
+        elif hasattr(w, "setText"):
+            w.setText(val)
+
+    def load_settings(self):
+        s = general_settings()
+        for key, cid, kind, default in getattr(self, "_SETTINGS", []):
+            w = self._ctl.get(cid)
+            if w is None:
+                continue
+            if kind == "bool":
+                w.setChecked(bool(s.value(key, default, type=bool)))
+            elif kind == "index":
+                w.setCurrentIndex(int(s.value(key, default)))
+            else:
+                self._set_widget_text(w, str(s.value(key, default)))
+        for key, ids, default in getattr(self, "_RADIO_GROUPS", []):
+            idx = int(s.value(key, default))
+            if 0 <= idx < len(ids):
+                w = self._ctl.get(ids[idx])
+                if w is not None:
+                    w.setChecked(True)
+
+    def save_settings(self):
+        s = general_settings()
+        for key, cid, kind, default in getattr(self, "_SETTINGS", []):
+            w = self._ctl.get(cid)
+            if w is None:
+                continue
+            if kind == "bool":
+                s.setValue(key, w.isChecked())
+            elif kind == "index":
+                s.setValue(key, w.currentIndex())
+            else:
+                s.setValue(key, self._get_widget_text(w))
+        for key, ids, default in getattr(self, "_RADIO_GROUPS", []):
+            for i, cid in enumerate(ids):
+                w = self._ctl.get(cid)
+                if w is not None and w.isChecked():
+                    s.setValue(key, i)
+                    break
+        s.sync()
+
 
 # ---------------------------------------------------------------------------
 # General 页（IDD_SETTINGSMAIN）
@@ -159,6 +213,69 @@ _APP_NAME = "PyTortoiseGit"
 def general_settings() -> QSettings:
     """General 页的应用级配置（跨平台，Windows 下写注册表）。"""
     return QSettings(_APP_NAME, _APP_NAME)
+
+
+# ---------------------------------------------------------------------------
+# 颜色按钮页通用基类
+# ---------------------------------------------------------------------------
+
+
+def _set_swatch(btn, color_hex: str):
+    btn.setText(color_hex)
+    btn.setStyleSheet(f"background-color: {color_hex};")
+
+
+def _pick_color(parent, current: str):
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QColorDialog
+    col = QColorDialog.getColor(QColor(current), parent)
+    return col.name() if col.isValid() else None
+
+
+class _ColorPage(_SettingPage):
+    """颜色按钮页通用基类：_COLORS = [(设置键, 控件ID, 默认#RRGGBB), ...]。"""
+
+    _COLORS: list = []
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        _add_static_labels(self)
+        for _key, cid, _default in self._COLORS:
+            b = self._ctl.get(cid)
+            if b is not None:
+                b.clicked.connect(lambda _=False, c=cid: self._on_pick(c))
+        if r := self._ctl.get("IDC_RESTORE"):
+            r.clicked.connect(self._restore_defaults)
+
+    def _on_pick(self, cid):
+        b = self._ctl.get(cid)
+        cur = b.text().strip() if b is not None else ""
+        picked = _pick_color(self, cur or "#ffffff")
+        if picked and b is not None:
+            _set_swatch(b, picked)
+
+    def _restore_defaults(self):
+        for _key, cid, default in self._COLORS:
+            b = self._ctl.get(cid)
+            if b is not None:
+                _set_swatch(b, default)
+
+    def load_settings(self):
+        super().load_settings()
+        s = general_settings()
+        for key, cid, default in self._COLORS:
+            b = self._ctl.get(cid)
+            if b is not None:
+                _set_swatch(b, str(s.value(key, default)))
+
+    def save_settings(self):
+        s = general_settings()
+        for key, cid, default in self._COLORS:
+            b = self._ctl.get(cid)
+            if b is not None:
+                s.setValue(key, b.text().strip() or default)
+        s.sync()
+        super().save_settings()
 
 
 # 语言下拉可选项（文本, 语言键）
@@ -381,6 +498,17 @@ class _GitPage(_SettingPage):
     def _build_ui(self):
         super()._build_ui()
         _add_static_labels(self)
+        if c := self._ctl.get("IDC_COMBO_AUTOCRLF"):
+            c.addItems(["", "input", "true", "false"])
+        if c := self._ctl.get("IDC_COMBO_SAFECRLF"):
+            c.addItems(["", "warn", "true", "false"])
+        if c := self._ctl.get("IDC_COMBO_SETTINGS_SAFETO"):
+            c.addItems([
+                tr("set_save_local", "Local"),
+                tr("set_save_project", "Project"),
+                tr("set_save_global", "Global"),
+                tr("set_save_system", "System"),
+            ])
 
     @property
     def name_edit(self):
@@ -389,6 +517,26 @@ class _GitPage(_SettingPage):
     @property
     def email_edit(self):
         return self._ctl.get("IDC_GIT_USEREMAIL")
+
+    @property
+    def signingkey_edit(self):
+        return self._ctl.get("IDC_GIT_USERESINGNINGKEY")
+
+    @property
+    def autocrlf_combo(self):
+        return self._ctl.get("IDC_COMBO_AUTOCRLF")
+
+    @property
+    def safecrlf_combo(self):
+        return self._ctl.get("IDC_COMBO_SAFECRLF")
+
+    @property
+    def quotepath_check(self):
+        return self._ctl.get("IDC_CHECK_QUOTEPATH")
+
+    @property
+    def prune_check(self):
+        return self._ctl.get("IDC_CHECK_PRUNE")
 
 
 class _DiffPage(_SettingPage):
@@ -704,7 +852,7 @@ class _AdvancedPage(_SettingPage):
         return self._ctl.get("IDC_CONFIG")
 
 
-class _BlamePage(_SettingPage):
+class _BlamePage(_ColorPage):
     """IDD_SETTINGSTBLAME —— TortoiseGitBlame：字体/颜色/移动行检测。"""
 
     TEMPLATE = "IDD_SETTINGSTBLAME"
@@ -728,20 +876,33 @@ class _BlamePage(_SettingPage):
         (172, 165, 70, 8, "set_blame_between", "Between files:"),
     ]
 
-    _DEFAULT_COLORS = {
-        "IDC_NEWLINESCOLOR": "#ffff88",
-        "IDC_OLDLINESCOLOR": "#ffffff",
-    }
+    _COLORS = [
+        ("BlameNewColor", "IDC_NEWLINESCOLOR", "#ffff88"),
+        ("BlameOldColor", "IDC_OLDLINESCOLOR", "#ffffff"),
+    ]
+    _SETTINGS = [
+        ("BlameFontName", "IDC_FONTNAMES", "text", "Consolas"),
+        ("BlameFontSize", "IDC_FONTSIZES", "text", "10"),
+        ("BlameTabSize", "IDC_TABSIZE", "text", "4"),
+        ("DetectMovedOrCopiedLines", "IDC_DETECT_MOVED_OR_COPIED_LINES",
+         "index", 0),
+        ("DetectMovedOrCopiedLinesNumCharactersWithinFile",
+         "IDC_DETECT_MOVED_OR_COPIED_LINES_NUM_CHARACTERS_WITHIN_FILE",
+         "text", "20"),
+        ("DetectMovedOrCopiedLinesNumCharactersFromFiles",
+         "IDC_DETECT_MOVED_OR_COPIED_LINES_NUM_CHARACTERS_FROM_FILES",
+         "text", "20"),
+        ("IgnoreWhitespace", "IDC_IGNORE_WHITESPACE", "bool", False),
+        ("ShowCompleteLog", "IDC_SHOWCOMPLETELOG", "bool", True),
+        ("OnlyFirstParent", "IDC_BLAME_ONLYFIRSTPARENT", "bool", False),
+        ("FollowRenames", "IDC_FOLLOWRENAMES", "bool", False),
+    ]
 
     def _build_ui(self):
         super()._build_ui()
-        _add_static_labels(self)
         self._fill_fonts()
-        self._apply_colors()
         if c := self._ctl.get("IDC_DETECT_MOVED_OR_COPIED_LINES"):
             c.addItems(["", "0", "1", "2"])
-        if b := self._ctl.get("IDC_RESTORE"):
-            b.clicked.connect(self._apply_colors)
 
     def _fill_fonts(self):
         from PySide6.QtGui import QFontDatabase
@@ -750,15 +911,8 @@ class _BlamePage(_SettingPage):
         if c := self._ctl.get("IDC_FONTSIZES"):
             c.addItems([str(s) for s in range(6, 73)])
 
-    def _apply_colors(self):
-        for cid, color in self._DEFAULT_COLORS.items():
-            w = self._ctl.get(cid)
-            if w is not None:
-                w.setText("")
-                w.setStyleSheet(f"background-color: {color};")
 
-
-class _UDiffPage(_SettingPage):
+class _UDiffPage(_ColorPage):
     """IDD_SETTINGSUDIFF —— TortoiseGitUDiff：字体/颜色。"""
 
     TEMPLATE = "IDD_SETTINGSUDIFF"
@@ -784,39 +938,33 @@ class _UDiffPage(_SettingPage):
     ]
 
     # 对齐 DiffView.LIGHT 默认配色
-    _DEFAULT_COLORS = {
-        "IDC_FORECOMMANDCOLOR": "#0a2436",
-        "IDC_BACKCOMMANDCOLOR": "#ffffff",
-        "IDC_FOREPOSITIONCOLOR": "#ff0000",
-        "IDC_BACKPOSITIONCOLOR": "#ffffff",
-        "IDC_FOREHEADERCOLOR": "#800000",
-        "IDC_BACKHEADERCOLOR": "#ffff80",
-        "IDC_FORECOMMENTCOLOR": "#008000",
-        "IDC_BACKCOMMENTCOLOR": "#ffffff",
-        "IDC_FOREADDEDCOLOR": "#000000",
-        "IDC_BACKADDEDCOLOR": "#ccffcc",
-        "IDC_FOREREMOVEDCOLOR": "#000000",
-        "IDC_BACKREMOVEDCOLOR": "#ffdddd",
-    }
+    _COLORS = [
+        ("UDiffForeCommandColor", "IDC_FORECOMMANDCOLOR", "#0a2436"),
+        ("UDiffBackCommandColor", "IDC_BACKCOMMANDCOLOR", "#ffffff"),
+        ("UDiffForePositionColor", "IDC_FOREPOSITIONCOLOR", "#ff0000"),
+        ("UDiffBackPositionColor", "IDC_BACKPOSITIONCOLOR", "#ffffff"),
+        ("UDiffForeHeaderColor", "IDC_FOREHEADERCOLOR", "#800000"),
+        ("UDiffBackHeaderColor", "IDC_BACKHEADERCOLOR", "#ffff80"),
+        ("UDiffForeCommentColor", "IDC_FORECOMMENTCOLOR", "#008000"),
+        ("UDiffBackCommentColor", "IDC_BACKCOMMENTCOLOR", "#ffffff"),
+        ("UDiffForeAddedColor", "IDC_FOREADDEDCOLOR", "#000000"),
+        ("UDiffBackAddedColor", "IDC_BACKADDEDCOLOR", "#ccffcc"),
+        ("UDiffForeRemovedColor", "IDC_FOREREMOVEDCOLOR", "#000000"),
+        ("UDiffBackRemovedColor", "IDC_BACKREMOVEDCOLOR", "#ffdddd"),
+    ]
+    _SETTINGS = [
+        ("UDiffFontName", "IDC_FONTNAMES", "text", "Consolas"),
+        ("UDiffFontSize", "IDC_FONTSIZES", "text", "10"),
+        ("UDiffTabSize", "IDC_TABSIZE", "text", "4"),
+    ]
 
     def _build_ui(self):
         super()._build_ui()
-        _add_static_labels(self)
         from PySide6.QtGui import QFontDatabase
         if c := self._ctl.get("IDC_FONTNAMES"):
             c.addItems(QFontDatabase.families())
         if c := self._ctl.get("IDC_FONTSIZES"):
             c.addItems([str(s) for s in range(6, 73)])
-        self._apply_colors()
-        if b := self._ctl.get("IDC_RESTORE"):
-            b.clicked.connect(self._apply_colors)
-
-    def _apply_colors(self):
-        for cid, color in self._DEFAULT_COLORS.items():
-            w = self._ctl.get(cid)
-            if w is not None:
-                w.setText("")
-                w.setStyleSheet(f"background-color: {color};")
 
 
 class _MenuListPage(_SettingPage):
@@ -934,6 +1082,37 @@ class _DialogsPage(_SettingPage):
         (19, 228, 84, 8, "set_describe_size", "Abbreviated size"),
     ]
 
+    # 键名对齐 TortoiseGit 注册表（Software\TortoiseGit\...）
+    _SETTINGS = [
+        ("NumberOfLogs", "IDC_DEFAULT_NUMBER_OF", "text", "1"),
+        ("NumberOfLogsScale", "IDC_DEFAULT_SCALE", "index", 0),
+        ("LogFontName", "IDC_FONTNAMES", "text", "Consolas"),
+        ("LogFontSize", "IDC_FONTSIZES", "text", "9"),
+        ("LogDateFormat", "IDC_SHORTDATEFORMAT", "bool", True),
+        ("RelativeTimes", "IDC_RELATIVETIMES", "bool", False),
+        ("AsteriskLogPrefix", "IDC_ASTERISKLOGPREFIX", "bool", True),
+        ("UseSystemLocaleForDates", "IDC_SYSTEMLOCALEFORDATES", "bool", True),
+        ("DiffByDoubleClickInLog", "IDC_DIFFBYDOUBLECLICK", "bool", False),
+        ("AbbreviateRenamings", "IDC_ABBREVIATERENAMINGS", "bool", False),
+        ("SymbolizeRefNames", "IDC_SYMBOLIZEREFNAMES", "bool", False),
+        ("EnableLogCache", "IDC_ENABLELOGCACHE", "bool", True),
+        ("EnableGravatar", "IDC_ENABLEGRAVATAR", "bool", False),
+        ("GravatarUrl", "IDC_GRAVATARURL", "text",
+         "https://gravatar.com/avatar/%HASH%?d=identicon"),
+        ("DrawTagsBranchesOnRightSide", "IDC_RIGHTSIDEBRANCHESTAGS",
+         "bool", False),
+        ("FullCommitMessageOnLogLine", "IDC_FULLCOMMITMESSAGEONLOGLINE",
+         "bool", False),
+        ("ShowBranchRevisionNumber", "IDC_SHOWREVCOUNTER", "bool", False),
+        ("ShowDescribe", "IDC_SHOWDESCRIBE", "bool", False),
+        ("DescribeStrategy", "IDC_DESCRIBESTRATEGY", "index", 0),
+        ("DescribeAbbreviatedSize", "IDC_DESCRIBEABBREVIATEDSIZE",
+         "text", "7"),
+        ("DescribeAlwaysLong", "IDC_DESCRIBEALWAYSLONG", "bool", False),
+        ("DescribeOnlyFollowFirstParent", "IDC_DESCRIBEONLYFIRSTPARENT",
+         "bool", False),
+    ]
+
     def __init__(self, parent=None):
         super().__init__(parent)
         gb = QGroupBox(tr("set_describe", "Describe"), self)
@@ -942,6 +1121,40 @@ class _DialogsPage(_SettingPage):
         for x, y, w, h, key, default in self._LABELS:
             lbl = QLabel(tr(key, default), self)
             lbl.setGeometry(self._fu.px(x, y, w, h))
+        self._populate_combos()
+
+    def _populate_combos(self):
+        from PySide6.QtGui import QFontDatabase
+        if c := self._ctl.get("IDC_DEFAULT_SCALE"):
+            c.addItems([
+                tr("set_scale_nolimit", "No limit"),
+                tr("set_scale_lastdate", "Last selected date"),
+                tr("set_scale_lastn_commits", "Last N commits"),
+                tr("set_scale_lastn_years", "Last N years"),
+                tr("set_scale_lastn_months", "Last N months"),
+                tr("set_scale_lastn_weeks", "Last N weeks"),
+            ])
+        if c := self._ctl.get("IDC_FONTNAMES"):
+            c.addItems(QFontDatabase.families())
+        if c := self._ctl.get("IDC_FONTSIZES"):
+            c.addItems([str(s) for s in range(6, 32, 2)])
+        if c := self._ctl.get("IDC_GRAVATARURL"):
+            c.setEditable(True)
+            c.addItems([
+                "https://gravatar.com/avatar/%HASH%",
+                "https://gravatar.com/avatar/%HASH%?d=mm",
+                "https://gravatar.com/avatar/%HASH%?d=identicon",
+                "https://gravatar.com/avatar/%HASH%?d=monsterid",
+                "https://gravatar.com/avatar/%HASH%?d=wavatar",
+                "https://gravatar.com/avatar/%HASH%?d=retro",
+                "https://gravatar.com/avatar/%HASH%?d=blank",
+            ])
+        if c := self._ctl.get("IDC_DESCRIBESTRATEGY"):
+            c.addItems([
+                tr("set_describe_annotated", "Annotated tags"),
+                tr("set_describe_alltags", "All tags"),
+                tr("set_describe_allrefs", "All refs"),
+            ])
 
 
 class _Dialogs2Page(_SettingPage):
@@ -955,11 +1168,38 @@ class _Dialogs2Page(_SettingPage):
          "Further options for the commit dialog are on Dialogs 3 page."),
     ]
 
+    _SETTINGS = [
+        ("AutoCloseGitProgress", "IDC_AUTOCLOSECOMBO", "index", 0),
+        ("RevertWithRecycleBin", "IDC_USERECYCLEBIN", "bool", True),
+        ("ConfirmKillProcess", "IDC_CONFIRMKILLPROCESS", "bool", False),
+        ("SyncDialogRandomPos", "IDC_SYNCDIALOGRANDOMPOS", "bool", False),
+        ("RefCompareHideUnchanged", "IDC_REFCOMPAREHIDEUNCHANGED",
+         "bool", False),
+        ("ShowGitexeTimings", "IDC_PROGRESSDLG_SHOW_TIMES", "bool", True),
+        ("SortTagsReversed", "IDC_SORTTAGSREVERSED", "bool", False),
+        ("NoSounds", "IDC_NOSOUNDS", "bool", False),
+        ("BranchesIncludeFetchHead", "IDC_BRANCHESINCLUDEFETCHHEAD",
+         "bool", True),
+        ("UseMailmap", "IDC_USEMAILMAP", "bool", True),
+        ("Autocompletion", "IDC_AUTOCOMPLETION", "bool", True),
+        ("AutocompleteParseTimeout", "IDC_AUTOCOMPLETIONTIMEOUT", "text", "5"),
+        ("MaxHistoryItems", "IDC_MAXHISTORY", "text", "25"),
+        ("SelectFilesForCommit", "IDC_SELECTFILESONCOMMIT", "bool", True),
+        ("AutoselectMissingFiles", "IDC_NOAUTOSELECTMISSING", "bool", False),
+        ("StripCommentedLines", "IDC_STRIPCOMMENTEDLINES", "bool", False),
+    ]
+
     def __init__(self, parent=None):
         super().__init__(parent)
         for x, y, w, h, key, default in self._LABELS:
             lbl = QLabel(tr(key, default), self)
             lbl.setGeometry(self._fu.px(x, y, w, h))
+        if c := self._ctl.get("IDC_AUTOCLOSECOMBO"):
+            c.addItems([
+                tr("set_autoclose_manual", "Manual"),
+                tr("set_autoclose_nooptions", "If no options"),
+                tr("set_autoclose_noerror", "If no errors"),
+            ])
 
 
 def _add_static_labels(page):
@@ -1005,13 +1245,51 @@ class _Dialogs3Page(_SettingPage):
         (14, 212, 99, 11, "set_save_to", "Save to:"),
     ]
 
+    _SETTINGS = [
+        ("ProjectLanguage", "IDC_LANGCOMBO", "index", 0),
+        ("LogFileListEnglish", "IDC_KEEPFILELISTSENGLISH", "index", 0),
+        ("LogMinSize", "IDC_LOGMINSIZE", "text", ""),
+        ("LogWidthMarker", "IDC_BORDER", "text", ""),
+        ("WarnNoSignedOffBy", "IDC_WARN_NO_SIGNED_OFF_BY", "index", 0),
+        ("IconFile", "IDC_ICONFILE", "text", ""),
+    ]
+    _RADIO_GROUPS = [
+        ("Dialogs3ConfigSource",
+         ["IDC_RADIO_SETTINGS_EFFECTIVE", "IDC_RADIO_SETTINGS_LOCAL",
+          "IDC_RADIO_SETTINGS_PROJECT", "IDC_RADIO_SETTINGS_GLOBAL",
+          "IDC_RADIO_SETTINGS_SYSTEM"], 0),
+    ]
+
     def __init__(self, parent=None):
         super().__init__(parent)
         _add_static_labels(self)
+        if c := self._ctl.get("IDC_LANGCOMBO"):
+            for text, _key in _LANGUAGES:
+                c.addItem(text)
+        for cid in ("IDC_WARN_NO_SIGNED_OFF_BY", "IDC_KEEPFILELISTSENGLISH"):
+            if c := self._ctl.get(cid):
+                c.addItems(["", "true", "false"])
+        if c := self._ctl.get("IDC_COMBO_SETTINGS_SAFETO"):
+            c.addItems([
+                tr("set_save_local", "Local"),
+                tr("set_save_project", "Project"),
+                tr("set_save_global", "Global"),
+                tr("set_save_system", "System"),
+            ])
+        if b := self._ctl.get("IDC_ICONFILE_BROWSE"):
+            b.clicked.connect(self._browse_icon)
+
+    def _browse_icon(self):
+        from ..utils.pick import pick_file
+        p = pick_file(self, tr("set_select_icon", "Select overlay icon"), "")
+        if p:
+            w = self._ctl.get("IDC_ICONFILE")
+            if w is not None:
+                w.setText(p)
 
 
-class _Colors1Page(_SettingPage):
-    """IDD_SETTINGSCOLORS_1 —— Colors 1（补回被去重的标签/分组框）。"""
+class _Colors1Page(_ColorPage):
+    """IDD_SETTINGSCOLORS_1 —— Colors 1（补回被去重的标签/分组框 + 颜色读写）。"""
 
     TEMPLATE = "IDD_SETTINGSCOLORS_1"
 
@@ -1027,13 +1305,24 @@ class _Colors1Page(_SettingPage):
         (14, 159, 137, 8, "col_unknown_refs", "Unknown ref-types"),
     ]
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        _add_static_labels(self)
+    _COLORS = [
+        ("Colors/Conflict", "IDC_CONFLICTCOLOR", "#ff0000"),
+        ("Colors/Added", "IDC_ADDEDCOLOR", "#640064"),
+        ("Colors/Deleted", "IDC_DELETEDCOLOR", "#640000"),
+        ("Colors/Merged", "IDC_MERGEDCOLOR", "#006400"),
+        ("Colors/Modified", "IDC_MODIFIEDCOLOR", "#0032a0"),
+        ("Colors/Renamed", "IDC_RENAMEDCOLOR", "#0000ff"),
+        ("Colors/NoteNode", "IDC_NOTENODECOLOR", "#a0a000"),
+        ("Colors/OtherRef", "IDC_OTHERREFSCOLOR", "#e0e0e0"),
+    ]
+    _SETTINGS = [
+        ("RevGraphUseLocalForCur", "IDC_REVGRAPHUSELOCALFORCUR", "bool", False),
+        ("UseDarkMode", "IDC_DARKTHEME", "bool", False),
+    ]
 
 
-class _Colors2Page(_SettingPage):
-    """IDD_SETTINGSCOLORS_2 —— Colors 2（补回被去重的标签）。"""
+class _Colors2Page(_ColorPage):
+    """IDD_SETTINGSCOLORS_2 —— Colors 2（补回被去重的标签 + 颜色读写）。"""
 
     TEMPLATE = "IDD_SETTINGSCOLORS_2"
 
@@ -1045,13 +1334,17 @@ class _Colors2Page(_SettingPage):
         (14, 103, 137, 8, "col_filter_match", "Filter match"),
     ]
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        _add_static_labels(self)
+    _COLORS = [
+        ("Colors/CurrentBranch", "IDC_CURRENT_BRANCH", "#c80000"),
+        ("Colors/LocalBranch", "IDC_LOCAL_BRANCH", "#00c300"),
+        ("Colors/RemoteBranch", "IDC_REMOTE_BRANCH", "#ffddaa"),
+        ("Colors/Tag", "IDC_TAGS", "#ffff00"),
+        ("Colors/FilterMatch", "IDC_FILTERMATCHCOLOR", "#c80000"),
+    ]
 
 
-class _Colors3Page(_SettingPage):
-    """IDD_SETTINGSCOLORS_3 —— Colors 3（补回被去重的标签）。"""
+class _Colors3Page(_ColorPage):
+    """IDD_SETTINGSCOLORS_3 —— Colors 3（补回被去重的标签 + 颜色/线宽读写）。"""
 
     TEMPLATE = "IDD_SETTINGSCOLORS_3"
 
@@ -1068,9 +1361,27 @@ class _Colors3Page(_SettingPage):
         (14, 176, 32, 8, "col_node_size", "Node size"),
     ]
 
+    _COLORS = [
+        ("Colors/BranchLine1", "IDC_COLOR_LINE1", "#000000"),
+        ("Colors/BranchLine2", "IDC_COLOR_LINE2", "#ff0000"),
+        ("Colors/BranchLine3", "IDC_COLOR_LINE3", "#00ff00"),
+        ("Colors/BranchLine4", "IDC_COLOR_LINE4", "#0000ff"),
+        ("Colors/BranchLine5", "IDC_COLOR_LINE5", "#808080"),
+        ("Colors/BranchLine6", "IDC_COLOR_LINE6", "#808000"),
+        ("Colors/BranchLine7", "IDC_COLOR_LINE7", "#008080"),
+        ("Colors/BranchLine8", "IDC_COLOR_LINE8", "#800080"),
+    ]
+    _SETTINGS = [
+        ("LogLineWidth", "IDC_LOGGRAPHLINEWIDTH", "text", "2"),
+        ("LogNodeSize", "IDC_LOGGRAPHNODESIZE", "text", "10"),
+    ]
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        _add_static_labels(self)
+        if c := self._ctl.get("IDC_LOGGRAPHLINEWIDTH"):
+            c.addItems([str(i) for i in range(1, 11)])
+        if c := self._ctl.get("IDC_LOGGRAPHNODESIZE"):
+            c.addItems([str(i) for i in range(1, 31)])
 
 
 # ---------------------------------------------------------------------------
@@ -1299,6 +1610,28 @@ class SettingsDlg(QDialog):
                     page.merge_edit.setText(self._get_ext("tortoisegit.externalmerge"))
             elif isinstance(page, _AdvancedPage):
                 self._load_advanced(page)
+            elif isinstance(page, _GitPage):
+                self._load_git(page)
+        for _, page in self.pages:
+            page.load_settings()
+
+    def _load_git(self, page: "_GitPage"):
+        if page.signingkey_edit is not None:
+            page.signingkey_edit.setText(self._get_ext("user.signingkey"))
+        for combo, key in ((page.autocrlf_combo, "core.autocrlf"),
+                           (page.safecrlf_combo, "core.safecrlf")):
+            if combo is not None:
+                val = self._get_ext(key)
+                i = combo.findText(val)
+                combo.setCurrentIndex(i if i >= 0 else 0)
+        if page.quotepath_check is not None:
+            page.quotepath_check.setChecked(
+                self._get_ext("core.quotepath").strip().lower()
+                in ("true", "1", "yes"))
+        if page.prune_check is not None:
+            page.prune_check.setChecked(
+                self._get_ext("fetch.prune").strip().lower()
+                in ("true", "1", "yes"))
 
     def _load_smtp(self, page: "_SmtpPage"):
         g = self._get_ext
@@ -1388,6 +1721,28 @@ class SettingsDlg(QDialog):
                 self._apply_advanced(page)
             elif isinstance(page, _MenuListPage):
                 page.save_to_settings()
+            elif isinstance(page, _GitPage):
+                self._apply_git(page)
+        for _, page in self.pages:
+            page.save_settings()
+
+    def _apply_git(self, page: "_GitPage"):
+        if page.signingkey_edit is not None:
+            self._set_global("user.signingkey",
+                             page.signingkey_edit.text().strip() or None)
+        if page.autocrlf_combo is not None:
+            self._set_global("core.autocrlf",
+                             page.autocrlf_combo.currentText().strip() or None)
+        if page.safecrlf_combo is not None:
+            self._set_global("core.safecrlf",
+                             page.safecrlf_combo.currentText().strip() or None)
+        if page.quotepath_check is not None:
+            self._set_global("core.quotepath",
+                             "true" if page.quotepath_check.isChecked()
+                             else "false")
+        if page.prune_check is not None:
+            self._set_global("fetch.prune",
+                             "true" if page.prune_check.isChecked() else "false")
 
     def _apply_proxy(self, page: "_NetworkPage"):
         enabled = page.enable.isChecked() if page.enable is not None else True

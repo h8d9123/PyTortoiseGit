@@ -114,9 +114,9 @@ def build_status_menu(parent, repo, path: str, *, on_refresh=None) -> QMenu:
 # ---------------------------------------------------------------------------
 
 def _compare(parent, repo, path):
-    """Compare with base：工作区文件 vs HEAD 的并排比较。"""
-    from .diffdlg import DiffDlg
-    DiffDlg(repo, rev1="HEAD", rev2=None, paths=[path], parent=parent).exec()
+    """Compare with base：用 TortoiseGitMerge 比较工作区文件与 HEAD（对齐 StartDiff）。"""
+    from ..merge.mergefrm import MergeFrm
+    MergeFrm(repo, path, "HEAD", None, parent=parent).show()
 
 
 def _show_unified(parent, repo, path):

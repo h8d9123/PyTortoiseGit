@@ -198,24 +198,27 @@ def _menu(git_repo, path, on_refresh=None):
 
 
 def test_statusmenu_compare_with_base(qapp, git_repo, monkeypatch):
-    """TC-STATUSMENU-014 Compare with base 打开工作区 vs HEAD 比较。"""
+    """TC-STATUSMENU-014 Compare with base 用 TortoiseGitMerge 比较工作区与 HEAD。"""
     from pathlib import Path
     opened = {}
 
-    class _FakeDiff:
+    class _FakeFrm:
         def __init__(self, *a, **k):
+            opened["args"] = a
             opened["kwargs"] = k
 
-        def exec(self):
-            return 0
+        def show(self):
+            opened["shown"] = True
 
-    monkeypatch.setattr("pytortoisegit.dialogs.diffdlg.DiffDlg", _FakeDiff)
+    monkeypatch.setattr("pytortoisegit.merge.mergefrm.MergeFrm", _FakeFrm)
     (Path(git_repo.root) / "a.txt").write_text("x\n", encoding="utf-8")
     _status_action(_menu(git_repo, "a.txt"),
                    "statusmenu_compare", "Compare with base").trigger()
-    assert opened.get("kwargs") is not None
-    assert opened["kwargs"].get("rev1") == "HEAD"
-    assert opened["kwargs"].get("paths") == ["a.txt"]
+    assert opened.get("shown")
+    # MergeFrm(repo, path, rev1, rev2)
+    assert opened["args"][1] == "a.txt"
+    assert opened["args"][2] == "HEAD"
+    assert opened["args"][3] is None
 
 
 def test_statusmenu_show_unified(qapp, git_repo, monkeypatch):

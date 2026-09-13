@@ -176,6 +176,19 @@ def test_menu_hidden_and_top_commands(qapp, isolated_settings):
     assert MainMenuDlg._menu_top_commands(None) is None
 
 
+def test_menu_hidden_stale_all_falls_back_to_default(qapp, isolated_settings):
+    """旧版本把“全部命令”写入隐藏列表时应自愈为默认值。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.dialogs.settingsdlg import general_settings
+    allc = MainMenuDlg._all_menu_commands()
+    assert allc
+    general_settings().setValue("contextMenuHideEntries", sorted(allc))
+    assert MainMenuDlg._menu_hidden_commands(None) == {
+        "svnignore", "stashapply", "subsync"}
+    general_settings().setValue("contextMenuHideEntries", ["log", "blame"])
+    assert MainMenuDlg._menu_hidden_commands(None) == {"log", "blame"}
+
+
 def test_no_context_path_and_hide_unversioned(qapp, isolated_settings, tmp_path):
     from pytortoisegit.dialogs.settingsdlg import general_settings
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg

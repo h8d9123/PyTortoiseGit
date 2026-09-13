@@ -613,16 +613,43 @@ class MainMenuDlg(QMainWindow):
         except Exception:  # noqa: BLE001
             return None
 
+    @staticmethod
+    def _all_menu_commands() -> set:
+        """菜单页可勾选的全部命令集合（按 menu_id 去重，与列表页一致）。"""
+        from .. import menuitems as mi
+        seen: set = set()
+        cmds: set = set()
+        for e in mi.MENU_INFO:
+            if not e.command or e.command == "separator":
+                continue
+            if e.menu_id in seen:
+                continue
+            seen.add(e.menu_id)
+            cmds.add(e.command)
+        return cmds
+
     def _menu_hidden_commands(self) -> set:
-        """Context Menu 2 页勾选“隐藏”的命令；未设置用原版默认值。"""
+        """Context Menu 2 页勾选“隐藏”的命令；未设置用原版默认值。
+
+        兼容旧版本 bug：曾把“全部命令”写入隐藏列表（导致菜单几乎全被隐藏），
+        此时视为未设置，回退默认值。
+        """
         default = {"svnignore", "stashapply", "subsync"}
         try:
             from .settingsdlg import general_settings
             saved = general_settings().value(
                 "contextMenuHideEntries", [], type=list)
-            return set(saved) if saved else default
         except Exception:  # noqa: BLE001
             return default
+        if not saved:
+            return default
+        saved_set = set(saved)
+        try:
+            if MainMenuDlg._all_menu_commands() <= saved_set:
+                return default
+        except Exception:  # noqa: BLE001
+            pass
+        return saved_set
 
     @staticmethod
     def _no_context_paths() -> list:

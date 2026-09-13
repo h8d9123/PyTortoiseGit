@@ -365,7 +365,22 @@ def test_pull_dialog(qapp, repo):
 def test_fetch_dialog(qapp, repo):
     from pytortoisegit.dialogs.pulldlg import PullFetchDlg
     dlg = _smoke(qapp, lambda: PullFetchDlg(repo, fetch_only=True))
-    assert dlg.chk_squash.isHidden()  # fetch 模式隐藏合并选项
+    # 对齐原版：Fetch 时合并选项显示但置灰；Tags/Prune 仍可用
+    for w in (dlg.chk_squash, dlg.chk_noff, dlg.chk_ffonly, dlg.chk_nocommit):
+        assert not w.isHidden()
+        assert not w.isEnabled()
+    assert dlg.chk_fetchtags.isEnabled()
+    assert dlg.chk_prune.isEnabled()
+
+
+def test_pull_default_labels(qapp, git_repo, english_ui):
+    """Tags/Prune 显示 'Default: X' 标签（对齐 OnCbnSelchangeRemote）。"""
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    git_repo.runner.run("config", "remote.origin.tagopt", "--tags")
+    git_repo.runner.run("config", "fetch.prune", "true")
+    dlg = PullFetchDlg(git_repo, fetch_only=True)
+    assert dlg.tag_option_label.text().endswith("All")
+    assert dlg.prune_label.text().endswith("true")
 
 
 def test_all_spec_groupboxes_created():

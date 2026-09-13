@@ -153,9 +153,32 @@ class PullFetchDlg(QDialog):
         self._on_source_toggled()
         if self.fetch_only:
             self.setWindowTitle(tr("fetch_title", "Fetch"))
-            self.chk_squash.hide()
-            self.chk_noff.hide()
-            self.chk_nocommit.hide()
+            # 对齐原版：Fetch 时合并相关选项显示但置灰（Tags/Prune 仍可用）
+            for w in (self.chk_squash, self.chk_noff, self.chk_ffonly,
+                      self.chk_nocommit):
+                w.setEnabled(False)
+        self.remote_combo.currentTextChanged.connect(self._update_default_labels)
+        self._update_default_labels()
+
+    def _update_default_labels(self, *_):
+        """对齐原版 OnCbnSelchangeRemote：显示 Tags/Prune 的 'Default: X'。"""
+        remote = self.remote_combo.currentText().strip()
+        if not remote:
+            self.tag_option_label.setText("")
+            self.prune_label.setText("")
+            return
+        tagopt = self.repo.config(f"remote.{remote}.tagopt")
+        if tagopt == "--no-tags":
+            tag = tr("fetch_none", "None")
+        elif tagopt == "--tags":
+            tag = tr("fetch_all", "All")
+        else:
+            tag = tr("fetch_reachable", "Reachable")
+        self.tag_option_label.setText(f"{tr('default', 'Default')}: {tag}")
+        prune = (self.repo.config(f"remote.{remote}.prune")
+                 or self.repo.config("fetch.prune"))
+        self.prune_label.setText(
+            f"{tr('default', 'Default')}: {prune}" if prune else "")
 
     def _initial_remote_branch(self) -> str:
         """当前分支跟踪的远程分支（对齐 GetRemoteTrackedBranch），回退当前分支。"""

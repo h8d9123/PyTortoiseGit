@@ -167,6 +167,11 @@ def main(argv):
         from pytortoisegit.dialogs.gitswitchdlg import GitSwitchDlg
         _shot(app, GitSwitchDlg(repo), "switch", wait=1.0)
 
+    if should("pull"):
+        from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+        _shot(app, PullFetchDlg(repo, fetch_only=False), "pull", wait=1.0)
+        _shot(app, PullFetchDlg(repo, fetch_only=True), "fetch", wait=1.0)
+
     if should("mainwindow"):
         from pytortoisegit.dialogs.mainmenu import MainMenuDlg
         dlg = MainMenuDlg(repo_path=str(repo.root))

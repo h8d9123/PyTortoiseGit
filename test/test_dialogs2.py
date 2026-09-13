@@ -466,6 +466,54 @@ def test_pull_dialog_history_single_branch_not_split(qapp, repo, isolated_settin
     assert items == ["main"]
 
 
+_PULL_FLAGS = [
+    ("chk_squash", "--squash"),
+    ("chk_noff", "--no-ff"),
+    ("chk_nocommit", "--no-commit"),
+    ("chk_ffonly", "--ff-only"),
+    ("chk_fetchtags", "--tags"),
+    ("chk_prune", "--prune"),
+    ("chk_rebase", "--rebase"),
+]
+
+
+@pytest.mark.parametrize("attr,flag", _PULL_FLAGS)
+def test_pull_option_flag(qapp, repo, attr, flag):
+    """勾选各选项后应生成对应 git 参数。"""
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    dlg = PullFetchDlg(repo, fetch_only=False)
+    getattr(dlg, attr).setChecked(True)
+    assert flag in dlg._build_args()
+
+
+def test_pull_depth_option(qapp, repo):
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    dlg = PullFetchDlg(repo, fetch_only=False)
+    assert not dlg.depth_edit.isEnabled()
+    dlg.chk_depth.setChecked(True)
+    assert dlg.depth_edit.isEnabled()
+    dlg.depth_edit.setValue(5)
+    args = dlg._build_args()
+    assert args[args.index("--depth") + 1] == "5"
+
+
+def test_pull_no_options_by_default(qapp, repo):
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    dlg = PullFetchDlg(repo, fetch_only=False)
+    args = dlg._build_args()
+    assert args[0] == "pull"
+    assert not any(a.startswith("--") for a in args)
+
+
+def test_pull_args_remote_and_branch(qapp, repo):
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    dlg = PullFetchDlg(repo, fetch_only=False)
+    dlg.remote_combo.clear()
+    dlg.remote_combo.addItem("upstream")
+    dlg.remote_branch_edit.setEditText("dev")
+    assert dlg._build_args()[:3] == ["pull", "upstream", "dev"]
+
+
 def test_git_icon_provider_prewarms_icon(qapp):
     from pytortoisegit.dialogs.mainmenu import _GitIconProvider
     # 必须在构造（GUI 线程）时预加载，icon() 只返回缓存，

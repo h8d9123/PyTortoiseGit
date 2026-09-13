@@ -138,6 +138,8 @@ class PullFetchDlg(QDialog):
             if a:
                 self._anchors.add(wgt, a[0], a[1] if len(a) > 1 else None)
 
+        self.chk_depth.toggled.connect(self.depth_edit.setEnabled)
+        self.depth_edit.setEnabled(self.chk_depth.isChecked())
         remotes = self.repo.runner.run("remote").stdout or ""
         self.remote_combo.addItems([x for x in remotes.splitlines() if x.strip()] or ["origin"])
         self._load_branch_history()
@@ -230,12 +232,12 @@ class PullFetchDlg(QDialog):
         if hasattr(self, "_anchors"):
             self._anchors.apply(self.width(), self.height())
 
-    def _on_ok(self):
+    def _build_args(self) -> list:
+        """按当前选项构造 git 命令参数（便于测试，不执行命令）。"""
         remote = self.remote_combo.currentText()
         if self.rd_other.isChecked() and self.other_edit.text():
             remote = self.other_edit.text()
         branch = self.remote_branch_edit.currentText().strip()
-        self._save_branch_history()
         args = ["fetch" if self.fetch_only else "pull", remote]
         if branch:
             args.append(branch)
@@ -245,6 +247,8 @@ class PullFetchDlg(QDialog):
             args.append("--no-ff")
         if self.chk_nocommit.isChecked():
             args.append("--no-commit")
+        if self.chk_depth.isChecked():
+            args += ["--depth", str(self.depth_edit.value())]
         if self.chk_ffonly.isChecked():
             args.append("--ff-only")
         if self.chk_fetchtags.isChecked():
@@ -253,6 +257,11 @@ class PullFetchDlg(QDialog):
             args.append("--prune")
         if self.chk_rebase.isChecked():
             args.append("--rebase")
+        return args
+
+    def _on_ok(self):
+        self._save_branch_history()
+        args = self._build_args()
         dlg = ProgressDialog(title=tr("progress", "Progress"), parent=self)
         dlg.set_label("git " + " ".join(args))
         def _bg():

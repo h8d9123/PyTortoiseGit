@@ -48,6 +48,25 @@ def test_TC_PULL_001_updates_local(qapp, ui, remote_repo, auto_progress):
     assert remote_repo.runner.run("rev-parse", "HEAD").stdout.strip() == remote_head
 
 
+def test_TC_PULL_002_no_commit(qapp, ui, remote_repo, auto_progress):
+    """Pull 勾选“不提交” → 合并但不产生提交（HEAD 不变，改动已暂存）。"""
+    from pathlib import Path
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    _remote_new_commit(remote_repo)                      # origin 领先
+    root = Path(remote_repo.local.root)
+    (root / "b.txt").write_text("local\n", encoding="utf-8")
+    remote_repo.runner.run("add", "-A")                  # 本地分叉提交
+    remote_repo.runner.run("commit", "-m", "local change")
+    local_head = remote_repo.runner.run("rev-parse", "HEAD").stdout.strip()
+    dlg = PullFetchDlg(remote_repo.local, fetch_only=False)
+    dlg.chk_nocommit.setChecked(True)
+    dlg.show()
+    ui.click(dlg.btn_ok)
+    assert remote_repo.runner.run("rev-parse", "HEAD").stdout.strip() == local_head
+    # 合并结果已进入工作区
+    assert (root / "a.txt").read_text(encoding="utf-8") == "remote change\n"
+
+
 def test_TC_FETCH_001_updates_remote_tracking(qapp, ui, remote_repo, auto_progress):
     """Fetch → 远程跟踪更新，本地分支不变。"""
     from pytortoisegit.dialogs.pulldlg import PullFetchDlg

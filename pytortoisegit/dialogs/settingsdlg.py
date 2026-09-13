@@ -705,6 +705,42 @@ class _SmtpPage(_SettingPage):
         return self._ctl.get("IDC_SMTP_USER")
 
 
+class _AlternativeEditorPage(_SettingPage):
+    """IDD_SETTINGSPROGSALTERNATIVEEDITOR —— 备用编辑器。"""
+
+    TEMPLATE = "IDD_SETTINGSPROGSALTERNATIVEEDITOR"
+
+    _RADIO_GROUPS = [
+        ("AlternativeEditorUseCustom",
+         ["IDC_ALTERNATIVEEDITOR_OFF", "IDC_ALTERNATIVEEDITOR_ON"], 0),
+    ]
+    _SETTINGS = [
+        ("AlternativeEditor", "IDC_ALTERNATIVEEDITOR", "text", ""),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        if b := self._ctl.get("IDC_ALTERNATIVEEDITORBROWSE"):
+            b.clicked.connect(self._browse)
+        for cid in ("IDC_ALTERNATIVEEDITOR_OFF", "IDC_ALTERNATIVEEDITOR_ON"):
+            if w := self._ctl.get(cid):
+                w.toggled.connect(self._update_enabled)
+        self._update_enabled()
+
+    def _update_enabled(self, *_):
+        on = self._ctl.get("IDC_ALTERNATIVEEDITOR_ON")
+        enabled = bool(on is not None and on.isChecked())
+        for cid in ("IDC_ALTERNATIVEEDITOR", "IDC_ALTERNATIVEEDITORBROWSE"):
+            if w := self._ctl.get(cid):
+                w.setEnabled(enabled)
+
+    def _browse(self):
+        from ..utils.pick import pick_file
+        p = pick_file(self, tr("set_select_editor", "Select editor"), "")
+        if p and (w := self._ctl.get("IDC_ALTERNATIVEEDITOR")):
+            w.setText(p)
+
+
 class _OverlayPage(_SettingPage):
     """IDD_SETTINGSOVERLAY —— Icon Overlays（补回被去重的标签/分组框）。"""
 
@@ -715,6 +751,27 @@ class _OverlayPage(_SettingPage):
     _LABELS = [
         (18, 172, 95, 8, "set_overlay_exclude", "E&xclude paths:"),
         (18, 198, 95, 8, "set_overlay_include", "I&nclude paths:"),
+    ]
+    _SETTINGS = [
+        ("LoadDllOnlyInExplorer", "IDC_ONLYEXPLORER", "bool", False),
+        ("UnversionedAsModified", "IDC_UNVERSIONEDASMODIFIED", "bool", False),
+        ("TGitCacheRecurseSubmodules", "IDC_RECURSIVESUBMODULES", "bool", False),
+        ("ShowOverlaysOnlyNonElevated", "IDC_ONLYNONELEVATED", "bool", False),
+        ("DriveMaskFloppy", "IDC_FLOPPY", "bool", False),
+        ("DriveMaskRemovable", "IDC_REMOVABLE", "bool", False),
+        ("DriveMaskRemote", "IDC_NETWORK", "bool", False),
+        ("DriveMaskFixed", "IDC_FIXED", "bool", True),
+        ("DriveMaskCDROM", "IDC_CDROM", "bool", False),
+        ("DriveMaskRAM", "IDC_RAM", "bool", False),
+        ("DriveMaskUnknown", "IDC_UNKNOWN", "bool", False),
+        ("OverlayExcludeList", "IDC_EXCLUDEPATHS", "text", ""),
+        ("OverlayIncludeList", "IDC_INCLUDEPATHS", "text", ""),
+        ("ShowExcludedAsNormal", "IDC_SHOWEXCLUDEDASNORMAL", "bool", True),
+    ]
+    _RADIO_GROUPS = [
+        ("CacheType",
+         ["IDC_CACHEDEFAULT", "IDC_CACHESHELL2", "IDC_CACHESHELL",
+          "IDC_CACHENONE"], 1),
     ]
 
     def __init__(self, parent=None):
@@ -736,10 +793,52 @@ class _OverlayHandlersPage(_SettingPage):
         (14, 54, 270, 8, "set_overlayhandlers_note",
          "Note: this affects all Tortoise clients, not just TortoiseGit!"),
     ]
+    _SETTINGS = [
+        ("ShowIgnoredOverlay", "IDC_SHOWIGNOREDOVERLAY", "bool", True),
+        ("ShowUnversionedOverlay", "IDC_SHOWUNVERSIONEDOVERLAY", "bool", True),
+        ("ShowAddedOverlay", "IDC_SHOWADDEDOVERLAY", "bool", True),
+        ("ShowLockedOverlay", "IDC_SHOWLOCKEDOVERLAY", "bool", True),
+        ("ShowReadonlyOverlay", "IDC_SHOWREADONLYOVERLAY", "bool", True),
+        ("ShowDeletedOverlay", "IDC_SHOWDELETEDOVERLAY", "bool", True),
+    ]
 
     def __init__(self, parent=None):
         super().__init__(parent)
         _add_static_labels(self)
+        if b := self._ctl.get("IDC_REGEDT"):
+            b.clicked.connect(self._open_regedit)
+
+    def _open_regedit(self):
+        from PySide6.QtCore import QProcess
+        QProcess.startDetached("regedit.exe", [])
+
+
+class _OverlayIconsPage(_SettingPage):
+    """IDD_SETOVERLAYICONS —— Icon Set。"""
+
+    TEMPLATE = "IDD_SETOVERLAYICONS"
+
+    _SETTINGS = [
+        ("IconSet", "IDC_ICONSETCOMBO", "text", "TortoiseGit"),
+    ]
+    _RADIO_GROUPS = [
+        ("IconSetListView", ["IDC_LISTRADIO", "IDC_SYMBOLRADIO"], 0),
+    ]
+
+    _ICON_NAMES = ["Normal", "Modified", "Conflict", "ReadOnly", "Deleted",
+                   "Locked", "Added", "Ignored", "Unversioned"]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        if c := self._ctl.get("IDC_ICONSETCOMBO"):
+            c.addItem("TortoiseGit")
+        tree = self._ctl.get("IDC_ICONLIST")
+        if tree is not None:
+            tree.setColumnCount(1)
+            tree.setHeaderHidden(True)
+            tree.setRootIsDecorated(False)
+            for name in self._ICON_NAMES:
+                tree.addTopLevelItem(QTreeWidgetItem([name]))
 
 
 class _Win11MenuPage(_SettingPage):
@@ -826,6 +925,36 @@ class _BugtraqConfigPage(_SettingPage):
     def __init__(self, parent=None):
         super().__init__(parent)
         _add_static_labels(self)
+        for cid in ("IDC_BUGTRAQ_WARNINGIFNOISSUE", "IDC_BUGTRAQ_APPEND",
+                    "IDC_BUGTRAQ_NUMBER"):
+            if c := self._ctl.get(cid):
+                c.addItems(["", "true", "false"])
+        if c := self._ctl.get("IDC_COMBO_SETTINGS_SAFETO"):
+            c.addItems([
+                tr("set_save_local", "Local"),
+                tr("set_save_project", "Project"),
+                tr("set_save_global", "Global"),
+                tr("set_save_system", "System"),
+            ])
+
+    def _text(self, cid):
+        w = self._ctl.get(cid)
+        return w.text().strip() if w is not None else ""
+
+    def _set(self, cid, val: str):
+        w = self._ctl.get(cid)
+        if w is not None:
+            w.setText(val)
+
+    def _combo(self, cid):
+        w = self._ctl.get(cid)
+        return w.currentText().strip() if w is not None else ""
+
+    def _set_combo(self, cid, val: str):
+        w = self._ctl.get(cid)
+        if w is not None:
+            i = w.findText(val)
+            w.setCurrentIndex(i if i >= 0 else 0)
 
 
 class _SavedDataPage(_SettingPage):
@@ -838,10 +967,55 @@ class _SavedDataPage(_SettingPage):
     _LABELS = [
         (13, 185, 120, 16, "set_saved_maxlines", "Max. lines in action log"),
     ]
+    _SETTINGS = [
+        ("MaxActionLogLines", "IDC_MAXLINES", "text", "100"),
+    ]
+    # (按钮 ID, 对应的 QSettings 键, 名称 tr 键, 默认名称)
+    _CLEAR_BUTTONS = [
+        ("IDC_URLHISTCLEAR", "UrlHistory", "set_saved_clear_url", "URL history"),
+        ("IDC_LOGHISTCLEAR", "LogHistory", "set_saved_clear_log",
+         "Log messages (Input dialog)"),
+        ("IDC_REPOLOGCLEAR", "RepoLogHistory", "set_saved_clear_repolog",
+         "Log messages (Show log dialog)"),
+        ("IDC_RESIZABLEHISTCLEAR", "ResizableHistory",
+         "set_saved_clear_resizable", "Dialog sizes and positions"),
+        ("IDC_AUTHHISTCLEAR", "AuthHistory", "set_saved_clear_auth",
+         "Authentication data"),
+        ("IDC_TEMPFILESCLEAR", "TempFiles", "set_saved_clear_temp",
+         "Temp files"),
+        ("IDC_STOREDDECISIONSCLEAR", "StoredDecisions",
+         "set_saved_clear_decisions", "Stored decisions"),
+        ("IDC_ACTIONLOGCLEAR", "ActionLog", "set_saved_clear_actionlog",
+         "Action log"),
+    ]
 
     def __init__(self, parent=None):
         super().__init__(parent)
         _add_static_labels(self)
+        for cid, key, tr_key, default in self._CLEAR_BUTTONS:
+            if b := self._ctl.get(cid):
+                b.clicked.connect(
+                    lambda _=False, k=key, t=tr_key, d=default:
+                    self._clear(k, t, d))
+        if b := self._ctl.get("IDC_ACTIONLOGSHOW"):
+            b.clicked.connect(self._show_actionlog)
+
+    def _clear(self, key: str, tr_key: str, default: str):
+        s = general_settings()
+        s.remove(key)
+        s.sync()
+        name = tr(tr_key, default)
+        QMessageBox.information(
+            self, tr("set_saved_clear_title", "Clear"),
+            tr("set_saved_cleared", "Cleared: {name}").format(name=name))
+
+    def _show_actionlog(self):
+        s = general_settings()
+        lines = s.value("ActionLog", [], type=list) or []
+        QMessageBox.information(
+            self, tr("set_saved_show_title", "Action log"),
+            "\n".join(str(x) for x in lines)
+            or tr("set_saved_show_empty", "The action log is empty."))
 
 
 class _AdvancedPage(_SettingPage):
@@ -1501,7 +1675,7 @@ class SettingsDlg(QDialog):
         self._add_page("color3", _Colors3Page(self), "IDI_LOOKANDFEEL", main)
         self._add_page(
             "alternativeeditor",
-            _RcPage("IDD_SETTINGSPROGSALTERNATIVEEDITOR", self),
+            _AlternativeEditorPage(self),
             "IDI_NOTEPAD",
             main,
         )
@@ -1527,7 +1701,7 @@ class SettingsDlg(QDialog):
             )
 
         overlay = self._add_page("overlay", _OverlayPage(self), "IDI_SET_OVERLAYS")
-        self._add_page("overlays", _RcPage("IDD_SETOVERLAYICONS", self), "IDI_ICONSET", overlay)
+        self._add_page("overlays", _OverlayIconsPage(self), "IDI_ICONSET", overlay)
         self._add_page(
             "overlayshandlers",
             _OverlayHandlersPage(self),
@@ -1648,8 +1822,24 @@ class SettingsDlg(QDialog):
                 self._load_advanced(page)
             elif isinstance(page, _GitPage):
                 self._load_git(page)
+            elif isinstance(page, _BugtraqConfigPage):
+                self._load_bugtraq(page)
         for _, page in self.pages:
             page.load_settings()
+
+    def _load_bugtraq(self, page: "_BugtraqConfigPage"):
+        g = self._get_ext
+        page._set("IDC_BUGTRAQ_URL", g("bugtraq.url"))
+        page._set_combo("IDC_BUGTRAQ_WARNINGIFNOISSUE",
+                        g("bugtraq.warnifnoissue"))
+        page._set("IDC_BUGTRAQ_MESSAGE", g("bugtraq.message"))
+        page._set_combo("IDC_BUGTRAQ_APPEND", g("bugtraq.append"))
+        page._set("IDC_BUGTRAQ_LABEL", g("bugtraq.label"))
+        page._set_combo("IDC_BUGTRAQ_NUMBER", g("bugtraq.number"))
+        page._set("IDC_BUGTRAQ_LOGREGEX", g("bugtraq.logregex"))
+        page._set("IDC_UUID32", g("bugtraq.provideruuid"))
+        page._set("IDC_UUID64", g("bugtraq.provideruuid64"))
+        page._set("IDC_PARAMS", g("bugtraq.providerparams"))
 
     def _load_git(self, page: "_GitPage"):
         if page.signingkey_edit is not None:
@@ -1759,8 +1949,27 @@ class SettingsDlg(QDialog):
                 page.save_to_settings()
             elif isinstance(page, _GitPage):
                 self._apply_git(page)
+            elif isinstance(page, _BugtraqConfigPage):
+                self._apply_bugtraq(page)
         for _, page in self.pages:
             page.save_settings()
+
+    def _apply_bugtraq(self, page: "_BugtraqConfigPage"):
+        mapping = [
+            ("bugtraq.url", "IDC_BUGTRAQ_URL", "text"),
+            ("bugtraq.warnifnoissue", "IDC_BUGTRAQ_WARNINGIFNOISSUE", "combo"),
+            ("bugtraq.message", "IDC_BUGTRAQ_MESSAGE", "text"),
+            ("bugtraq.append", "IDC_BUGTRAQ_APPEND", "combo"),
+            ("bugtraq.label", "IDC_BUGTRAQ_LABEL", "text"),
+            ("bugtraq.number", "IDC_BUGTRAQ_NUMBER", "combo"),
+            ("bugtraq.logregex", "IDC_BUGTRAQ_LOGREGEX", "text"),
+            ("bugtraq.provideruuid", "IDC_UUID32", "text"),
+            ("bugtraq.provideruuid64", "IDC_UUID64", "text"),
+            ("bugtraq.providerparams", "IDC_PARAMS", "text"),
+        ]
+        for key, cid, kind in mapping:
+            val = page._combo(cid) if kind == "combo" else page._text(cid)
+            self._set_global(key, val or None)
 
     def _apply_git(self, page: "_GitPage"):
         if page.signingkey_edit is not None:

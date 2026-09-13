@@ -470,6 +470,65 @@ class DiffDlg(QDialog):
                 for it in self.file_tree.selectedItems()
                 if it.data(0, Qt.ItemDataRole.UserRole) is not None]
 
+    def _build_file_menu(self, p, is_dir: bool):
+        """构建文件右键菜单，返回 (menu, {action: key})，便于测试。"""
+        menu = QMenu(self)
+        acts: dict = {}
+
+        def add(text: str, key: str):
+            a = menu.addAction(text)
+            acts[a] = key
+            return a
+
+        add(tr("log_compare_two", "Compare two revisions"), "compare")
+        add(tr("log_gnudiff", "Show unified diff"), "unified")
+        menu.addSeparator()
+        if self.rev1:
+            add(format_string(tr("filediff_revert_to", "Revert to {rev}"),
+                              rev=self.rev1), "revert1")
+        if self.rev2:
+            add(format_string(tr("filediff_revert_to", "Revert to {rev}"),
+                              rev=self.rev2), "revert2")
+        if self.rev1 or self.rev2:
+            menu.addSeparator()
+        add(tr("filediff_log", "Show log"), "log")
+        if not is_dir:
+            add(tr("log_blame", "Blame"), "blame")
+            add(tr("filediff_export", "Export"), "export")
+        menu.addSeparator()
+        add(tr("filediff_save_list", "Save list..."), "save_list")
+        add(tr("filediff_copy_path", "Copy path"), "copy_path")
+        add(tr("filediff_copy_all", "Copy extended path"), "copy_ext")
+        return menu, acts
+
+    def _handle_file_menu(self, key: str, p):
+        path = p.git_path
+        from ..utils.clipboard import ClipboardHelper
+        if key == "copy_path":
+            ClipboardHelper().copy_text(path)
+        elif key == "copy_ext":
+            paths = [x.git_path for x in self._selected_patches()] or [path]
+            ClipboardHelper().copy_text("\n".join(paths))
+        elif key == "compare":
+            self._open_compare(p)
+        elif key == "unified":
+            self._show_patch(p)
+        elif key == "log":
+            from .logdlg import LogDlg
+            LogDlg(self.repo, pathspec=path, rev=self.rev2, parent=self).exec()
+        elif key == "blame":
+            from .blamedlg import BlameDlg
+            BlameDlg(self.repo, path, rev=self.rev2 or self.rev1,
+                     parent=self).exec()
+        elif key == "export":
+            self._export_file(p)
+        elif key == "save_list":
+            self._save_list()
+        elif key == "revert1":
+            self._revert_to(self.rev1)
+        elif key == "revert2":
+            self._revert_to(self.rev2)
+
     def _on_menu(self, pos):
         item = self.file_tree.itemAt(pos)
         if item is None:
@@ -479,59 +538,13 @@ class DiffDlg(QDialog):
             return
         if item not in self.file_tree.selectedItems():
             self.file_tree.setCurrentItem(item)
-        path = p.git_path
-        is_dir = item.childCount() > 0
-        menu = QMenu(self)
-        act_cmp = menu.addAction(tr("log_compare_two", "Compare two revisions"))
-        act_gnu = menu.addAction(tr("log_gnudiff", "Show unified diff"))
-        menu.addSeparator()
-        # 还原到版本（仅当该版本是提交）
-        act_rev1 = act_rev2 = None
-        if self.rev1:
-            act_rev1 = menu.addAction(format_string(
-                tr("filediff_revert_to", "Revert to {rev}"), rev=self.rev1))
-        if self.rev2:
-            act_rev2 = menu.addAction(format_string(
-                tr("filediff_revert_to", "Revert to {rev}"), rev=self.rev2))
-        if act_rev1 or act_rev2:
-            menu.addSeparator()
-        act_log = menu.addAction(tr("filediff_log", "Show log"))
-        act_blame = None
-        act_export = None
-        if not is_dir:
-            act_blame = menu.addAction(tr("log_blame", "Blame"))
-            act_export = menu.addAction(tr("filediff_export", "Export"))
-        menu.addSeparator()
-        act_save_list = menu.addAction(tr("filediff_save_list", "Save list..."))
-        act_copy = menu.addAction(tr("filediff_copy_path", "Copy path"))
-        act_copy_ext = menu.addAction(tr("filediff_copy_all", "Copy extended path"))
+        menu, acts = self._build_file_menu(p, item.childCount() > 0)
         chosen = menu.exec(self.file_tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return
-        from ..utils.clipboard import ClipboardHelper
-        if chosen is act_copy:
-            ClipboardHelper().copy_text(path)
-        elif chosen is act_copy_ext:
-            paths = [x.git_path for x in self._selected_patches()] or [path]
-            ClipboardHelper().copy_text("\n".join(paths))
-        elif chosen is act_cmp:
-            self._open_compare(p)
-        elif chosen is act_gnu:
-            self._show_patch(p)
-        elif chosen is act_log:
-            from .logdlg import LogDlg
-            LogDlg(self.repo, pathspec=path, rev=self.rev2, parent=self).exec()
-        elif chosen is act_blame:
-            from .blamedlg import BlameDlg
-            BlameDlg(self.repo, path, rev=self.rev2 or self.rev1, parent=self).exec()
-        elif chosen is act_export:
-            self._export_file(p)
-        elif chosen is act_save_list:
-            self._save_list()
-        elif chosen is act_rev1:
-            self._revert_to(self.rev1)
-        elif chosen is act_rev2:
-            self._revert_to(self.rev2)
+        key = acts.get(chosen)
+        if key:
+            self._handle_file_menu(key, p)
 
     def _revert_to(self, rev: str):
         paths = [x.git_path for x in self._selected_patches()]

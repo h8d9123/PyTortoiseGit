@@ -197,6 +197,48 @@ def _menu(git_repo, path, on_refresh=None):
     return menu
 
 
+def test_statusmenu_compare_with_base(qapp, git_repo, monkeypatch):
+    """TC-STATUSMENU-014 Compare with base 打开工作区 vs HEAD 比较。"""
+    from pathlib import Path
+    opened = {}
+
+    class _FakeDiff:
+        def __init__(self, *a, **k):
+            opened["kwargs"] = k
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr("pytortoisegit.dialogs.diffdlg.DiffDlg", _FakeDiff)
+    (Path(git_repo.root) / "a.txt").write_text("x\n", encoding="utf-8")
+    _status_action(_menu(git_repo, "a.txt"),
+                   "statusmenu_compare", "Compare with base").trigger()
+    assert opened.get("kwargs") is not None
+    assert opened["kwargs"].get("rev1") == "HEAD"
+    assert opened["kwargs"].get("paths") == ["a.txt"]
+
+
+def test_statusmenu_show_unified(qapp, git_repo, monkeypatch):
+    """TC-STATUSMENU-015 Show changes as unified diff 打开补丁视图。"""
+    from pathlib import Path
+    opened = {}
+
+    class _FakePatch:
+        def __init__(self, text="", title="", parent=None):
+            opened["text"] = text
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr("pytortoisegit.dialogs.patchviewdlg.PatchViewDlg",
+                        _FakePatch)
+    (Path(git_repo.root) / "a.txt").write_text("x\n", encoding="utf-8")
+    _status_action(_menu(git_repo, "a.txt"),
+                   "statusmenu_unified",
+                   "Show changes as unified diff").trigger()
+    assert opened.get("text")
+
+
 def test_statusmenu_unversioned_add(qapp, git_repo):
     """TC-STATUSMENU-001 未版本控制文件：Add 后进入暂存区。"""
     from pathlib import Path

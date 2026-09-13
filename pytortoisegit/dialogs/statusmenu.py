@@ -45,7 +45,8 @@ def build_status_menu(parent, repo, path: str, *, on_refresh=None) -> QMenu:
     # ---- 顶部：比较（git 管理文件）----
     act_cmp = None
     if not unversioned:
-        act_cmp = menu.addAction(tr("statusmenu_compare", "Compare with base"))
+        act_cmp = menu.addAction(tr("statusmenu_compare", "Compare with base"),
+                                 lambda: _compare(parent, repo, path))
         menu.setDefaultAction(act_cmp)
         menu.addAction(tr("statusmenu_unified", "Show changes as unified diff"),
                        lambda: _show_unified(parent, repo, path))
@@ -111,6 +112,12 @@ def build_status_menu(parent, repo, path: str, *, on_refresh=None) -> QMenu:
 # ---------------------------------------------------------------------------
 # 动作实现
 # ---------------------------------------------------------------------------
+
+def _compare(parent, repo, path):
+    """Compare with base：工作区文件 vs HEAD 的并排比较。"""
+    from .diffdlg import DiffDlg
+    DiffDlg(repo, rev1="HEAD", rev2=None, paths=[path], parent=parent).exec()
+
 
 def _show_unified(parent, repo, path):
     try:

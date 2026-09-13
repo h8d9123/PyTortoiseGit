@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QComboBox, QDialog, QGroupBox, QLabel,
+    QButtonGroup, QCheckBox, QComboBox, QDialog, QGroupBox, QLabel, QMenu,
     QMessageBox, QPushButton, QRadioButton,
 )
 from ..git.push import PushOpts, build_push_args, get_remote_push_branch
@@ -117,16 +117,20 @@ class PushDlg(QDialog):
         self.local_label = QLabel(tr("push_local", "&Local:"), self)
         self.local_combo = QComboBox(self)
         self.local_combo.setEditable(True)
-        self.btn_browse_local = QPushButton("...", self)
+        # 对齐原版 m_BrowseLocalRef（m_bRightArrow）：显示 ">" 的下拉菜单按钮
+        self.btn_browse_local = QPushButton(">", self)
+        self.btn_browse_local.clicked.connect(self._show_local_menu)
         self.remote_label = QLabel(tr("push_remote", "&Remote:"), self)
         self.remote_combo = QComboBox(self)
         self.remote_combo.setEditable(True)
         self.btn_browse_remote = QPushButton("...", self)
+        self.btn_browse_remote.clicked.connect(self._browse_remote)
 
         # Destination group（原版是单选）
         self.rd_remote = QRadioButton(tr("push_rd_remote", "Re&mote:"), self)
         self.remote_name_combo = QComboBox(self)
         self.btn_manage = QPushButton(tr("push_manage", "Mana&ge"), self)
+        self.btn_manage.clicked.connect(self._on_manage)
         self.rd_url = QRadioButton(tr("push_rd_url", "Arbitrary &URL:"), self)
         self.url_edit = QComboBox(self)
         self.url_edit.setEditable(True)
@@ -146,7 +150,14 @@ class PushDlg(QDialog):
         self.chk_push_branch = QCheckBox(tr("push_push_branch", "Always push to selected remote branch"), self)
         self.sub_label = QLabel(tr("push_sub", "Recurse submodule"), self)
         self.sub_combo = QComboBox(self)
-        self.sub_combo.addItems(["On-demand", "Check", "Off"])
+        # 对齐原版：None / Check / On-demand，默认 None（或 push.recurseSubmodules）
+        self.sub_combo.addItems([
+            tr("push_recurse_none", "None"),
+            tr("push_recurse_check", "Check"),
+            tr("push_recurse_ondemand", "On-demand"),
+        ])
+        recurse = self.repo.config("push.recurseSubmodules")
+        self.sub_combo.setCurrentIndex({"check": 1, "on-demand": 2}.get(recurse, 0))
         self.push_option_label = QLabel(tr("push_option", "Push &option:"), self)
         self.push_option_edit = QComboBox(self)
         self.push_option_edit.setEditable(True)
@@ -158,9 +169,6 @@ class PushDlg(QDialog):
         self.btn_cancel = QPushButton(tr("cancel"), self)
         self.btn_cancel.clicked.connect(self.reject)
         self.btn_help = QPushButton(tr("help"), self)
-        self._status = QLabel(self)
-        self._status.setText(tr("push_ready", "Ready"))
-        self._details = QLabel(self)
 
         mapping = {
             "IDC_BRANCH_GROUP": self.ref_group,
@@ -198,8 +206,6 @@ class PushDlg(QDialog):
             if wgt is not None:
                 rc_mod.place_widget(self, fu, ctrl, wgt)
                 self._ctl[ctrl.ctrl_id] = wgt
-        self._status.setObjectName("IDC_STATIC_STATUS")
-        self._status.setParent(self)
 
         for ctrl in spec.controls:
             wgt = self._ctl.get(ctrl.ctrl_id)
@@ -211,7 +217,10 @@ class PushDlg(QDialog):
 
         self.chk_push_all.toggled.connect(self._on_push_all)
         self.local_combo.currentTextChanged.connect(self._on_local_changed)
+        for w in (self.chk_force_with_lease, self.chk_force, self.chk_tags):
+            w.toggled.connect(self._update_force_state)
         self._on_dest_toggled()
+        self._update_force_state()
         self._populate()
 
     def _on_dest_toggled(self, _checked: bool = False):
@@ -219,6 +228,78 @@ class PushDlg(QDialog):
         self.remote_name_combo.setEnabled(use_remote)
         self.btn_manage.setEnabled(use_remote)
         self.url_edit.setEnabled(not use_remote)
+
+    def _update_force_state(self, *_):
+        """对齐原版：Force with lease 与 Force/Tags 互斥置灰。"""
+        fwl = self.chk_force_with_lease.isChecked()
+        self.chk_force.setEnabled(not fwl)
+        self.chk_tags.setEnabled(not fwl)
+        self.chk_force_with_lease.setEnabled(
+            not (self.chk_force.isChecked() or self.chk_tags.isChecked()))
+
+    def _show_local_menu(self):
+        """对齐 m_BrowseLocalRef 下拉：浏览引用 / 显示日志 / Reflog。"""
+        menu = QMenu(self)
+        act_ref = menu.addAction(tr("push_browse_ref", "Browse Reference"))
+        act_log = menu.addAction(tr("push_show_log", "Show Log"))
+        act_reflog = menu.addAction(tr("push_show_reflog", "Show Reflog"))
+        chosen = menu.exec(self.btn_browse_local.mapToGlobal(
+            self.btn_browse_local.rect().bottomLeft()))
+        if chosen is act_ref:
+            self._browse_local_ref()
+        elif chosen is act_log:
+            self._open_log()
+        elif chosen is act_reflog:
+            self._open_reflog()
+
+    def _browse_local_ref(self):
+        """对齐 PickRefForCombo(Head|Tag)：从本地分支/标签中选择。"""
+        from PySide6.QtWidgets import QInputDialog
+        out = self.repo.runner.run(
+            "for-each-ref", "--format=%(refname:short)",
+            "refs/heads", "refs/tags").stdout or ""
+        refs = [x.strip() for x in out.splitlines() if x.strip()]
+        if not refs:
+            return
+        cur = self.local_combo.currentText().strip()
+        val, ok = QInputDialog.getItem(
+            self, tr("push_browse_ref", "Browse Reference"),
+            tr("push_select_ref", "Select a reference:"),
+            refs, refs.index(cur) if cur in refs else 0, False)
+        if ok and val:
+            self.local_combo.setCurrentText(val)
+            self._on_local_changed(val)
+
+    def _open_log(self):
+        from .logdlg import LogDlg
+        rev = self.local_combo.currentText().strip() or None
+        LogDlg(self.repo, rev=rev, parent=self).exec()
+
+    def _open_reflog(self):
+        from .reflogdlg import ReflogDlg
+        ReflogDlg(self.repo, parent=self).exec()
+
+    def _browse_remote(self):
+        """对齐 OnBnClickedButtonBrowseDestBranch：选远程引用填入远程分支。"""
+        from .selectremoterefdlg import SelectRemoteRefDlg
+        remote = self.remote_name_combo.currentText().strip()
+        dlg = SelectRemoteRefDlg(self.repo, remote=remote, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.selected:
+            return
+        ref = dlg.selected
+        if remote and ref.startswith(remote + "/"):
+            ref = ref[len(remote) + 1:]
+        self.remote_combo.setCurrentText(ref)
+
+    def _on_manage(self):
+        """对齐 CAppUtils::LaunchRemoteSetting：打开设置中的远程页。"""
+        from .settingsdlg import SettingsDlg
+        dlg = SettingsDlg(self.repo, self)
+        item = dlg._items.get("gitremote") or dlg._items.get("gitconfig")
+        if item is not None:
+            dlg.tree.setCurrentItem(item)
+        dlg.exec()
+        self._populate()
 
     def _populate(self):
         heads = self.repo.runner.run(
@@ -279,7 +360,8 @@ class PushDlg(QDialog):
         if not remote:
             QMessageBox.warning(self, tr("warning"), tr("push_no_remote"))
             return None
-        recurse_map = {"On-demand": "on-demand", "Check": "check", "Off": ""}
+        recurse_map = {0: "", 1: "check", 2: "on-demand"}
+        recurse = recurse_map.get(self.sub_combo.currentIndex(), "")
         return PushOpts(
             remote=remote,
             local_branch=self.local_combo.currentText().strip(),
@@ -290,7 +372,7 @@ class PushDlg(QDialog):
             tags=self.chk_tags.isChecked(),
             set_upstream=self.chk_set_upstream.isChecked(),
             push_option=self.push_option_edit.currentText().strip(),
-            recurse=recurse_map.get(self.sub_combo.currentText(), ""),
+            recurse=recurse,
         )
 
     def _on_ok(self):

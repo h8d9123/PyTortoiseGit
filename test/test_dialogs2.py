@@ -383,6 +383,79 @@ def test_pull_default_labels(qapp, git_repo, english_ui):
     assert dlg.prune_label.text().endswith("true")
 
 
+def test_push_dialog_no_status_and_browse(qapp, repo):
+    """不应有多余的“就绪”状态标签；本地浏览为 '>' 菜单按钮。"""
+    from pytortoisegit.dialogs.pushdlg import PushDlg
+    dlg = PushDlg(repo)
+    assert not hasattr(dlg, "_status")
+    assert dlg.btn_browse_local.text() == ">"
+    assert dlg.btn_browse_remote.text() == "..."
+
+
+def test_push_recurse_default_none(qapp, repo):
+    """递归子模块默认 None，参数为空。"""
+    from pytortoisegit.dialogs.pushdlg import PushDlg
+    dlg = PushDlg(repo)
+    assert dlg.sub_combo.count() == 3
+    assert dlg.sub_combo.currentIndex() == 0
+    assert dlg._collect_opts().recurse == ""
+    dlg.sub_combo.setCurrentIndex(2)
+    assert dlg._collect_opts().recurse == "on-demand"
+
+
+def test_push_force_mutual_exclusion(qapp, repo):
+    from pytortoisegit.dialogs.pushdlg import PushDlg
+    dlg = PushDlg(repo)
+    dlg.chk_force_with_lease.setChecked(True)
+    assert not dlg.chk_force.isEnabled()
+    assert not dlg.chk_tags.isEnabled()
+    dlg.chk_force_with_lease.setChecked(False)
+    dlg.chk_tags.setChecked(True)
+    assert not dlg.chk_force_with_lease.isEnabled()
+
+
+def test_push_browse_remote_fills_branch(qapp, repo, monkeypatch):
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs.pushdlg import PushDlg
+
+    class _FakeRef:
+        def __init__(self, *a, **k):
+            self.selected = "origin/feature"
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(
+        "pytortoisegit.dialogs.selectremoterefdlg.SelectRemoteRefDlg", _FakeRef)
+    dlg = PushDlg(repo)
+    dlg._browse_remote()
+    assert dlg.remote_combo.currentText() == "feature"
+
+
+def test_push_manage_opens_settings(qapp, repo, monkeypatch):
+    from pytortoisegit.dialogs.pushdlg import PushDlg
+    opened = {}
+
+    class _FakeSettings:
+        def __init__(self, *a, **k):
+            opened["yes"] = True
+            self._items = {"gitremote": object()}
+
+            class _Tree:
+                def setCurrentItem(self, item):
+                    pass
+            self.tree = _Tree()
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr(
+        "pytortoisegit.dialogs.settingsdlg.SettingsDlg", _FakeSettings)
+    dlg = PushDlg(repo)
+    dlg._on_manage()
+    assert opened.get("yes") is True
+
+
 def test_all_spec_groupboxes_created():
     """每个 load_spec 的对话框都应创建其 .rc 中的全部 GROUPBOX。"""
     import glob

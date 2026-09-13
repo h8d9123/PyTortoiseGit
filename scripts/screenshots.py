@@ -172,6 +172,10 @@ def main(argv):
         _shot(app, PullFetchDlg(repo, fetch_only=False), "pull", wait=1.0)
         _shot(app, PullFetchDlg(repo, fetch_only=True), "fetch", wait=1.0)
 
+    if should("push"):
+        from pytortoisegit.dialogs.pushdlg import PushDlg
+        _shot(app, PushDlg(repo), "push", wait=1.0)
+
     if should("mainwindow"):
         from pytortoisegit.dialogs.mainmenu import MainMenuDlg
         dlg = MainMenuDlg(repo_path=str(repo.root))

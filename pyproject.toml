@@ -15,6 +15,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "pytest-cov>=4.1",
 ]
 build = [
     "pyinstaller>=6.0",
@@ -28,3 +29,21 @@ include = ["pytortoisegit*"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
+
+[tool.coverage.run]
+source = ["pytortoisegit"]
+omit = [
+    "pytortoisegit/__main__.py",
+    "*/site-packages/*",
+]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

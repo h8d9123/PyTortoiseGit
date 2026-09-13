@@ -7,3 +7,6 @@ dist/
 lnk/
 screenshots/
 ~$*.xlsx
+.coverage
+coverage.xml
+htmlcov/

@@ -123,3 +123,55 @@ def test_TC_REQPULL_001_accepts(qapp, ui, git_repo, auto_progress):
     dlg.show()
     ui.click(dlg.btn_ok)
     assert dlg.result() == QDialog.DialogCode.Accepted
+
+
+def test_TC_FLOW_001_pull_stash_rebase_pop(qapp, ui, remote_repo, auto_progress):
+    """验证 pull + stash + rebase + stash pop 组合流程目前是否支持。
+
+    流程（本地有未提交改动、远端同时前进时最典型的做法）：
+      1. 工作区改动 → stash
+      2. pull --rebase（等价 rebase 到远端）
+      3. stash pop 恢复本地改动
+    断言：远端提交已并入、本地改动恢复、历史线性（无 merge 提交）。
+    """
+    from pathlib import Path
+    from pytortoisegit.git.stash import GitStash
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+
+    local = remote_repo.local
+    root = Path(local.root)
+    runner = remote_repo.runner
+
+    # 准备一个已跟踪文件并推送到远端
+    (root / "b.txt").write_text("b1\n", encoding="utf-8")
+    assert runner.run("add", "b.txt").returncode == 0
+    assert runner.run("commit", "-m", "add b").returncode == 0
+    assert runner.run("push", "origin", "main").returncode == 0
+
+    # 1) 本地未提交改动 → stash（pull 前要求工作区干净）
+    (root / "b.txt").write_text("b1\nlocal change\n", encoding="utf-8")
+    stash = GitStash(local)
+    assert stash.create("wip") is True, "stash 失败"
+    assert (root / "b.txt").read_text(encoding="utf-8") == "b1\n"
+
+    # 远端前进（修改另一个文件 a.txt）
+    remote_head = _remote_new_commit(remote_repo)
+
+    # 2) pull --rebase（= rebase 到远端）
+    dlg = PullFetchDlg(local, fetch_only=False)
+    dlg.chk_rebase.setChecked(True)
+    dlg.show()
+    ui.click(dlg.btn_ok)
+    assert local.run("rev-parse", "HEAD").stdout.strip() == remote_head, \
+        "pull --rebase 未更新到远端 HEAD"
+
+    # 3) stash pop 恢复本地改动
+    entry = stash.latest()
+    assert entry is not None, "stash 列表为空"
+    assert stash.pop(entry.gd) is True, "stash pop 失败"
+    assert "local change" in (root / "b.txt").read_text(encoding="utf-8"), \
+        "stash pop 未恢复本地改动"
+
+    # 线性历史（无 merge 提交）
+    assert runner.run("rev-list", "--merges", "HEAD").stdout.strip() == "", \
+        "pull --rebase 后不应产生 merge 提交"

@@ -94,24 +94,38 @@ class LfsLocksDlg(QDialog):
             self.repo.runner.run(*args)
         self.accept()
 
+    def _build_menu(self, path: str):
+        """构建锁列表右键菜单，返回 (menu, {action: key})，便于测试。"""
+        menu = QMenu(self)
+        acts = {}
+        acts[menu.addAction(tr("lfs_unlock", "&Unlock"))] = "unlock"
+        acts[menu.addAction(tr("menu_copy_path", "Copy path"))] = "copy"
+        return menu, acts
+
+    def _handle_menu(self, key: str, path: str):
+        if key == "copy":
+            from ..utils.clipboard import ClipboardHelper
+            ClipboardHelper().copy_text(path)
+        elif key == "unlock":
+            self._unlock_path(path)
+
+    def _unlock_path(self, path: str):
+        args = ["lfs", "unlock"]
+        if self.chk_force.isChecked():
+            args.append("--force")
+        args.append(path)
+        self.repo.runner.run(*args)
+        self.accept()
+
     def _on_menu(self, pos):
         item = self.lock_list.itemAt(pos)
         if item is None:
             return
         path = item.text(0)
-        menu = QMenu(self)
-        act_unlock = menu.addAction(tr("lfs_unlock", "&Unlock"))
-        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
+        menu, acts = self._build_menu(path)
         chosen = menu.exec(self.lock_list.viewport().mapToGlobal(pos))
         if chosen is None:
             return
-        from ..utils.clipboard import ClipboardHelper
-        if chosen is act_copy:
-            ClipboardHelper().copy_text(path)
-        elif chosen is act_unlock:
-            args = ["lfs", "unlock"]
-            if self.chk_force.isChecked():
-                args.append("--force")
-            args.append(path)
-            self.repo.runner.run(*args)
-            self.accept()
+        key = acts.get(chosen)
+        if key:
+            self._handle_menu(key, path)

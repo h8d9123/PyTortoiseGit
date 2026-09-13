@@ -104,6 +104,30 @@ class DeleteRemoteTagDlg(QDialog):
                 self.repo.runner.run("push", remote, f":refs/tags/{tag}")
         self.accept()
 
+    def _build_menu(self, tag: str):
+        """构建标签右键菜单，返回 (menu, {action: key})，便于测试。"""
+        menu = QMenu(self)
+        acts = {}
+        acts[menu.addAction(tr("deletetag_delete", "&Delete"))] = "delete"
+        acts[menu.addAction(tr("menu_copy_tag", "Copy tag name"))] = "copy"
+        return menu, acts
+
+    def _handle_menu(self, key: str, tag: str):
+        if key == "copy":
+            from ..utils.clipboard import ClipboardHelper
+            ClipboardHelper().copy_text(tag)
+        elif key == "delete":
+            self._delete_tag(tag)
+
+    def _delete_tag(self, tag: str):
+        remote = self.remote_edit.text().strip()
+        self.repo.runner.run("push", remote, f":refs/tags/{tag}")
+        for i in range(self.tags_list.topLevelItemCount()):
+            if self.tags_list.topLevelItem(i).data(
+                    0, Qt.ItemDataRole.UserRole) == tag:
+                self.tags_list.takeTopLevelItem(i)
+                break
+
     def _on_menu(self, pos):
         item = self.tags_list.itemAt(pos)
         if item is None:
@@ -111,19 +135,10 @@ class DeleteRemoteTagDlg(QDialog):
         tag = item.data(0, Qt.ItemDataRole.UserRole)
         if not tag:
             return
-        menu = QMenu(self)
-        act_del = menu.addAction(tr("deletetag_delete", "&Delete"))
-        act_copy = menu.addAction(tr("menu_copy_tag", "Copy tag name"))
+        menu, acts = self._build_menu(tag)
         chosen = menu.exec(self.tags_list.viewport().mapToGlobal(pos))
         if chosen is None:
             return
-        from ..utils.clipboard import ClipboardHelper
-        if chosen is act_copy:
-            ClipboardHelper().copy_text(tag)
-        elif chosen is act_del:
-            remote = self.remote_edit.text().strip()
-            self.repo.runner.run("push", remote, f":refs/tags/{tag}")
-            for i in range(self.tags_list.topLevelItemCount()):
-                if self.tags_list.topLevelItem(i).data(0, Qt.ItemDataRole.UserRole) == tag:
-                    self.tags_list.takeTopLevelItem(i)
-                    break
+        key = acts.get(chosen)
+        if key:
+            self._handle_menu(key, tag)

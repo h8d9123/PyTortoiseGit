@@ -138,6 +138,13 @@ class PullFetchDlg(QDialog):
             if a:
                 self._anchors.add(wgt, a[0], a[1] if len(a) > 1 else None)
 
+        # 对齐原版：仅浅克隆仓库显示 Depth（git_repository_is_shallow），否则隐藏
+        shallow = self.repo.is_shallow()
+        if shallow:
+            self.chk_depth.setChecked(True)
+        else:
+            self.chk_depth.hide()
+            self.depth_edit.hide()
         self.chk_depth.toggled.connect(self.depth_edit.setEnabled)
         self.depth_edit.setEnabled(self.chk_depth.isChecked())
         remotes = self.repo.runner.run("remote").stdout or ""

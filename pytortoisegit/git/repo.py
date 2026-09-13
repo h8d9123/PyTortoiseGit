@@ -113,6 +113,13 @@ class Repository:
     def is_bare(self) -> bool:
         return self.config_bool("core.bare", default=False)
 
+    def is_shallow(self) -> bool:
+        """是否为浅克隆仓库（对齐 git_repository_is_shallow）。"""
+        result = self.run("rev-parse", "--is-shallow-repository")
+        if result.returncode == 0:
+            return result.stdout.strip().lower() == "true"
+        return os.path.isfile(os.path.join(self.git_dir, "shallow"))
+
     def current_branch(self) -> str:
         result = self.run("symbolic-ref", "--short", "-q", "HEAD")
         if result.returncode == 0:

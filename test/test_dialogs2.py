@@ -497,6 +497,44 @@ def test_pull_depth_option(qapp, repo):
     assert args[args.index("--depth") + 1] == "5"
 
 
+def test_pull_depth_hidden_for_normal_repo(qapp, repo):
+    """普通仓库隐藏 Depth（对齐原版 git_repository_is_shallow）。"""
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    dlg = PullFetchDlg(repo, fetch_only=False)
+    assert dlg.chk_depth.isHidden()
+    assert dlg.depth_edit.isHidden()
+
+
+def test_pull_depth_shown_for_shallow_repo(qapp, tmp_path_factory):
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.git.repo import Repository
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    src = tmp_path_factory.mktemp("shallow_src")
+    r = GitRunner(cwd=str(src))
+    r.run("init", "-b", "main", str(src))
+    r.run("config", "user.email", "t@e.com")
+    r.run("config", "user.name", "T")
+    (src / "a.txt").write_text("x\n", encoding="utf-8")
+    r.run("add", "-A")
+    r.run("commit", "-m", "c1")
+    (src / "a.txt").write_text("y\n", encoding="utf-8")
+    r.run("add", "-A")
+    r.run("commit", "-m", "c2")
+    bare = tmp_path_factory.mktemp("shallow_bare") / "remote.git"
+    GitRunner(cwd=str(src)).run("init", "--bare", "-b", "main", str(bare))
+    r.run("remote", "add", "origin", str(bare))
+    r.run("push", "-u", "origin", "main")
+    dst = tmp_path_factory.mktemp("shallow_dst") / "repo"
+    file_url = "file:///" + str(bare).replace("\\", "/")
+    GitRunner(cwd=str(dst.parent)).run(
+        "clone", "--depth", "1", file_url, str(dst))
+    repo2 = Repository.open(str(dst))
+    assert repo2.is_shallow()
+    dlg = PullFetchDlg(repo2, fetch_only=False)
+    assert not dlg.chk_depth.isHidden()
+    assert dlg.chk_depth.isChecked()
+
+
 def test_pull_no_options_by_default(qapp, repo):
     from pytortoisegit.dialogs.pulldlg import PullFetchDlg
     dlg = PullFetchDlg(repo, fetch_only=False)

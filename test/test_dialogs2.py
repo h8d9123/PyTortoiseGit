@@ -134,6 +134,106 @@ def test_commit_amend_disabled_without_head(qapp, tmp_path):
     assert not dlg.amend_box.isEnabled()
 
 
+def test_commit_message_only_disables_list(qapp, repo):
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    dlg = _smoke(qapp, lambda: CommitDlg(repo))
+    assert dlg.status_tree.isEnabled()
+    dlg.chk_message_only.setChecked(True)
+    assert not dlg.status_tree.isEnabled()
+    dlg.chk_message_only.setChecked(False)
+    assert dlg.status_tree.isEnabled()
+
+
+def test_commit_whole_project_filter(qapp, repo):
+    from PySide6.QtCore import Qt
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    dlg = _smoke(qapp, lambda: CommitDlg(repo, paths=["a.txt"]))
+    paths = [it.data(0, Qt.ItemDataRole.UserRole + 1).path
+             for it in dlg._iter_file_items()]
+    assert paths and all(p == "a.txt" for p in paths)
+    assert not dlg.chk_whole_project.isChecked()
+    dlg.chk_whole_project.setChecked(True)      # 显示整个项目
+    paths2 = [it.data(0, Qt.ItemDataRole.UserRole + 1).path
+              for it in dlg._iter_file_items()]
+    assert "new.txt" in paths2
+
+
+def test_commit_view_patch_opens_diff(qapp, repo, monkeypatch):
+    from pytortoisegit.dialogs import diffdlg as dd
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    opened = {}
+
+    class _FakeDiff:
+        def __init__(self, *a, **k):
+            opened["n"] = opened.get("n", 0) + 1
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr(dd, "DiffDlg", _FakeDiff)
+    dlg = CommitDlg(repo)
+    dlg._on_view_patch()
+    assert opened.get("n") == 1
+
+
+def test_diff_common_ancestor_uses_merge_base(qapp, repo, monkeypatch):
+    from types import SimpleNamespace
+    from pytortoisegit.dialogs import diffdlg as dd
+    monkeypatch.setattr(dd, "run_async", lambda *a, **k: None)
+    dlg = dd.DiffDlg(repo, "HEAD~1", "HEAD")
+    dlg._common_ancestor = True
+    seen = {"run": [], "checked": None}
+
+    def fake_run(*args, **k):
+        seen["run"].append(args)
+        return SimpleNamespace(returncode=0, stdout="abc123\n", stderr="")
+
+    def fake_checked(*args, **k):
+        seen["checked"] = args
+        return ""
+
+    monkeypatch.setattr(dlg.repo.runner, "run", fake_run)
+    monkeypatch.setattr(dlg.repo.runner, "run_checked", fake_checked)
+    dlg._build_patch()
+    assert any(a and a[0] == "merge-base" for a in seen["run"])
+    assert "abc123" in seen["checked"]
+
+
+def test_diff_revert_to_revision(qapp, git_repo, monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace
+    from PySide6.QtWidgets import QMessageBox
+    from pytortoisegit.dialogs import diffdlg as dd
+    (Path(git_repo.root) / "a.txt").write_text("changed\n", encoding="utf-8")
+    monkeypatch.setattr(dd, "run_async", lambda *a, **k: None)
+    dlg = dd.DiffDlg(git_repo, "", "HEAD")
+    dlg._selected_patches = lambda: [SimpleNamespace(git_path="a.txt")]
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
+    dlg._revert_to("HEAD")
+    assert (Path(git_repo.root) / "a.txt").read_text(
+        encoding="utf-8") == "line1\nline2\nline3\n"
+
+
+def test_diff_save_list(qapp, git_repo, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem
+    from pytortoisegit.dialogs import diffdlg as dd
+    monkeypatch.setattr(dd, "run_async", lambda *a, **k: None)
+    dlg = dd.DiffDlg(git_repo, "HEAD~1", "HEAD")
+    it = QTreeWidgetItem(["a.txt"])
+    it.setData(0, Qt.ItemDataRole.UserRole, SimpleNamespace(git_path="a.txt"))
+    dlg.file_tree.addTopLevelItem(it)
+    dest = tmp_path / "list.txt"
+    monkeypatch.setattr(
+        QFileDialog, "getSaveFileName",
+        staticmethod(lambda *a, **k: (str(dest), "")))
+    dlg._save_list()
+    assert dest.read_text(encoding="utf-8") == "a.txt"
+
+
 def test_commit_author_prefilled_visible(qapp, repo):
     """作者框始终显示当前 user.name <email>，未勾选时仅置灰。"""
     from pytortoisegit.dialogs.commitdlg import CommitDlg

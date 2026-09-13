@@ -112,6 +112,7 @@ class CommitDlg(QDialog):
         self.listctrl = GitStatusList(repo)
         self.rows: List[StatusRow] = []
         self._is_whole = (len(self.paths) == 1 and self.paths[0] == "")
+        self._whole = self._is_whole
         self._checked: Dict[str, bool] = {}
         self._build_ui()
         self.refresh()
@@ -258,8 +259,11 @@ class CommitDlg(QDialog):
                                           "Show &Whole Project"))
         self.chk_whole_project.setChecked(self._is_whole)
         self.chk_whole_project.setEnabled(not self._is_whole)
+        self.chk_whole_project.toggled.connect(self._on_whole_project)
         self.chk_message_only = add(QCheckBox(self), "IDC_COMMIT_MESSAGEONLY")
         self.chk_message_only.setText(tr("commit_message_only", "Message onl&y"))
+        self.chk_message_only.toggled.connect(self._on_message_only)
+        self.chk_no_autoselect.toggled.connect(lambda *_: self.refresh())
 
         self.btn_commit = add(QToolButton(self), "IDOK")
         self.btn_commit.setText(tr("commit", "C&ommit"))
@@ -449,6 +453,28 @@ class CommitDlg(QDialog):
     def _on_show_unversioned(self, _on: bool):
         self._apply_show_flags()
 
+    def _row_matches_paths(self, path: str) -> bool:
+        """Show Whole Project 关闭时，仅显示所选路径下的文件。"""
+        if self._whole or self.paths == [""]:
+            return True
+        for spec in self.paths:
+            s = spec.strip("/")
+            if not s or path == s or path.startswith(s + "/"):
+                return True
+        return False
+
+    def _on_whole_project(self, on: bool):
+        """对齐 OnBnClickedWholeProject：在整仓库/所选路径间切换列表。"""
+        self._whole = bool(on) or self._is_whole
+        self._apply_show_flags()
+
+    def _on_message_only(self, on: bool):
+        """对齐 OnBnClickedCommitMessageOnly：勾选后列表禁用。"""
+        self.status_tree.setEnabled(not on)
+        for it in self._iter_file_items():
+            it.setDisabled(bool(on))
+        self._update_stats()
+
     def _on_view_patch(self, _event=None):
         from .diffdlg import DiffDlg
         sel = self._checked_paths()
@@ -539,6 +565,8 @@ class CommitDlg(QDialog):
         show_unver = self.chk_show_unversioned.isChecked()
         buckets = {"modified": [], "unversioned": []}
         for r in self.rows:
+            if not self._row_matches_paths(r.path):
+                continue
             if r.state == "untracked":
                 if not show_unver:
                     continue
@@ -576,6 +604,11 @@ class CommitDlg(QDialog):
             if parent is not None:
                 parent.setExpanded(True)
         self.status_tree.blockSignals(False)
+        message_only = self.chk_message_only.isChecked()
+        self.status_tree.setEnabled(not message_only)
+        if message_only:
+            for it in self._iter_file_items():
+                it.setDisabled(True)
         self._update_stats()
         if first_item is not None:
             self.status_tree.setCurrentItem(first_item)

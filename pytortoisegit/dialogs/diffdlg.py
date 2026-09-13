@@ -52,7 +52,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..git.repo import Repository
-from ..res.strings import tr
+from ..res.strings import format_string, tr
 from ..asyncfw import run_async
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
@@ -98,6 +98,7 @@ class DiffDlg(QDialog):
         self.paths = list(paths or [])
         self.patches: list = []
         self._ignore: List[str] = []
+        self._common_ancestor = False
         self._patch_dlg: Optional[_PatchViewDlg] = None
         self._build_ui()
         self._load()
@@ -244,6 +245,11 @@ class DiffDlg(QDialog):
         from ..udiff import parse_diff
         from ..merge.diffdata import normalize_revs
         old_rev, new_rev = normalize_revs(self.rev1, self.rev2)
+        # 使用共同祖先（A...B diff）：以 merge-base 作为基准
+        if self._common_ancestor and old_rev and new_rev:
+            mb = self.repo.runner.run("merge-base", old_rev, new_rev)
+            if mb.returncode == 0 and mb.stdout.strip():
+                old_rev = mb.stdout.strip()
         args: List[str] = ["diff", "--no-color", "-U3", *self._ignore]
         if old_rev and new_rev:
             args += [old_rev, new_rev]
@@ -420,7 +426,7 @@ class DiffDlg(QDialog):
                rev=self.rev2 or self.rev1, parent=self).exec()
 
     def _on_diff_options(self):
-        """IDC_DIFFOPTION：diff 忽略选项下拉（对齐原版弹出菜单）。"""
+        """IDC_DIFFOPTION：diff 忽略选项 + 共同祖先（对齐原版 5 项弹出菜单）。"""
         options = [
             ("--ignore-space-at-eol",
              tr("filediff_opt_eol", "Ignore changes in whitespace at EOL")),
@@ -438,19 +444,32 @@ class DiffDlg(QDialog):
             act.setCheckable(True)
             act.setChecked(opt in self._ignore)
             acts[act] = opt
+        menu.addSeparator()
+        act_common = menu.addAction(
+            tr("filediff_opt_common_ancestor", "Use common ancestor (A...B diff)"))
+        act_common.setCheckable(True)
+        act_common.setChecked(self._common_ancestor)
+        acts[act_common] = "common_ancestor"
         chosen = menu.exec(
             self.btn_diffoption.mapToGlobal(self.btn_diffoption.rect().bottomLeft()))
         self.btn_diffoption.setChecked(False)
         if chosen is None:
             return
         opt = acts[chosen]
-        if opt in self._ignore:
+        if opt == "common_ancestor":
+            self._common_ancestor = not self._common_ancestor
+        elif opt in self._ignore:
             self._ignore.remove(opt)
         else:
             self._ignore.append(opt)
         self._load()
 
     # ---- 右键菜单（对齐 CFileDiffDlg::OnContextMenu）----
+    def _selected_patches(self) -> list:
+        return [it.data(0, Qt.ItemDataRole.UserRole)
+                for it in self.file_tree.selectedItems()
+                if it.data(0, Qt.ItemDataRole.UserRole) is not None]
+
     def _on_menu(self, pos):
         item = self.file_tree.itemAt(pos)
         if item is None:
@@ -458,21 +477,43 @@ class DiffDlg(QDialog):
         p = item.data(0, Qt.ItemDataRole.UserRole)
         if p is None:
             return
+        if item not in self.file_tree.selectedItems():
+            self.file_tree.setCurrentItem(item)
         path = p.git_path
+        is_dir = item.childCount() > 0
         menu = QMenu(self)
         act_cmp = menu.addAction(tr("log_compare_two", "Compare two revisions"))
         act_gnu = menu.addAction(tr("log_gnudiff", "Show unified diff"))
         menu.addSeparator()
-        act_log = menu.addAction(tr("log_show_log", "Show log"))
-        act_blame = menu.addAction(tr("log_blame", "Blame"))
+        # 还原到版本（仅当该版本是提交）
+        act_rev1 = act_rev2 = None
+        if self.rev1:
+            act_rev1 = menu.addAction(format_string(
+                tr("filediff_revert_to", "Revert to {rev}"), rev=self.rev1))
+        if self.rev2:
+            act_rev2 = menu.addAction(format_string(
+                tr("filediff_revert_to", "Revert to {rev}"), rev=self.rev2))
+        if act_rev1 or act_rev2:
+            menu.addSeparator()
+        act_log = menu.addAction(tr("filediff_log", "Show log"))
+        act_blame = None
+        act_export = None
+        if not is_dir:
+            act_blame = menu.addAction(tr("log_blame", "Blame"))
+            act_export = menu.addAction(tr("filediff_export", "Export"))
         menu.addSeparator()
-        act_copy = menu.addAction(tr("log_copy_rel", "Relative path"))
+        act_save_list = menu.addAction(tr("filediff_save_list", "Save list..."))
+        act_copy = menu.addAction(tr("filediff_copy_path", "Copy path"))
+        act_copy_ext = menu.addAction(tr("filediff_copy_all", "Copy extended path"))
         chosen = menu.exec(self.file_tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return
         from ..utils.clipboard import ClipboardHelper
         if chosen is act_copy:
             ClipboardHelper().copy_text(path)
+        elif chosen is act_copy_ext:
+            paths = [x.git_path for x in self._selected_patches()] or [path]
+            ClipboardHelper().copy_text("\n".join(paths))
         elif chosen is act_cmp:
             self._open_compare(p)
         elif chosen is act_gnu:
@@ -483,6 +524,75 @@ class DiffDlg(QDialog):
         elif chosen is act_blame:
             from .blamedlg import BlameDlg
             BlameDlg(self.repo, path, rev=self.rev2 or self.rev1, parent=self).exec()
+        elif chosen is act_export:
+            self._export_file(p)
+        elif chosen is act_save_list:
+            self._save_list()
+        elif chosen is act_rev1:
+            self._revert_to(self.rev1)
+        elif chosen is act_rev2:
+            self._revert_to(self.rev2)
+
+    def _revert_to(self, rev: str):
+        paths = [x.git_path for x in self._selected_patches()]
+        if not paths or not rev:
+            return
+        from PySide6.QtWidgets import QMessageBox
+        if QMessageBox.question(
+                self, tr("confirm", "Confirm"),
+                format_string(tr("filediff_revert_confirm",
+                                 "Revert selected files to {rev}? This overwrites the working tree."),
+                              rev=rev)) != QMessageBox.StandardButton.Yes:
+            return
+        for gp in paths:
+            self.repo.runner.run("checkout", rev, "--", gp)
+        self._load()
+
+    def _export_file(self, p):
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        dest, _ = QFileDialog.getSaveFileName(
+            self, tr("filediff_export_title", "Export file"),
+            os.path.basename(p.git_path))
+        if not dest:
+            return
+        rev = self.rev2 or None
+        if rev:
+            res = self.repo.runner.run("show", f"{rev}:{p.git_path}")
+            if res.returncode != 0:
+                QMessageBox.warning(
+                    self, tr("filediff_export", "Export"),
+                    tr("filediff_unversioned_norev",
+                       "The selected file does not exist in this revision."))
+                return
+            content = res.stdout
+        else:
+            src = self._full_path(p.git_path)
+            if not os.path.isfile(src):
+                return
+            with open(src, encoding="utf-8", errors="replace") as fh:
+                content = fh.read()
+        try:
+            with open(dest, "w", encoding="utf-8", newline="") as fh:
+                fh.write(content)
+        except OSError as exc:
+            QMessageBox.warning(
+                self, tr("filediff_export", "Export"),
+                format_string(tr("filediff_export_failed", "Export failed: {err}"),
+                              err=str(exc)))
+
+    def _save_list(self):
+        from PySide6.QtWidgets import QFileDialog
+        dest, _ = QFileDialog.getSaveFileName(
+            self, tr("filediff_save_list_title", "Save file list"), "files.txt")
+        if not dest:
+            return
+        paths = []
+        for i in range(self.file_tree.topLevelItemCount()):
+            p = self.file_tree.topLevelItem(i).data(0, Qt.ItemDataRole.UserRole)
+            if p is not None:
+                paths.append(p.git_path)
+        with open(dest, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("\n".join(paths))
 
     def _full_path(self, path: str) -> str:
         root = self.repo.root

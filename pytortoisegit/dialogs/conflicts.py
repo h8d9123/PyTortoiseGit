@@ -139,38 +139,49 @@ class ConflictsWidget(QWidget):
         else:
             QMessageBox.warning(self, tr("error"), tr("xtool_not_configured"))
 
+    def _build_menu(self):
+        """构建冲突右键菜单，返回 (menu, {action: key})，便于测试。"""
+        menu = QMenu(self)
+        acts = {}
+        acts[menu.addAction(tr("menu_open", "Open in editor"))] = "open"
+        acts[menu.addAction(tr("menu_copy_path", "Copy path"))] = "copy"
+        menu.addSeparator()
+        acts[menu.addAction(tr("conflicts_take_ours", "Take ours"))] = "ours"
+        acts[menu.addAction(tr("conflicts_take_theirs", "Take theirs"))] = "theirs"
+        acts[menu.addAction(tr("conflicts_mark", "Mark as resolved"))] = "mark"
+        acts[menu.addAction(tr("conflicts_extmerge", "Resolve with merge tool"))] = "ext"
+        return menu, acts
+
+    def _handle_menu(self, key: str, path: str):
+        import os
+        from ..utils.clipboard import ClipboardHelper
+        if key == "copy":
+            ClipboardHelper().copy_text(path)
+        elif key == "open":
+            fp = self.repo.full_path(path)
+            if os.path.isfile(fp):
+                os.startfile(fp)  # noqa: S606
+        elif key == "ours":
+            self._on_take("ours")
+        elif key == "theirs":
+            self._on_take("theirs")
+        elif key == "mark":
+            self._on_mark()
+        elif key == "ext":
+            self._on_extmerge()
+
     def _on_menu(self, pos):
         item = self.tree.itemAt(pos)
         if item is None:
             return
+        self.tree.setCurrentItem(item)
         path = self._selected_path()
         if not path:
             return
-        self.tree.setCurrentItem(item)
-        menu = QMenu(self)
-        act_open = menu.addAction(tr("menu_open", "Open in editor"))
-        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
-        menu.addSeparator()
-        act_ours = menu.addAction(tr("conflicts_take_ours", "Take ours"))
-        act_theirs = menu.addAction(tr("conflicts_take_theirs", "Take theirs"))
-        act_mark = menu.addAction(tr("conflicts_mark", "Mark as resolved"))
-        act_ext = menu.addAction(tr("conflicts_extmerge", "Resolve with merge tool"))
+        menu, acts = self._build_menu()
         chosen = menu.exec(self.tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return
-        from ..utils.clipboard import ClipboardHelper
-        import os
-        if chosen is act_copy:
-            ClipboardHelper().copy_text(path)
-        elif chosen is act_open:
-            fp = self.repo.full_path(path)
-            if os.path.isfile(fp):
-                os.startfile(fp)  # noqa: S606
-        elif chosen is act_ours:
-            self._on_take("ours")
-        elif chosen is act_theirs:
-            self._on_take("theirs")
-        elif chosen is act_mark:
-            self._on_mark()
-        elif chosen is act_ext:
-            self._on_extmerge()
+        key = acts.get(chosen)
+        if key:
+            self._handle_menu(key, path)

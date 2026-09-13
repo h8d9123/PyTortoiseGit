@@ -174,6 +174,28 @@ class SubmoduleDlg(QDialog):
         else:
             QMessageBox.warning(self, tr("error"), tr("submodule_deinited"))
 
+    def _build_menu(self):
+        """构建子模块右键菜单，返回 (menu, {action: key})，便于测试。"""
+        menu = QMenu(self)
+        acts = {}
+        acts[menu.addAction(tr("submodule_update", "Update"))] = "update"
+        acts[menu.addAction(tr("submodule_sync", "Sync"))] = "sync"
+        acts[menu.addAction(tr("submodule_deinit", "Deinit"))] = "deinit"
+        menu.addSeparator()
+        acts[menu.addAction(tr("menu_copy_path", "Copy path"))] = "copy"
+        return menu, acts
+
+    def _handle_menu(self, key: str, path: str):
+        from ..utils.clipboard import ClipboardHelper
+        if key == "copy":
+            ClipboardHelper().copy_text(path)
+        elif key == "update":
+            self._on_update()
+        elif key == "sync":
+            self._on_sync()
+        elif key == "deinit":
+            self._on_deinit()
+
     def _on_menu(self, pos):
         item = self.tree.itemAt(pos)
         if item is None:
@@ -181,27 +203,14 @@ class SubmoduleDlg(QDialog):
         path = item.data(0, Qt.ItemDataRole.UserRole)
         if not path:
             return
-        menu = QMenu(self)
-        act_update = menu.addAction(tr("submodule_update", "Update"))
-        act_sync = menu.addAction(tr("submodule_sync", "Sync"))
-        act_deinit = menu.addAction(tr("submodule_deinit", "Deinit"))
-        menu.addSeparator()
-        act_copy = menu.addAction(tr("menu_copy_path", "Copy path"))
+        self.tree.setCurrentItem(item)
+        menu, acts = self._build_menu()
         chosen = menu.exec(self.tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return
-        from ..utils.clipboard import ClipboardHelper
-        if chosen is act_copy:
-            ClipboardHelper().copy_text(path)
-        elif chosen is act_update:
-            self.tree.setCurrentItem(item)
-            self._on_update()
-        elif chosen is act_sync:
-            self.tree.setCurrentItem(item)
-            self._on_sync()
-        elif chosen is act_deinit:
-            self.tree.setCurrentItem(item)
-            self._on_deinit()
+        key = acts.get(chosen)
+        if key:
+            self._handle_menu(key, path)
 
     def _on_item_double(self, item, _col):
         path = item.data(0, Qt.ItemDataRole.UserRole)

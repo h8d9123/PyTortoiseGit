@@ -70,11 +70,23 @@ class RunResult:
         return self.stdout.splitlines()
 
 
+def _settings_value(key: str, default: str = "") -> str:
+    """读取 General 设置页保存的应用级配置（避免 GUI 依赖，用 try 包裹）。"""
+    try:
+        from PySide6.QtCore import QSettings
+        return str(QSettings("PyTortoiseGit", "PyTortoiseGit").value(key, default) or "")
+    except Exception:  # noqa: BLE001
+        return default
+
+
 def find_git_executable() -> str:
-    """定位 git 可执行文件。优先级：环境变量 GIT_PATH > PATH 中的 git。"""
+    """定位 git 可执行文件。优先级：GIT_PATH > 设置页 gitPath > PATH 中的 git。"""
     env_path = os.environ.get("GIT_PATH")
     if env_path and os.path.isfile(env_path):
         return env_path
+    settings_path = _settings_value("gitPath")
+    if settings_path and os.path.isfile(settings_path):
+        return settings_path
     found = shutil.which("git")
     if found:
         return found
@@ -94,6 +106,9 @@ class GitRunner:
         self.quote_path = quote_path
         self.env = os.environ.copy()
         self.env.setdefault("GIT_TERMINAL_PROMPT", "0")
+        extra_path = _settings_value("extraPath")
+        if extra_path:
+            self.env["PATH"] = extra_path + os.pathsep + self.env.get("PATH", "")
         self.extra_args: List[str] = []
 
     # ---- 低层 ----

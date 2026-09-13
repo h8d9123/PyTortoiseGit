@@ -613,14 +613,62 @@ class MainMenuDlg(QMainWindow):
         except Exception:  # noqa: BLE001
             return None
 
+    def _menu_hidden_commands(self) -> set:
+        """Context Menu 2 页勾选“隐藏”的命令；未设置用原版默认值。"""
+        default = {"svnignore", "stashapply", "subsync"}
+        try:
+            from .settingsdlg import general_settings
+            saved = general_settings().value(
+                "contextMenuHideEntries", [], type=list)
+            return set(saved) if saved else default
+        except Exception:  # noqa: BLE001
+            return default
+
+    @staticmethod
+    def _no_context_paths() -> list:
+        """Context Menu 页“以下路径不显示右键菜单”列表。"""
+        try:
+            from .settingsdlg import general_settings
+            raw = general_settings().value("NoContextPaths", "", type=str) or ""
+        except Exception:  # noqa: BLE001
+            return []
+        return [p.strip() for p in raw.replace("\r", "").split("\n") if p.strip()]
+
+    @staticmethod
+    def _is_no_context_path(path: str) -> bool:
+        import os
+        norm = os.path.normcase(os.path.abspath(path))
+        for p in MainMenuDlg._no_context_paths():
+            try:
+                prefix = os.path.normcase(os.path.abspath(p))
+            except Exception:  # noqa: BLE001
+                continue
+            if norm == prefix or norm.startswith(prefix + os.sep):
+                return True
+        return False
+
+    @staticmethod
+    def _hide_unversioned_menus() -> bool:
+        try:
+            from .settingsdlg import general_settings
+            return bool(general_settings().value(
+                "HideMenusForUnversionedItems", False, type=bool))
+        except Exception:  # noqa: BLE001
+            return False
+
     def _populate_tortoisegit_menu(self, menu, path: str,
                                    shift: bool | None = None):
         """把状态驱动的 TortoiseGit 菜单项填入给定菜单（按“第一层”设置过滤）。"""
         from .. import menuitems as mi
         if shift is None:
             shift = self._shift_pressed()
-        enabled = self._menu_top_commands()
+        if self._is_no_context_path(path):
+            return
         states = mi.compute_item_states(path, extended=shift)
+        if self._hide_unversioned_menus() and not (states & mi.ITEMIS_INGIT):
+            return
+        enabled = self._menu_top_commands()
+        hidden = self._menu_hidden_commands()
         pending_sep = False
         for entry in mi.menu_entries(states, extended=shift):
             if entry.command == "separator":
@@ -628,6 +676,8 @@ class MainMenuDlg(QMainWindow):
                     pending_sep = True
                 continue
             if enabled is not None and entry.command not in enabled:
+                continue
+            if not shift and entry.command in hidden:
                 continue
             if pending_sep:
                 menu.addSeparator()

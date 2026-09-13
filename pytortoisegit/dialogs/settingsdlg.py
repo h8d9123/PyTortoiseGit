@@ -151,6 +151,8 @@ class _SettingPage(QWidget):
     # -- 通用 QSettings 持久化：子类定义 _SETTINGS 列表 ----------------
     # 每项 (setting_key, ctrl_id, kind, default)，kind ∈ {bool,int,text,index}
     def _get_widget_text(self, w) -> str:
+        if hasattr(w, "toPlainText"):
+            return w.toPlainText()
         if hasattr(w, "currentText"):
             return w.currentText()
         if hasattr(w, "text"):
@@ -158,7 +160,9 @@ class _SettingPage(QWidget):
         return ""
 
     def _set_widget_text(self, w, val: str):
-        if hasattr(w, "setCurrentText"):
+        if hasattr(w, "setPlainText"):
+            w.setPlainText(val)
+        elif hasattr(w, "setCurrentText"):
             w.setCurrentText(val)
         elif hasattr(w, "setText"):
             w.setText(val)
@@ -551,6 +555,12 @@ class _DiffPage(_SettingPage):
         (16, 65, 160, 25, "set_diff_adv_hint",
          'Click on "Advanced" to specify alternate diff programs based on file extension'),
     ]
+    _RADIO_GROUPS = [
+        ("DiffUseExternal",
+         ["IDC_EXTDIFF_OFF", "IDC_EXTDIFF_ON"], 0),
+        ("DiffViewerUseExternal",
+         ["IDC_DIFFVIEWER_OFF", "IDC_DIFFVIEWER_ON"], 0),
+    ]
 
     def _build_ui(self):
         super()._build_ui()
@@ -587,6 +597,9 @@ class _MergePage(_SettingPage):
     _LABELS = [
         (7, 108, 160, 33, "set_merge_adv_hint",
          'Click on "Advanced" to specify alternate merge programs based on file extension'),
+    ]
+    _RADIO_GROUPS = [
+        ("MergeUseExternal", ["IDC_EXTMERGE_OFF", "IDC_EXTMERGE_ON"], 0),
     ]
 
     def _build_ui(self):
@@ -971,6 +984,8 @@ class _MenuListPage(_SettingPage):
     """Context Menu / Context Menu 2 通用：菜单项复选列表。"""
 
     SETTINGS_KEY = ""
+    # 未保存时的默认勾选集合；None 表示全部勾选
+    DEFAULT_CHECKED_COMMANDS: set | None = None
 
     def _build_ui(self):
         super()._build_ui()
@@ -999,7 +1014,12 @@ class _MenuListPage(_SettingPage):
             seen.add(e.menu_id)
             it = QTreeWidgetItem([tr(e.label_key, e.label)])
             it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            checked = (not saved) or (e.command in saved)
+            if saved:
+                checked = e.command in saved
+            elif self.DEFAULT_CHECKED_COMMANDS is None:
+                checked = True
+            else:
+                checked = e.command in self.DEFAULT_CHECKED_COMMANDS
             it.setCheckState(0, Qt.CheckState.Checked if checked
                              else Qt.CheckState.Unchecked)
             it.setData(0, Qt.ItemDataRole.UserRole, e.command)
@@ -1020,7 +1040,14 @@ class _MenuListPage(_SettingPage):
         if tree is None:
             return
         for i in range(tree.topLevelItemCount()):
-            tree.topLevelItem(i).setCheckState(0, Qt.CheckState.Checked)
+            it = tree.topLevelItem(i)
+            if self.DEFAULT_CHECKED_COMMANDS is None:
+                checked = True
+            else:
+                checked = (it.data(0, Qt.ItemDataRole.UserRole)
+                           in self.DEFAULT_CHECKED_COMMANDS)
+            it.setCheckState(0, Qt.CheckState.Checked if checked
+                             else Qt.CheckState.Unchecked)
 
     def save_to_settings(self):
         tree = self._ctl.get("IDC_MENULIST")
@@ -1041,6 +1068,8 @@ class _ContextMenuPage(_MenuListPage):
 
     TEMPLATE = "IDD_SETTINGSLOOKANDFEEL"
     SETTINGS_KEY = "contextMenuEntries"
+    # 原版 defaultTopMenuEntries = Sync | CreateRepo | Clone | Commit
+    DEFAULT_CHECKED_COMMANDS = {"sync", "repocreate", "clone", "commit"}
 
     # 注意：RC 中首个 IDC_STATIC（第一个分组框）未被去重，勿重复添加
     _GROUPS = [
@@ -1052,6 +1081,11 @@ class _ContextMenuPage(_MenuListPage):
          "Unchecked items will appear in the TortoiseGit submenu, checked "
          "items directly in the main context menu."),
     ]
+    _SETTINGS = [
+        ("HideMenusForUnversionedItems", "IDC_HIDEMENUS", "bool", False),
+        ("NoContextPaths", "IDC_NOCONTEXTPATHS", "text", ""),
+        ("EnableDragContextMenu", "IDC_ENABLEDRAGCONTEXTMENU", "bool", True),
+    ]
 
 
 class _ContextMenu2Page(_MenuListPage):
@@ -1059,6 +1093,8 @@ class _ContextMenu2Page(_MenuListPage):
 
     TEMPLATE = "IDD_SETTINGSEXTMENU"
     SETTINGS_KEY = "contextMenuHideEntries"
+    # 原版 defaultExtMenuEntries = SVNIgnore | StashApply | SubmoduleSync
+    DEFAULT_CHECKED_COMMANDS = {"svnignore", "stashapply", "subsync"}
 
     # 注意：RC 中首个 IDC_STATIC（分组框）未被去重，勿重复添加
     _LABELS = [

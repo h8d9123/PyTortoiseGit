@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import udiff as udiff_mod
+from ..res.strings import tr
 
 
 class DiffView(QPlainTextEdit):

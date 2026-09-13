@@ -95,6 +95,45 @@ def test_commit_dialog(qapp, repo):
     assert dlg.status_tree.topLevelItemCount() >= 2
 
 
+def test_commit_author_prefilled_visible(qapp, repo):
+    """作者框始终显示当前 user.name <email>，未勾选时仅置灰。"""
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    dlg = CommitDlg(repo)
+    assert not dlg.author_edit.isHidden()
+    assert "@example.com" in dlg.author_edit.text()
+    assert "<" in dlg.author_edit.text() and ">" in dlg.author_edit.text()
+    assert not dlg.author_edit.isEnabled()
+    dlg.chk_set_author.setChecked(True)
+    assert dlg.author_edit.isEnabled()
+
+
+def test_commit_bugid_hidden_without_bugtraq(qapp, repo):
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    dlg = CommitDlg(repo)
+    assert dlg.bugid_edit.isHidden()
+    assert dlg._ctl["IDC_BUGIDLABEL"].isHidden()
+
+
+def test_commit_bugid_shown_with_bugtraq(qapp, repo):
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    repo.runner.run("config", "bugtraq.message", "refs #%BUGID%")
+    try:
+        dlg = CommitDlg(repo)
+        assert not dlg.bugid_edit.isHidden()
+        assert not dlg._ctl["IDC_BUGIDLABEL"].isHidden()
+    finally:
+        repo.runner.run("config", "--unset", "bugtraq.message")
+
+
+def test_commit_group_caption_and_view_patch(qapp, repo):
+    """分组标题不应被截断；View Patch 链接带 >>。"""
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    dlg = CommitDlg(repo)
+    grp = dlg._ctl["IDC_LISTGROUP"]
+    assert "差异" in grp.title()
+    assert dlg.view_patch_link.text().endswith(">>")
+
+
 def test_changed_dialog(qapp, repo):
     from pytortoisegit.dialogs.changedlg import ChangedDlg
     dlg = _smoke(qapp, lambda: ChangedDlg(repo))

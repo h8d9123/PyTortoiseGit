@@ -281,8 +281,46 @@ class CommitDlg(QDialog):
             if wgt is not None:
                 rc_mod.place_widget(self, fu, ctrl, wgt)
 
+        self._init_author_and_bugid()
+        self._fix_check_link_widths()
         self._setup_anchors()
         self._on_set_author_toggled(False)
+
+    def _init_author_and_bugid(self):
+        """对齐原版：作者框显示当前 user.name <email>；Bug-ID 仅在配置 bugtraq 时显示。"""
+        name = self.repo.config("user.name")
+        email = self.repo.config("user.email")
+        self.author_edit.setText(f"{name} <{email}>" if (name or email) else "")
+        configured = any(self.repo.config(k) for k in (
+            "bugtraq.message", "bugtraq.url", "bugtraq.logregex",
+            "bugtraq.provideruuid", "bugtraq.provideruuid64"))
+        if not configured:
+            self._ctl["IDC_BUGID"].hide()
+            self._ctl["IDC_BUGIDLABEL"].hide()
+        else:
+            label = self.repo.config("bugtraq.label")
+            if label:
+                self._ctl["IDC_BUGIDLABEL"].setText(label)
+
+    def _fix_check_link_widths(self):
+        """Check 链接行 RC 宽度偏窄会被裁切，按文本宽度扩展到下一个链接前。"""
+        order = ["IDC_CHECKALL", "IDC_CHECKNONE", "IDC_CHECKUNVERSIONED",
+                 "IDC_CHECKVERSIONED", "IDC_CHECKADDED", "IDC_CHECKDELETED",
+                 "IDC_CHECKMODIFIED", "IDC_CHECKFILES", "IDC_CHECKSUBMODULES"]
+        widgets = [self._ctl.get(c) for c in order]
+        widgets = [w for w in widgets if w is not None]
+        group = self._ctl.get("IDC_LISTGROUP")
+        group_end = (group.x() + group.width() - 4) if group is not None else None
+        for i, lbl in enumerate(widgets):
+            need = lbl.sizeHint().width()
+            if i + 1 < len(widgets):
+                limit = widgets[i + 1].x() - lbl.x() - 2
+            elif group_end is not None:
+                limit = group_end - lbl.x()
+            else:
+                limit = need
+            lbl.setGeometry(lbl.x(), lbl.y(),
+                            max(min(need, limit), lbl.width()), lbl.height())
 
     # ---- 锚点（参考 CResizableDialog）----
     def _setup_anchors(self):
@@ -365,10 +403,8 @@ class CommitDlg(QDialog):
         self.chk_set_date.setChecked(False)
 
     def _on_set_author_toggled(self, on: bool):
+        # 对齐原版：作者框始终显示当前作者，仅切换是否可编辑
         self.author_edit.setEnabled(on)
-        self.author_edit.setVisible(on)
-        if not on:
-            self.author_edit.clear()
 
     def _on_signoff(self):
         name = self.repo.config("user.name")

@@ -92,7 +92,7 @@ def test_blame_dialog(qapp, repo):
 def test_commit_dialog(qapp, repo):
     from pytortoisegit.dialogs.commitdlg import CommitDlg
     dlg = _smoke(qapp, lambda: CommitDlg(repo))
-    assert dlg.status_tree.topLevelItemCount() >= 2
+    assert len(list(dlg._iter_file_items())) >= 2
 
 
 def test_commit_author_prefilled_visible(qapp, repo):
@@ -123,6 +123,26 @@ def test_commit_bugid_shown_with_bugtraq(qapp, repo):
         assert not dlg._ctl["IDC_BUGIDLABEL"].isHidden()
     finally:
         repo.runner.run("config", "--unset", "bugtraq.message")
+
+
+def test_commit_list_grouped_by_category(qapp, repo):
+    """有未版本控制文件时列表应按分类分组（对齐 changedlg）。"""
+    from PySide6.QtCore import Qt
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    from pytortoisegit.git.statuslist import StatusRow
+    dlg = _smoke(qapp, lambda: CommitDlg(repo))
+    tree = dlg.status_tree
+    titles = [tree.topLevelItem(i).text(0) for i in range(tree.topLevelItemCount())]
+    assert any("未版本" in t for t in titles), titles
+    group = next(tree.topLevelItem(i) for i in range(tree.topLevelItemCount())
+                 if "未版本" in tree.topLevelItem(i).text(0))
+    assert group.childCount() >= 1
+    # _iter_file_items 只产出文件项（不含分组标题）
+    items = list(dlg._iter_file_items())
+    assert items
+    assert all(isinstance(it.data(0, Qt.ItemDataRole.UserRole + 1), StatusRow)
+               for it in items)
+    assert len(items) >= group.childCount()
 
 
 def test_commit_group_caption_and_view_patch(qapp, repo):

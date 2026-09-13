@@ -80,6 +80,11 @@ def _make_repo():
     r.run("add", "-A")
     r.run("commit", "-m", "main work")
     r.run("merge", "--no-ff", "feature", "-m", "merge feature")
+    # 制造一改一未跟踪，便于展示提交/差异列表的分类分组
+    with open(os.path.join(d, "file0.txt"), "w", encoding="utf-8") as fh:
+        fh.write("line 0 modified again\n")
+    with open(os.path.join(d, "untracked.txt"), "w", encoding="utf-8") as fh:
+        fh.write("untracked\n")
     return repo
 
 

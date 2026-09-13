@@ -218,7 +218,7 @@ class CommitDlg(QDialog):
         self.status_tree.setColumnWidth(1, 52)
         self.status_tree.setColumnWidth(2, 72)
         self.status_tree.setColumnWidth(3, 62)
-        self.status_tree.setIndentation(0)
+        self.status_tree.setIndentation(12)
         self.status_tree.itemChanged.connect(self._on_item_changed)
         self.status_tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         import PySide6.QtCore as _qcore
@@ -454,8 +454,7 @@ class CommitDlg(QDialog):
         return _clicked
 
     def _toggle_check_group(self, key: str):
-        items = [self.status_tree.topLevelItem(i)
-                 for i in range(self.status_tree.topLevelItemCount())]
+        items = list(self._iter_file_items())
         if key == "All":
             for item in items:
                 item.setCheckState(0, Qt.CheckState.Checked)
@@ -507,30 +506,78 @@ class CommitDlg(QDialog):
         self._apply_show_flags()
 
     def _apply_show_flags(self):
+        """按分类分组填充列表（对齐 CGitStatusListCtrl::PrepareGroups / changedlg）。"""
         self.status_tree.blockSignals(True)
         self.status_tree.clear()
         show_unver = self.chk_show_unversioned.isChecked()
+        buckets = {"modified": [], "unversioned": []}
         for r in self.rows:
-            if r.state == "untracked" and not show_unver:
+            if r.state == "untracked":
+                if not show_unver:
+                    continue
+                buckets["unversioned"].append(r)
+            else:
+                buckets["modified"].append(r)
+        # 有未版本控制文件时才显示分组标题
+        has_groups = bool(buckets["unversioned"])
+        labels = (
+            ("modified", tr("log_file_group", "Modified files")),
+            ("unversioned", tr("status_group_unversioned", "Unversioned files")),
+        )
+        first_item = None
+        for key, title in labels:
+            rows = buckets[key]
+            if not rows:
                 continue
-            ext = r.entry.path.rsplit(".", 1)[1] if "." in r.entry.path.split("/")[-1] else ""
-            item = QTreeWidgetItem([
-                r.display_path, ext, r.action,
-                str(r.lines_added) if r.lines_added else "",
-                str(r.lines_removed) if r.lines_removed else "",
-            ])
-            color = QColor(r.color)
-            item.setForeground(0, color)
-            item.setForeground(2, color)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(0, Qt.CheckState.Checked if self._checked.get(r.path)
-                               else Qt.CheckState.Unchecked)
-            item.setData(0, Qt.ItemDataRole.UserRole + 1, r)
-            self.status_tree.addTopLevelItem(item)
+            parent = None
+            if has_groups:
+                parent = QTreeWidgetItem([title])
+                parent.setFirstColumnSpanned(True)
+                font = parent.font(0)
+                font.setBold(True)
+                parent.setFont(0, font)
+                parent.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                self.status_tree.addTopLevelItem(parent)
+            for r in rows:
+                item = self._make_file_item(r)
+                if parent is None:
+                    self.status_tree.addTopLevelItem(item)
+                else:
+                    parent.addChild(item)
+                if first_item is None:
+                    first_item = item
+            if parent is not None:
+                parent.setExpanded(True)
         self.status_tree.blockSignals(False)
         self._update_stats()
-        if self.status_tree.topLevelItemCount():
-            self.status_tree.setCurrentItem(self.status_tree.topLevelItem(0))
+        if first_item is not None:
+            self.status_tree.setCurrentItem(first_item)
+
+    def _make_file_item(self, r: StatusRow) -> QTreeWidgetItem:
+        ext = r.entry.path.rsplit(".", 1)[1] if "." in r.entry.path.split("/")[-1] else ""
+        item = QTreeWidgetItem([
+            r.display_path, ext, r.action,
+            str(r.lines_added) if r.lines_added else "",
+            str(r.lines_removed) if r.lines_removed else "",
+        ])
+        color = QColor(r.color)
+        item.setForeground(0, color)
+        item.setForeground(2, color)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(0, Qt.CheckState.Checked if self._checked.get(r.path)
+                           else Qt.CheckState.Unchecked)
+        item.setData(0, Qt.ItemDataRole.UserRole + 1, r)
+        return item
+
+    def _iter_file_items(self):
+        """遍历所有文件项（含分组子项）。"""
+        for i in range(self.status_tree.topLevelItemCount()):
+            it = self.status_tree.topLevelItem(i)
+            if isinstance(it.data(0, Qt.ItemDataRole.UserRole + 1), StatusRow):
+                yield it
+            else:
+                for j in range(it.childCount()):
+                    yield it.child(j)
 
     def _on_item_changed(self, item, _col):
         if _col != 0:
@@ -610,12 +657,13 @@ class CommitDlg(QDialog):
             self.text_info.setText(format_string(
                 tr("commit_text_info", "{chars} chars / {lines} lines"),
                 chars=len(msg), lines=len(msg.splitlines())))
-        total = self.status_tree.topLevelItemCount()
+        items = list(self._iter_file_items())
+        total = len(items)
         if not total:
             self.stats_label.setText(tr("commit_nothing", "No changes to commit"))
             return
-        n = sum(1 for i in range(total)
-                if self.status_tree.topLevelItem(i).checkState(0) == Qt.CheckState.Checked)
+        n = sum(1 for it in items
+                if it.checkState(0) == Qt.CheckState.Checked)
         self.stats_label.setText(format_string(
             tr("commit_stats", "{sel} files selected, {total} files total"),
             sel=n, total=total))

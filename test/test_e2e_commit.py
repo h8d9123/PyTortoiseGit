@@ -62,14 +62,11 @@ def test_TC_COMMIT_003_select_all_none(qapp, ui, git_repo):
     (Path(git_repo.root) / "new.txt").write_text("y\n", encoding="utf-8")
     dlg = _open_commit(qapp, ui, git_repo)
     dlg._toggle_check_group("All")
-    total = dlg.status_tree.topLevelItemCount()
-    checked = sum(1 for i in range(total)
-                  if dlg.status_tree.topLevelItem(i).checkState(0) == Qt.CheckState.Checked)
-    assert checked == total
+    items = list(dlg._iter_file_items())
+    assert items
+    assert all(it.checkState(0) == Qt.CheckState.Checked for it in items)
     dlg._toggle_check_group("None")
-    checked = sum(1 for i in range(total)
-                  if dlg.status_tree.topLevelItem(i).checkState(0) == Qt.CheckState.Checked)
-    assert checked == 0
+    assert all(it.checkState(0) == Qt.CheckState.Unchecked for it in items)
 
 
 def test_TC_COMMIT_004_empty_message_validation(qapp, ui, git_repo, monkeypatch):
@@ -168,8 +165,7 @@ def test_TC_COMMIT_015_refresh_f5(qapp, ui, git_repo):
     from PySide6.QtCore import Qt
     ui.key(dlg, Qt.Key.Key_F5)
     assert ui.wait_until(lambda: any(
-        dlg.status_tree.topLevelItem(i).text(0).endswith("later.txt")
-        for i in range(dlg.status_tree.topLevelItemCount())))
+        it.text(0).endswith("later.txt") for it in dlg._iter_file_items()))
 
 
 # ---- TC-ADD ----

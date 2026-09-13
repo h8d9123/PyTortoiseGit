@@ -292,6 +292,55 @@ def test_colors3_line_width_node_size(qapp, isolated_settings, ui):
 
 
 # ---------------------------------------------------------------------------
+# 外部比较/合并工具设置
+# ---------------------------------------------------------------------------
+
+def test_diff_page_browse_enable_persist(qapp, isolated_settings, monkeypatch):
+    from pytortoisegit.dialogs.settingsdlg import _DiffPage, general_settings
+    monkeypatch.setattr("pytortoisegit.utils.pick.pick_file",
+                        lambda *a, **k: "D:/BC/BCompare.exe")
+    page = _DiffPage()
+    page.load_settings()
+    assert not page._ctl["IDC_EXTDIFF"].isEnabled()      # 默认内置
+    page._ctl["IDC_EXTDIFF_ON"].click()                  # 选择“外部”
+    assert page._ctl["IDC_EXTDIFF"].isEnabled()
+    assert page._ctl["IDC_EXTDIFFBROWSE"].isEnabled()
+    page._ctl["IDC_EXTDIFFBROWSE"].click()               # 浏览选择程序
+    assert page._ctl["IDC_EXTDIFF"].text() == "D:/BC/BCompare.exe"
+    page.save_settings()
+    assert general_settings().value("DiffUseExternal", type=int) == 1
+    page2 = _DiffPage()
+    page2.load_settings()
+    assert page2._ctl["IDC_EXTDIFF_ON"].isChecked()
+    assert page2._ctl["IDC_EXTDIFF"].isEnabled()
+
+
+def test_merge_page_enable_and_persist(qapp, isolated_settings, monkeypatch):
+    from pytortoisegit.dialogs.settingsdlg import _MergePage, general_settings
+    monkeypatch.setattr("pytortoisegit.utils.pick.pick_file",
+                        lambda *a, **k: "D:/BC/BComp.exe")
+    page = _MergePage()
+    page.load_settings()
+    assert not page._ctl["IDC_EXTMERGE"].isEnabled()
+    page._ctl["IDC_EXTMERGE_ON"].click()
+    page._ctl["IDC_EXTMERGEBROWSE"].click()
+    page._ctl["IDC_MERGEBLOCK"].setChecked(True)
+    assert page._ctl["IDC_EXTMERGE"].text() == "D:/BC/BComp.exe"
+    page.save_settings()
+    s = general_settings()
+    assert s.value("MergeUseExternal", type=int) == 1
+    assert s.value("MergeBlock", type=bool) is True
+
+
+def test_diffdlg_use_external_setting(qapp, isolated_settings):
+    from pytortoisegit.dialogs.diffdlg import DiffDlg
+    from pytortoisegit.dialogs.settingsdlg import general_settings
+    assert DiffDlg._use_external_diff() is False
+    general_settings().setValue("DiffUseExternal", 1)
+    assert DiffDlg._use_external_diff() is True
+
+
+# ---------------------------------------------------------------------------
 # 备用编辑器
 # ---------------------------------------------------------------------------
 

@@ -358,9 +358,35 @@ class DiffDlg(QDialog):
             self._open_compare(p)
 
     def _open_compare(self, p):
+        if self._try_external_diff(p):
+            return
         from ..merge.mergefrm import MergeFrm
         frm = MergeFrm(self.repo, p.git_path, self.rev1, self.rev2, parent=self)
         frm.show()
+
+    @staticmethod
+    def _use_external_diff() -> bool:
+        """设置页 Diff Viewer 是否选择“外部”。"""
+        try:
+            from .settingsdlg import general_settings
+            return general_settings().value(
+                "DiffUseExternal", 0, type=int) == 1
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _try_external_diff(self, p) -> bool:
+        """按设置调用外部比较工具；未配置或失败返回 False（回退内置）。"""
+        if not self._use_external_diff():
+            return False
+        from ..utils import externaltools
+        tool = externaltools.DiffTool.from_repo(self.repo)
+        if not tool.has_diff:
+            return False
+        a = externaltools.materialize_revision(self.repo, self.rev1, p.git_path)
+        b = externaltools.materialize_revision(self.repo, self.rev2, p.git_path)
+        if not a or not b:
+            return False
+        return externaltools.launch_diff_paths(self.repo, a, b)
 
     # ---- 顶行按钮 ----
     def _on_switch(self):
@@ -461,22 +487,6 @@ class DiffDlg(QDialog):
     def _full_path(self, path: str) -> str:
         root = self.repo.root
         return os.path.join(root, path.replace("/", os.sep))
-
-    def _open_external(self, path: str):
-        """用外部工具打开文件 diff（配置了 tortoisegit.externaldiff 时）。"""
-        import subprocess
-        full = self._full_path(path)
-        cmd = ""
-        try:
-            r = self.repo.runner.run("config", "--get", "diff.external")
-            cmd = (r.stdout or "").strip()
-        except Exception:  # noqa: BLE001
-            pass
-        if cmd:
-            subprocess.Popen(cmd.replace("{path}", full), shell=False)
-        elif os.path.isfile(full):
-            os.startfile(full)  # noqa: S606
-
 
 def diff_dialog(repo: Repository, rev1=None, rev2=None, paths=None,
                 parent=None) -> DiffDlg:

@@ -80,13 +80,18 @@ class DiffTool:
             template = template.replace("$" + key, val)
         return template
 
-    def diff_command(self, repo: Repository, path_a: str, path_b: str) -> list[str]:
-        full_a = os.path.join(repo.root, path_a)
-        full_b = os.path.join(repo.root, path_b)
+    def diff_command_paths(self, repo: Repository, full_a: str,
+                           full_b: str) -> list[str]:
+        """用两个绝对路径构造外部比较命令。"""
         filled = self._fill(
             self.diff_cmd, path=full_a, path_a=full_a, path_b=full_b,
             repo=repo.root, repo_name=repo.name)
         return _split(filled)
+
+    def diff_command(self, repo: Repository, path_a: str, path_b: str) -> list[str]:
+        full_a = os.path.join(repo.root, path_a)
+        full_b = os.path.join(repo.root, path_b)
+        return self.diff_command_paths(repo, full_a, full_b)
 
     def merge_command(self, repo: Repository, path: str) -> list[str]:
         """为冲突文件 path 构建外部合并命令（先提取三阶段到临时文件）。"""
@@ -113,6 +118,35 @@ def launch_diff(repo: Repository, path_a: str, path_b: str) -> bool:
     if not tool.has_diff:
         return False
     return _run_blocking(tool.diff_command(repo, path_a, path_b))
+
+
+def launch_diff_paths(repo: Repository, full_a: str, full_b: str) -> bool:
+    """用两个绝对路径启动外部比较工具。"""
+    tool = DiffTool.from_repo(repo)
+    if not tool.has_diff:
+        return False
+    return _run_blocking(tool.diff_command_paths(repo, full_a, full_b))
+
+
+def materialize_revision(repo: Repository, rev: str, git_path: str) -> str | None:
+    """把 rev:git_path 的内容导出到临时文件；rev 为空表示工作区文件。
+
+    返回绝对路径；失败返回 None。
+    """
+    import tempfile  # noqa: PLC0415
+
+    if not rev or rev.upper() in ("WORKING", "WORKTREE", "WORKINGTREE", "WORKING_DIR"):
+        full = os.path.join(repo.root, git_path)
+        return full if os.path.isfile(full) else None
+    result = repo.runner.run("show", f"{rev}:{git_path}")
+    if result.returncode != 0:
+        return None
+    suffix = os.path.splitext(git_path)[1]
+    fd, tmp = tempfile.mkstemp(prefix="ptg_extdiff_", suffix=suffix)
+    os.close(fd)
+    with open(tmp, "w", encoding="utf-8", newline="") as fh:
+        fh.write(result.stdout)
+    return tmp
 
 
 def launch_merge_for_conflict(repo: Repository, path: str) -> bool:

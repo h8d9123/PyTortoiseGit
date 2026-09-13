@@ -168,10 +168,9 @@ class ResolveDlg(QDialog):
 
     def _launch_merge(self, path: str):
         try:
-            from ..utils import externaltools
-            d = externaltools.from_repo(self.repo)
-            externaltools.launch_merge_for_conflict(d, self.repo, path)
-        except Exception:
+            from ..utils.externaltools import launch_merge_for_conflict
+            launch_merge_for_conflict(self.repo, path)
+        except Exception:  # noqa: BLE001
             pass
 
     def _show_conflict(self, path: str):

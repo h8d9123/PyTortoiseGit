@@ -582,6 +582,18 @@ class _DiffPage(_SettingPage):
             self._ctl["IDC_EXTDIFF_OFF"].setChecked(True)
         if self._ctl.get("IDC_DIFFVIEWER_OFF") is not None:
             self._ctl["IDC_DIFFVIEWER_OFF"].setChecked(True)
+        for on in ("IDC_EXTDIFF_ON", "IDC_DIFFVIEWER_ON"):
+            if w := self._ctl.get(on):
+                w.toggled.connect(self._update_enabled)
+        if b := self._ctl.get("IDC_EXTDIFFBROWSE"):
+            b.clicked.connect(
+                lambda: self._browse_into("IDC_EXTDIFF"))
+        if b := self._ctl.get("IDC_DIFFVIEWERBROWSE"):
+            b.clicked.connect(
+                lambda: self._browse_into("IDC_DIFFVIEWER"))
+        if b := self._ctl.get("IDC_EXTDIFFADVANCED"):
+            b.clicked.connect(self._advanced_placeholder)
+        self._update_enabled()
 
     def _group(self, *ids):
         from PySide6.QtWidgets import QButtonGroup
@@ -590,6 +602,28 @@ class _DiffPage(_SettingPage):
             w = self._ctl.get(i)
             if w is not None:
                 g.addButton(w)
+
+    def _browse_into(self, cid: str):
+        from ..utils.pick import pick_file
+        p = pick_file(self, tr("set_select_program", "Select program"), "")
+        if p and (w := self._ctl.get(cid)):
+            w.setText(p)
+
+    def _advanced_placeholder(self):
+        QMessageBox.information(
+            self, tr("set_adv_programs", "Advanced"),
+            tr("set_adv_programs_msg",
+               "Extension-specific programs are not supported in this build."))
+
+    def _update_enabled(self, *_):
+        pairs = (("IDC_EXTDIFF_ON", "IDC_EXTDIFF", "IDC_EXTDIFFBROWSE"),
+                 ("IDC_DIFFVIEWER_ON", "IDC_DIFFVIEWER", "IDC_DIFFVIEWERBROWSE"))
+        for on_id, edit_id, browse_id in pairs:
+            on = self._ctl.get(on_id)
+            enabled = bool(on is not None and on.isChecked())
+            for cid in (edit_id, browse_id):
+                if w := self._ctl.get(cid):
+                    w.setEnabled(enabled)
 
     @property
     def diff_edit(self):
@@ -611,6 +645,10 @@ class _MergePage(_SettingPage):
     _RADIO_GROUPS = [
         ("MergeUseExternal", ["IDC_EXTMERGE_OFF", "IDC_EXTMERGE_ON"], 0),
     ]
+    _SETTINGS = [
+        ("MergeBlock", "IDC_MERGEBLOCK", "bool", False),
+        ("MergeTrustExitCode", "IDC_TRUSTEXITCODE", "bool", False),
+    ]
 
     def _build_ui(self):
         super()._build_ui()
@@ -623,6 +661,32 @@ class _MergePage(_SettingPage):
                 g.addButton(w)
         if self._ctl.get("IDC_EXTMERGE_OFF") is not None:
             self._ctl["IDC_EXTMERGE_OFF"].setChecked(True)
+        if on := self._ctl.get("IDC_EXTMERGE_ON"):
+            on.toggled.connect(self._update_enabled)
+        if b := self._ctl.get("IDC_EXTMERGEBROWSE"):
+            b.clicked.connect(self._browse)
+        if b := self._ctl.get("IDC_EXTMERGEADVANCED"):
+            b.clicked.connect(self._advanced_placeholder)
+        self._update_enabled()
+
+    def _browse(self):
+        from ..utils.pick import pick_file
+        p = pick_file(self, tr("set_select_program", "Select program"), "")
+        if p and (w := self._ctl.get("IDC_EXTMERGE")):
+            w.setText(p)
+
+    def _advanced_placeholder(self):
+        QMessageBox.information(
+            self, tr("set_adv_programs", "Advanced"),
+            tr("set_adv_programs_msg",
+               "Extension-specific programs are not supported in this build."))
+
+    def _update_enabled(self, *_):
+        on = self._ctl.get("IDC_EXTMERGE_ON")
+        enabled = bool(on is not None and on.isChecked())
+        for cid in ("IDC_EXTMERGE", "IDC_EXTMERGEBROWSE"):
+            if w := self._ctl.get(cid):
+                w.setEnabled(enabled)
 
     @property
     def merge_edit(self):

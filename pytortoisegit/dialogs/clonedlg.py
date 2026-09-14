@@ -141,14 +141,31 @@ class CloneDlg(QDialog):
         # 复选框 -> 编辑框 启用联动（对齐 TGit）
         for chk, edit in ((self.chk_depth, self.depth_edit),
                           (self.chk_branch, self.branch_edit),
-                          (self.chk_origin, self.origin_edit),
-                          (self.chk_svn_trunk, self.svn_trunk_edit),
+                          (self.chk_origin, self.origin_edit)):
+            chk.toggled.connect(lambda on, e=edit: e.setEnabled(on))
+            edit.setEnabled(False)
+        # SVN 各编辑框：勾选且处于 SVN 模式时才启用
+        for chk, edit in ((self.chk_svn_trunk, self.svn_trunk_edit),
                           (self.chk_svn_tag, self.svn_tag_edit),
                           (self.chk_svn_branch, self.svn_branch_edit),
                           (self.chk_svn_from, self.svn_from_edit),
                           (self.chk_username, self.username_edit)):
-            chk.toggled.connect(lambda on, e=edit: e.setEnabled(on))
+            chk.toggled.connect(
+                lambda on, e=edit: e.setEnabled(on and self.chk_svn.isChecked()))
             edit.setEnabled(False)
+        # SVN 默认值（对齐原版 m_strSVNTrunk/Tags/Branchs、m_nSVNFrom）
+        self.svn_trunk_edit.setText("trunk")
+        self.svn_tag_edit.setText("tags")
+        self.svn_branch_edit.setText("branches")
+        self.svn_from_edit.setText("0")
+
+        # Load Putty Key：仅当 SSH 客户端为 PuTTY(plink) 时可用，否则灰掉（对齐 IsSSHPutty）
+        putty_ok = self._is_ssh_putty()
+        self.chk_putty.setEnabled(putty_ok)
+        if not putty_ok:
+            self.chk_putty.setChecked(False)
+        self.chk_putty.toggled.connect(self._update_putty_enabled)
+        self._update_putty_enabled()
 
         # URL 剪贴板自动填：检测剪贴板中的 `git clone <url>` 或直接 url
         if not self.url_combo.currentText().strip():
@@ -214,14 +231,46 @@ class CloneDlg(QDialog):
         self.url_combo.lineEdit().returnPressed.connect(self._on_accept)
         self.chk_svn_toggled(False)
 
+    def _is_ssh_putty(self) -> bool:
+        """SSH 客户端是否为 PuTTY/Plink（对齐 CAppUtils::IsSSHPutty）。"""
+        ssh = ""
+        try:
+            from .settingsdlg import general_settings
+            ssh = str(general_settings().value("sshClient", "") or "")
+        except Exception:  # noqa: BLE001
+            pass
+        ssh = ssh or os.environ.get("GIT_SSH", "") or os.environ.get("GIT_SSH_COMMAND", "")
+        name = os.path.basename(ssh).lower()
+        return "plink" in name
+
+    def _update_putty_enabled(self, *_a):
+        enabled = self.chk_putty.isEnabled() and self.chk_putty.isChecked()
+        self.putty_edit.setEnabled(enabled)
+        self.btn_putty.setEnabled(enabled)
+
     def chk_svn_toggled(self, on: bool):
+        """对齐 OnBnClickedCheckSvn：SVN 模式禁用 git clone 选项，启用 SVN 选项。"""
+        # git clone 选项与 SVN 互斥
+        for w in (self.chk_depth, self.depth_edit, self.chk_bare,
+                  self.chk_recursive, self.chk_branch, self.branch_edit,
+                  self.chk_nocheckout):
+            w.setEnabled(not on)
+        if on:
+            url = self.url_combo.currentText().strip().rstrip("\\/")
+            is_trunk = url.lower().endswith("trunk")
+            for w in (self.chk_svn_trunk, self.chk_svn_tag, self.chk_svn_branch):
+                w.setChecked(not is_trunk)
+            for w in (self.chk_depth, self.chk_bare, self.chk_recursive,
+                      self.chk_branch, self.chk_nocheckout):
+                w.setChecked(False)
+        # SVN 控件：始终可见，仅在 SVN 模式下可用
         for w, e in ((self.chk_svn_trunk, self.svn_trunk_edit),
                      (self.chk_svn_tag, self.svn_tag_edit),
                      (self.chk_svn_branch, self.svn_branch_edit),
                      (self.chk_svn_from, self.svn_from_edit),
                      (self.chk_username, self.username_edit)):
-            w.setVisible(on)
-            e.setVisible(on)
+            w.setEnabled(on)
+            e.setEnabled(on and w.isChecked())
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -301,6 +350,28 @@ class CloneDlg(QDialog):
             self._suggest_directory(url)
 
     # ---- 执行 ----
+    def _build_svn_clone_args(self, url: str, target: str) -> list:
+        """构造 git svn clone 参数（对齐 CloneCommand.cpp）。"""
+        args = ["svn", "clone"]
+        if self.chk_origin.isChecked():
+            prefix = self.origin_edit.text().strip()
+            args += ["--prefix", f"{prefix}/" if prefix else ""]
+        if self.chk_svn_trunk.isChecked():
+            args += ["-T", self.svn_trunk_edit.text().strip() or "trunk"]
+        if self.chk_svn_branch.isChecked():
+            args += ["-b", self.svn_branch_edit.text().strip() or "branches"]
+        if self.chk_svn_tag.isChecked():
+            args += ["-t", self.svn_tag_edit.text().strip() or "tags"]
+        if self.chk_svn_from.isChecked():
+            n = self.svn_from_edit.text().strip() or "0"
+            args += ["-r", f"{n}:HEAD"]
+        if self.chk_username.isChecked():
+            user = self.username_edit.text().strip()
+            if user:
+                args += ["--username", user]
+        args += ["--", url, target]
+        return args
+
     def _on_accept(self):
         url = self.url_combo.currentText().strip()
         target = self.dir_edit.text().strip()
@@ -313,25 +384,32 @@ class CloneDlg(QDialog):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if resp != QMessageBox.StandardButton.Yes:
                 return
-        args = ["clone"]
-        if self.chk_branch.isChecked() and self.branch_edit.text().strip():
-            args += ["--branch", self.branch_edit.text().strip()]
-        if self.chk_depth.isChecked() and self.depth_edit.text().strip():
-            args += ["--depth", self.depth_edit.text().strip()]
-        if self.chk_recursive.isChecked():
-            args.append("--recursive")
-        if self.chk_bare.isChecked():
-            args.append("--bare")
-        if self.chk_nocheckout.isChecked():
-            args.append("--no-checkout")
-        if self.chk_origin.isChecked() and self.origin_edit.text().strip():
-            args += ["--origin", self.origin_edit.text().strip()]
-        if self.chk_putty.isChecked() and self.putty_edit.text().strip():
-            args += ["-c", f"core.sshCommand=ssh -i {self.putty_edit.text().strip()}"]
-        args += [url, target]
+        if self.chk_svn.isChecked():
+            # From SVN Repository：git svn clone（对齐 CloneCommand.cpp）
+            args = self._build_svn_clone_args(url, target)
+            label = "git svn clone " + url
+        else:
+            args = ["clone"]
+            if self.chk_branch.isChecked() and self.branch_edit.text().strip():
+                args += ["--branch", self.branch_edit.text().strip()]
+            if self.chk_depth.isChecked() and self.depth_edit.text().strip():
+                args += ["--depth", self.depth_edit.text().strip()]
+            if self.chk_recursive.isChecked():
+                args.append("--recursive")
+            if self.chk_bare.isChecked():
+                args.append("--bare")
+            if self.chk_nocheckout.isChecked():
+                args.append("--no-checkout")
+            if self.chk_origin.isChecked() and self.origin_edit.text().strip():
+                args += ["--origin", self.origin_edit.text().strip()]
+            if self.chk_putty.isChecked() and self.putty_edit.text().strip():
+                args += ["-c",
+                         f"core.sshCommand=ssh -i {self.putty_edit.text().strip()}"]
+            args += [url, target]
+            label = "git clone " + url
 
         dlg = ProgressDialog(title=tr("clone_title", "Clone repository"), parent=self)
-        dlg.set_label("git clone " + url)
+        dlg.set_label(label)
         dlg.run(lambda: _clone_reporter(dlg, url, target, args))
         dlg.on_finish(lambda ok: self._after_clone(ok, target))
         dlg.exec()

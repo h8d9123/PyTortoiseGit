@@ -202,6 +202,14 @@ class _UserPage(_WizardPage):
         return ""
 
 
+def _launch_puttygen(path: str) -> None:
+    import subprocess
+    try:
+        subprocess.Popen([path])
+    except OSError:
+        pass
+
+
 class _AuthPage(_WizardPage):
     def __init__(self, parent=None):
         super().__init__("IDD_FIRSTSTARTWIZARD_AUTHENTICATION", parent)
@@ -217,6 +225,13 @@ class _AuthPage(_WizardPage):
         self.btn_genkey = self._place(
             QPushButton(tr("firststart_genkey", "&Generate PuTTY key pair"), self),
             169, 73, 137, 14)
+        # 未安装 puttygen 时置灰（对齐原版仅在 PuTTY 环境提供）
+        from ..utils.sshkeys import find_puttygen
+        _puttygen = find_puttygen()
+        self.btn_genkey.setEnabled(bool(_puttygen))
+        if _puttygen:
+            self.btn_genkey.clicked.connect(
+                lambda _=False, p=_puttygen: _launch_puttygen(p))
         self._place(QGroupBox(tr(
             "fs_auth_http_group",
             'HTTP (URLs start with "http://" or "https://")'), self),

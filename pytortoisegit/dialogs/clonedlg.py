@@ -233,15 +233,8 @@ class CloneDlg(QDialog):
 
     def _is_ssh_putty(self) -> bool:
         """SSH 客户端是否为 PuTTY/Plink（对齐 CAppUtils::IsSSHPutty）。"""
-        ssh = ""
-        try:
-            from .settingsdlg import general_settings
-            ssh = str(general_settings().value("sshClient", "") or "")
-        except Exception:  # noqa: BLE001
-            pass
-        ssh = ssh or os.environ.get("GIT_SSH", "") or os.environ.get("GIT_SSH_COMMAND", "")
-        name = os.path.basename(ssh).lower()
-        return "plink" in name
+        from ..utils.sshkeys import is_ssh_putty
+        return is_ssh_putty()
 
     def _update_putty_enabled(self, *_a):
         enabled = self.chk_putty.isEnabled() and self.chk_putty.isChecked()

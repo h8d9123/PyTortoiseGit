@@ -87,6 +87,9 @@ class PullFetchDlg(QDialog):
         self.chk_prune = QCheckBox(tr("pull_prune", "Prune"), self)
         self.prune_label = QLabel("", self)
         self.chk_putty = QCheckBox(tr("pull_putty", "AutoLoad Putty &Key"), self)
+        # 非 PuTTY 客户端时置灰（对齐 CAppUtils::IsSSHPutty）
+        from ..utils.sshkeys import is_ssh_putty as _is_putty
+        self.chk_putty.setEnabled(_is_putty())
         self.lnk_manage = QLabel(tr("pull_manage", "Manage Remotes"), self)
         self.chk_rebase = QCheckBox(tr("pull_rebase", "&Launch Rebase After Fetch"), self)
 

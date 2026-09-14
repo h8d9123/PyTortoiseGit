@@ -145,6 +145,9 @@ class PushDlg(QDialog):
         self.chk_force = QCheckBox(tr("push_force", "&Force"), self)
         self.chk_tags = QCheckBox(tr("push_tags", "Include &Tags"), self)
         self.chk_putty = QCheckBox(tr("push_putty", "&Autoload Putty Key"), self)
+        # 非 PuTTY 客户端时置灰（对齐 CAppUtils::IsSSHPutty）
+        from ..utils.sshkeys import is_ssh_putty as _is_putty
+        self.chk_putty.setEnabled(_is_putty())
         self.chk_set_upstream = QCheckBox(tr("push_upstream", "&Set upstream/track remote branch"), self)
         self.chk_push_remote = QCheckBox(tr("push_push_remote", "Always push to selected remote archive"), self)
         self.chk_push_branch = QCheckBox(tr("push_push_branch", "Always push to selected remote branch"), self)

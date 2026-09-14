@@ -65,6 +65,9 @@ def _patch_dialogs(monkeypatch, dlg):
     monkeypatch.setattr(logdlg, "DiffDlg", _FakeDlg)
     monkeypatch.setattr(logdlg, "LogDlg", _FakeDlg)
     monkeypatch.setattr("pytortoisegit.merge.mergefrm.MergeFrm", _FakeDlg)
+    # 强制走内置比较，避免宿主机配置了外部工具时弹出真实程序
+    monkeypatch.setattr("pytortoisegit.utils.externaltools.diff_enabled",
+                        lambda: False)
     monkeypatch.setattr(dlg, "_do_simple", lambda args: None)
 
 

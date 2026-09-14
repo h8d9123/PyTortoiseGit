@@ -180,3 +180,31 @@ def launch_merge_for_conflict(repo: Repository, path: str) -> bool:
     if not tool.has_merge:
         return False
     return _run_blocking(tool.merge_command(repo, path))
+
+
+def diff_enabled() -> bool:
+    """设置页“差异查看器”是否选择了“外部”(DiffUseExternal)。"""
+    try:
+        from ..dialogs.settingsdlg import general_settings
+        return general_settings().value("DiffUseExternal", 0, type=int) == 1
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def start_diff(parent, repo: Repository, git_path: str,
+               rev1: str | None, rev2: str | None = None) -> bool:
+    """打开文件差异：按设置选择外部工具，否则内置 TortoiseGitMerge。
+
+    对齐原版 CAppUtils::StartExtDiff / StartDiff：差异列表双击、
+    “与基准比较”等入口统一走这里。
+    """
+    if diff_enabled():
+        tool = DiffTool.from_repo(repo)
+        if tool.has_diff:
+            a = materialize_revision(repo, rev1, git_path)
+            b = materialize_revision(repo, rev2, git_path)
+            if a and b and launch_diff_paths(repo, a, b):
+                return True
+    from ..merge.mergefrm import MergeFrm
+    MergeFrm(repo, git_path, rev1, rev2, parent=parent).show()
+    return True

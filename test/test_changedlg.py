@@ -191,11 +191,14 @@ def test_changed_dialog_branch_link(qapp, repo):
     assert "main" in dlg.branch_link.text()
 
 
-def test_changed_dialog_double_click_opens_merge(qapp, repo):
+def test_changed_dialog_double_click_opens_merge(qapp, repo, monkeypatch):
     """双击文件行应对齐 CGitStatusListCtrl::StartDiff，打开 TortoiseGitMerge 并排比较。"""
     from PySide6.QtCore import Qt
     from pytortoisegit.dialogs.changedlg import ChangedDlg
     from pytortoisegit.merge.mergefrm import MergeFrm
+    # 强制走内置（避免宿主机配置了外部工具时弹出真实程序）
+    monkeypatch.setattr("pytortoisegit.utils.externaltools.diff_enabled",
+                        lambda: False)
     dlg = _run_dialog(qapp, lambda: ChangedDlg(repo))
 
     target = None

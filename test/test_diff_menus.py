@@ -206,7 +206,8 @@ def _menu(git_repo, path, on_refresh=None):
     return menu
 
 
-def test_statusmenu_compare_with_base(qapp, git_repo, monkeypatch):
+def test_statusmenu_compare_with_base(qapp, git_repo, monkeypatch,
+                                      isolated_settings):
     """TC-STATUSMENU-014 Compare with base 用 TortoiseGitMerge 比较工作区与 HEAD。"""
     from pathlib import Path
     opened = {}
@@ -263,6 +264,43 @@ def test_statusmenu_view_revision_uses_alt_editor(qapp, git_repo, monkeypatch,
                         lambda args, *a, **k: launched.setdefault("args", args))
     statusmenu._view_revision(None, git_repo, "a.txt")
     assert launched.get("args", [None])[0] == "C:/ed.exe"
+
+
+def test_start_diff_uses_external(qapp, git_repo, monkeypatch, isolated_settings):
+    """DiffUseExternal=1 时 start_diff 启动外部工具（不打开内置）。"""
+    from pytortoisegit.utils import externaltools
+    from pytortoisegit.dialogs.settingsdlg import general_settings
+    general_settings().setValue("DiffUseExternal", 1)
+    git_repo.runner.run("config", "tortoisegit.externaldiff",
+                        'BC.exe "{path_a}" "{path_b}"')
+    launched = {}
+    monkeypatch.setattr(externaltools, "_run_blocking",
+                        lambda cmd: launched.setdefault("cmd", cmd) or True)
+    monkeypatch.setattr(externaltools, "materialize_revision",
+                        lambda repo, rev, p: f"F:{rev}")
+    monkeypatch.setattr("pytortoisegit.merge.mergefrm.MergeFrm",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("should not open internal")))
+    assert externaltools.start_diff(None, git_repo, "a.txt", "HEAD", None)
+    assert launched["cmd"][0] == "BC.exe"
+
+
+def test_start_diff_falls_back_to_internal(qapp, git_repo, monkeypatch,
+                                           isolated_settings):
+    """未选择外部（默认）时回退内置 TortoiseGitMerge。"""
+    from pytortoisegit.utils import externaltools
+    opened = {}
+
+    class _FakeFrm:
+        def __init__(self, *a, **k):
+            opened["yes"] = True
+
+        def show(self):
+            opened["shown"] = True
+
+    monkeypatch.setattr("pytortoisegit.merge.mergefrm.MergeFrm", _FakeFrm)
+    externaltools.start_diff(None, git_repo, "a.txt", "HEAD", None)
+    assert opened.get("shown")
 
 
 def test_statusmenu_unversioned_add(qapp, git_repo):

@@ -489,13 +489,12 @@ class LogDlg(QDialog):
         return item.data(0, Qt.ItemDataRole.UserRole) or ""
 
     def _open_file_diff(self, path: str, commit: GitRev, with_wc: bool = False):
-        from ..merge.mergefrm import MergeFrm
+        from ..utils.externaltools import start_diff
         if with_wc:
-            dlg = MergeFrm(self.repo, path, commit.hash, None, parent=self)
+            start_diff(self, self.repo, path, commit.hash, None)
         else:
             base = commit.hash + "^" if not commit.is_root else None
-            dlg = MergeFrm(self.repo, path, base or None, commit.hash, parent=self)
-        dlg.show()
+            start_diff(self, self.repo, path, base or None, commit.hash)
 
     def _on_file_double_clicked(self, item, _col):
         path = self._file_path(item)

@@ -443,12 +443,12 @@ class ChangedDlg(QDialog):
         menu.exec(self.status_tree.viewport().mapToGlobal(pos))
 
     def _on_file_double_clicked(self, item, _col):
-        """双击文件行：对齐 CGitStatusListCtrl::StartDiff，打开 TortoiseGitMerge 并排比较。"""
+        """双击文件行：对齐 CGitStatusListCtrl::StartDiff（外部工具或内置比较）。"""
         r = item.data(0, Qt.ItemDataRole.UserRole + 1)
         if not isinstance(r, StatusRow):
             return
-        from ..merge.mergefrm import MergeFrm
-        MergeFrm(self.repo, r.path, "HEAD", None, parent=self).show()
+        from ..utils.externaltools import start_diff
+        start_diff(self, self.repo, r.path, "HEAD", None)
 
     def _open_commit(self):
         from .commitdlg import CommitDlg

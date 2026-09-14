@@ -290,6 +290,10 @@ class PullFetchDlg(QDialog):
             args.append("--prune")
         if self.chk_rebase.isChecked():
             args.append("--rebase")
+        elif not self.fetch_only:
+            # git >= 2.27 在分叉分支上要求显式指定策略；未选 rebase 时用 merge
+            # （对齐原版默认行为，避免 “Need to specify how to reconcile…” 直接失败）
+            args.append("--no-rebase")
         return args
 
     def _on_ok(self):

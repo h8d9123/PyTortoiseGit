@@ -170,6 +170,9 @@ def test_TC_REFLOG_010_compare(qapp, ui, git_repo, monkeypatch):
         def exec(self):
             return 0
 
+        def show(self):
+            return None
+
     monkeypatch.setattr(mod, "DiffDlg", FakeDiff)
     _choose_menu(monkeypatch, 3)  # Compare with this commit
     dlg._on_menu(dlg.table.viewport().rect().center())

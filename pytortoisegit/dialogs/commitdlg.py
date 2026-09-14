@@ -98,9 +98,12 @@ _ANCHORS = {
 class CommitDlg(QDialog):
     """提交对话框。"""
 
-    COLS = [tr("rc_col_path", "Path"), tr("rc_col_ext", "Extension"),
-            tr("rc_col_status", "Status"), tr("rc_col_add", "Lines added"),
-            tr("rc_col_del", "Lines removed")]
+    @staticmethod
+    def cols():
+        """列头文案（按当前语言在构造时求值，避免 import 时被冻结）。"""
+        return [tr("rc_col_path", "Path"), tr("rc_col_ext", "Extension"),
+                tr("rc_col_status", "Status"), tr("rc_col_add", "Lines added"),
+                tr("rc_col_del", "Lines removed")]
 
     def __init__(self, repo: Repository, paths: Optional[List[str]] = None,
                  parent=None):
@@ -215,8 +218,9 @@ class CommitDlg(QDialog):
 
         # 文件清单（SysListView32 → QTreeWidget，带复选框）
         self.status_tree = add(QTreeWidget(self), "IDC_FILELIST")
-        self.status_tree.setColumnCount(len(self.COLS))
-        self.status_tree.setHeaderLabels(self.COLS)
+        cols = self.cols()
+        self.status_tree.setColumnCount(len(cols))
+        self.status_tree.setHeaderLabels(cols)
         self.status_tree.setColumnWidth(0, 200)
         self.status_tree.setColumnWidth(1, 52)
         self.status_tree.setColumnWidth(2, 72)
@@ -677,15 +681,17 @@ class CommitDlg(QDialog):
         try:
             text = self.repo.runner.run_checked(
                 "diff", "HEAD", "--", path)
+            from .modeless import show_modeless
             from .patchviewdlg import PatchViewDlg
-            PatchViewDlg(text, title=path, parent=self).exec()
+            show_modeless(PatchViewDlg(text, title=path, parent=self))
         except Exception:
             pass
 
     def _on_amend_diff(self):
         """amend 模式下显示到上次提交的改动。"""
         from .diffdlg import DiffDlg
-        DiffDlg(self.repo, rev1="HEAD~1", rev2="HEAD", parent=self).exec()
+        from .modeless import show_modeless
+        show_modeless(DiffDlg(self.repo, rev1="HEAD~1", rev2="HEAD", parent=self))
 
     def _update_stats(self):
         # 字数统计（对齐 TGit IDC_TEXT_INFO 实时统计）

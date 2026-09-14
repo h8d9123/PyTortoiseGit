@@ -421,9 +421,10 @@ class DiffDlg(QDialog):
 
     def _on_show_log(self):
         from .logdlg import LogDlg
+        from .modeless import show_modeless
         pathspec = self.paths[0] if len(self.paths) == 1 else None
-        LogDlg(self.repo, pathspec=pathspec,
-               rev=self.rev2 or self.rev1, parent=self).exec()
+        show_modeless(LogDlg(self.repo, pathspec=pathspec,
+                             rev=self.rev2 or self.rev1, parent=self))
 
     def _on_diff_options(self):
         """IDC_DIFFOPTION：diff 忽略选项 + 共同祖先（对齐原版 5 项弹出菜单）。"""
@@ -515,11 +516,14 @@ class DiffDlg(QDialog):
             self._show_patch(p)
         elif key == "log":
             from .logdlg import LogDlg
-            LogDlg(self.repo, pathspec=path, rev=self.rev2, parent=self).exec()
+            from .modeless import show_modeless
+            show_modeless(LogDlg(self.repo, pathspec=path, rev=self.rev2,
+                                 parent=self))
         elif key == "blame":
             from .blamedlg import BlameDlg
-            BlameDlg(self.repo, path, rev=self.rev2 or self.rev1,
-                     parent=self).exec()
+            from .modeless import show_modeless
+            show_modeless(BlameDlg(self.repo, path,
+                                   rev=self.rev2 or self.rev1, parent=self))
         elif key == "export":
             self._export_file(p)
         elif key == "save_list":

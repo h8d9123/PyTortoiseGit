@@ -54,6 +54,9 @@ def test_blame_dlg_load_and_menu(qapp, git_repo, monkeypatch):
         def exec(self):
             return 0
 
+        def show(self):
+            pass
+
     monkeypatch.setattr("pytortoisegit.dialogs.logdlg.LogDlg", _FakeLog)
     dlg._handle_menu("log", sha)
     assert opened.get("y")

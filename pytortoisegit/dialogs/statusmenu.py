@@ -124,8 +124,9 @@ def _show_unified(parent, repo, path):
         text = repo.runner.run_checked("diff", "HEAD", "--", path)
     except Exception:  # noqa: BLE001
         return
+    from .modeless import show_modeless
     from .patchviewdlg import PatchViewDlg
-    PatchViewDlg(text, title=path, parent=parent).exec()
+    show_modeless(PatchViewDlg(text, title=path, parent=parent))
 
 
 def _commit(parent, repo, path, refresh):
@@ -178,12 +179,14 @@ def _ignore(parent, repo, path, refresh):
 
 def _show_log(parent, repo, path):
     from .logdlg import LogDlg
-    LogDlg(repo, pathspec=path, parent=parent).exec()
+    from .modeless import show_modeless
+    show_modeless(LogDlg(repo, pathspec=path, parent=parent))
 
 
 def _blame(parent, repo, path):
     from .blamedlg import BlameDlg
-    BlameDlg(repo, path, parent=parent).exec()
+    from .modeless import show_modeless
+    show_modeless(BlameDlg(repo, path, parent=parent))
 
 
 def _export(parent, repo, path):

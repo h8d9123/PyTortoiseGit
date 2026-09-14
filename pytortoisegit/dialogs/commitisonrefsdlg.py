@@ -101,8 +101,9 @@ class CommitIsOnRefsDlg(QDialog):
 
     def _show_log(self):
         from .logdlg import LogDlg
+        from .modeless import show_modeless
         ref = self.commit_edit.text().strip()
-        LogDlg(self.repo, pathspec=None, rev=ref, parent=self).exec()
+        show_modeless(LogDlg(self.repo, pathspec=None, rev=ref, parent=self))
 
     def _load(self):
         canonical = self._canon()

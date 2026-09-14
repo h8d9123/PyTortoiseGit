@@ -122,6 +122,9 @@ def test_diffmenu_show_log(qapp, git_repo, monkeypatch):
         def exec(self):
             return 0
 
+        def show(self):
+            pass
+
     monkeypatch.setattr("pytortoisegit.dialogs.logdlg.LogDlg", _FakeLog)
     dlg, item = _diff_dlg_with_item(monkeypatch, git_repo)
     p = item.data(0, Qt.ItemDataRole.UserRole)
@@ -139,6 +142,9 @@ def test_diffmenu_blame(qapp, git_repo, monkeypatch):
 
         def exec(self):
             return 0
+
+        def show(self):
+            pass
 
     monkeypatch.setattr("pytortoisegit.dialogs.blamedlg.BlameDlg", _FakeBlame)
     dlg, item = _diff_dlg_with_item(monkeypatch, git_repo)
@@ -243,6 +249,9 @@ def test_statusmenu_show_unified(qapp, git_repo, monkeypatch):
         def exec(self):
             return 0
 
+        def show(self):
+            return None
+
     monkeypatch.setattr("pytortoisegit.dialogs.patchviewdlg.PatchViewDlg",
                         _FakePatch)
     (Path(git_repo.root) / "a.txt").write_text("x\n", encoding="utf-8")
@@ -264,6 +273,16 @@ def test_statusmenu_view_revision_uses_alt_editor(qapp, git_repo, monkeypatch,
                         lambda args, *a, **k: launched.setdefault("args", args))
     statusmenu._view_revision(None, git_repo, "a.txt")
     assert launched.get("args", [None])[0] == "C:/ed.exe"
+
+
+def test_show_modeless_keeps_and_releases(qapp):
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs import modeless
+    dlg = QDialog()
+    modeless.show_modeless(dlg)
+    assert dlg in modeless.open_windows()
+    dlg.accept()                       # finished → 自动释放
+    assert dlg not in modeless.open_windows()
 
 
 def test_start_diff_uses_external(qapp, git_repo, monkeypatch, isolated_settings):
@@ -404,12 +423,18 @@ def test_statusmenu_show_log_blame(qapp, git_repo, monkeypatch):
         def exec(self):
             return 0
 
+        def show(self):
+            return None
+
     class _FakeBlame:
         def __init__(self, *a, **k):
             opened["blame"] = True
 
         def exec(self):
             return 0
+
+        def show(self):
+            return None
 
     monkeypatch.setattr("pytortoisegit.dialogs.logdlg.LogDlg", _FakeLog)
     monkeypatch.setattr("pytortoisegit.dialogs.blamedlg.BlameDlg", _FakeBlame)

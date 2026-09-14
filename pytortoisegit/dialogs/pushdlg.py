@@ -275,12 +275,14 @@ class PushDlg(QDialog):
 
     def _open_log(self):
         from .logdlg import LogDlg
+        from .modeless import show_modeless
         rev = self.local_combo.currentText().strip() or None
-        LogDlg(self.repo, rev=rev, parent=self).exec()
+        show_modeless(LogDlg(self.repo, rev=rev, parent=self))
 
     def _open_reflog(self):
+        from .modeless import show_modeless
         from .reflogdlg import ReflogDlg
-        ReflogDlg(self.repo, parent=self).exec()
+        show_modeless(ReflogDlg(self.repo, parent=self))
 
     def _browse_remote(self):
         """对齐 OnBnClickedButtonBrowseDestBranch：选远程引用填入远程分支。"""

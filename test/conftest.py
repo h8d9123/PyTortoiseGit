@@ -19,6 +19,28 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
+@pytest.fixture(autouse=True)
+def _capture_unhandled(monkeypatch):
+    """把未处理异常的模态错误弹窗改为记录。
+
+    Qt 槽内抛出的异常会被 sys.excepthook 捕获并弹出 QMessageBox.critical，
+    在无头测试里会永久阻塞事件循环；这里改为记录并在测试结束时失败。
+    """
+    from pytortoisegit.utils import logging_utils
+    captured = []
+    monkeypatch.setattr(logging_utils, "_show_error",
+                        lambda message: captured.append(message))
+    yield
+    try:
+        from pytortoisegit.dialogs import modeless
+        modeless.close_all()
+    except Exception:  # noqa: BLE001
+        pass
+    if captured:
+        pytest.fail("Qt 槽内出现未处理异常（已阻止模态弹窗）:\n\n"
+                    + "\n\n".join(captured))
+
+
 # ---------------------------------------------------------------------------
 # 用户操作助手
 # ---------------------------------------------------------------------------
@@ -136,6 +158,10 @@ def auto_progress(monkeypatch):
         # 完成后“中止”按钮已变成“关闭”，点击它即 accept
         if self._done:
             self._btn_cancel.click()
+        # 确保后台线程已结束，避免线程在对话框销毁后仍运行导致崩溃
+        worker = getattr(self, "_worker_thread", None)
+        if worker is not None and worker.is_alive():
+            worker.join(timeout=10.0)
         return self.result()
 
     monkeypatch.setattr(progress_mod.ProgressDialog, "exec", fake_exec)

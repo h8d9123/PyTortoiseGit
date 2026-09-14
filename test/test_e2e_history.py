@@ -111,6 +111,9 @@ def test_TC_LOG_008_double_click_compare(qapp, ui, git_repo, monkeypatch):
         def exec(self):
             return 0
 
+        def show(self):
+            return None
+
     monkeypatch.setattr(mod, "DiffDlg", FakeDiff)
     dlg._on_double_clicked(dlg.tree.topLevelItem(0), 0)
     assert seen.get("rev1") and seen.get("rev2")

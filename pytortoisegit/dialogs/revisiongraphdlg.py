@@ -314,4 +314,5 @@ class RevisionGraphDlg(QDialog):
         self.canvas.set_layout(layout, self.repo.current_branch(), font)
 
     def _open_stats(self):
-        StatGraphDlg(self.repo, parent=self).exec()
+        from .modeless import show_modeless
+        show_modeless(StatGraphDlg(self.repo, parent=self))

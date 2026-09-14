@@ -61,9 +61,13 @@ from ..ui.rc import DialogUnits
 class ChangedDlg(QDialog):
     """Working Tree 对话框。"""
 
-    COLS = [tr("rc_col_path", "Path"), tr("rc_col_ext", "Extension"),
-            tr("rc_col_status", "Status"), tr("rc_col_add", "Lines added"),
-            tr("rc_col_del", "Lines removed"), tr("rc_col_moddate", "Last Modified")]
+    @staticmethod
+    def cols():
+        """列头文案（按当前语言在构造时求值，避免 import 时被冻结）。"""
+        return [tr("rc_col_path", "Path"), tr("rc_col_ext", "Extension"),
+                tr("rc_col_status", "Status"), tr("rc_col_add", "Lines added"),
+                tr("rc_col_del", "Lines removed"),
+                tr("rc_col_moddate", "Last Modified")]
 
     def __init__(self, repo: Repository, paths: Optional[List[str]] = None,
                  parent=None):
@@ -102,8 +106,9 @@ class ChangedDlg(QDialog):
 
         # 中部：文件列表（IDC_CHANGEDLIST）
         self.status_tree = QTreeWidget(self)
-        self.status_tree.setColumnCount(len(self.COLS))
-        self.status_tree.setHeaderLabels(self.COLS)
+        cols = self.cols()
+        self.status_tree.setColumnCount(len(cols))
+        self.status_tree.setHeaderLabels(cols)
         self.status_tree.setColumnWidth(0, 240)
         self.status_tree.setColumnWidth(1, 64)
         self.status_tree.setColumnWidth(2, 96)
@@ -458,9 +463,10 @@ class ChangedDlg(QDialog):
 
     def _open_unified_diff(self):
         from .diffdlg import DiffDlg
+        from .modeless import show_modeless
         paths = None if self._show_flags()["whole"] else list(self.paths)
-        dlg = DiffDlg(self.repo, rev2="HEAD", paths=paths or None, parent=self)
-        dlg.exec()
+        show_modeless(DiffDlg(self.repo, rev2="HEAD", paths=paths or None,
+                              parent=self))
 
     # ---- 布局锚点（参考 AddAnchor：左列 BOTTOM_LEFT、中部拉伸、右列 BOTTOM_RIGHT）----
     def _setup_anchors(self, base_w: int, base_h: int):

@@ -368,8 +368,8 @@ class SyncDlg(QDialog):
 
     def _open_log(self):
         from .logdlg import LogDlg
-        dlg = LogDlg(self.repo, pathspec=None, parent=self)
-        dlg.exec()
+        from .modeless import show_modeless
+        show_modeless(LogDlg(self.repo, pathspec=None, parent=self))
 
     def _on_apply(self):
         from .applypatchdlg import ApplyPatchDlg

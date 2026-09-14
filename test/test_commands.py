@@ -92,12 +92,28 @@ def test_command_opens_dialog(qapp, git_repo, auto_progress, monkeypatch, cmd, a
 
 # ---- 进度类命令 ----
 
-@pytest.mark.parametrize("cmd", ["cleanup", "daemon", "svnignore", "svndcommit",
+@pytest.mark.parametrize("cmd", ["cleanup", "svnignore", "svndcommit",
                                  "svnfetch", "svnrebase"])
 def test_command_progress(qapp, git_repo, auto_progress, cmd):
     mod = importlib.import_module(f"pytortoisegit.commands.{cmd}")
     fn = getattr(mod, cmd)
     assert fn(_ctx(git_repo, cmd)) == "ok"
+
+
+def test_command_daemon(qapp, git_repo, auto_progress, monkeypatch):
+    """daemon 是常驻服务（git daemon 不会退出），仅 stub 该子命令避免真正启动。"""
+    from types import SimpleNamespace
+    from pytortoisegit.git.git import GitRunner
+    orig = GitRunner.run
+
+    def fake(self, *args, **k):
+        if args and args[0] == "daemon":
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return orig(self, *args, **k)
+
+    monkeypatch.setattr(GitRunner, "run", fake)
+    from pytortoisegit.commands.daemon import daemon
+    assert daemon(_ctx(git_repo, "daemon")) == "ok"
 
 
 # ---- stashsave ----

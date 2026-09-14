@@ -124,7 +124,9 @@ class BlameDlg(QDialog):
             ClipboardHelper().copy_text(str(sha)[:8])
         elif key == "log":
             from .logdlg import LogDlg
-            LogDlg(self.repo, pathspec=None, rev=str(sha), parent=self).exec()
+            from .modeless import show_modeless
+            show_modeless(LogDlg(self.repo, pathspec=None, rev=str(sha),
+                                 parent=self))
 
     def _on_menu(self, pos):
         sha = self._sha_at(pos)

@@ -222,4 +222,5 @@ class SubmoduleDlg(QDialog):
             sub_repo = RepoCls.open(sub_path)
         except Exception:  # noqa: BLE001
             return
-        LogDlg(sub_repo, pathspec=None, parent=self).exec()
+        from .modeless import show_modeless
+        show_modeless(LogDlg(sub_repo, pathspec=None, parent=self))

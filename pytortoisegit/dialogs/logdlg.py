@@ -534,16 +534,20 @@ class LogDlg(QDialog):
         if key == "base":
             self._open_file_diff(path, commit)
         elif key == "gnu":
+            from .modeless import show_modeless
             base = commit.hash + "^" if not commit.is_root else None
-            DiffDlg(self.repo, base or commit.hash, commit.hash,
-                    paths=[path], parent=self).exec()
+            show_modeless(DiffDlg(self.repo, base or commit.hash, commit.hash,
+                                  paths=[path], parent=self))
         elif key == "wc":
             self._open_file_diff(path, commit, with_wc=True)
         elif key == "log":
-            LogDlg(self.repo, pathspec=path, rev=commit.hash, parent=self).exec()
+            from .modeless import show_modeless
+            show_modeless(LogDlg(self.repo, pathspec=path, rev=commit.hash,
+                                 parent=self))
         elif key == "blame":
             from .blamedlg import BlameDlg
-            BlameDlg(self.repo, path, rev=commit.hash, parent=self).exec()
+            from .modeless import show_modeless
+            show_modeless(BlameDlg(self.repo, path, rev=commit.hash, parent=self))
         elif key == "revert":
             self._do_simple(["checkout", commit.hash, "--", path])
         elif key == "save":
@@ -555,9 +559,11 @@ class LogDlg(QDialog):
                 with open(dest, "w", encoding="utf-8", newline="") as fh:
                     fh.write(data)
         elif key == "view":
-            DiffDlg(self.repo,
-                    commit.hash + "^" if not commit.is_root else commit.hash,
-                    commit.hash, paths=[path], parent=self).exec()
+            from .modeless import show_modeless
+            show_modeless(DiffDlg(
+                self.repo,
+                commit.hash + "^" if not commit.is_root else commit.hash,
+                commit.hash, paths=[path], parent=self))
         elif key == "open":
             QDesktopServices.openUrl(QUrl.fromLocalFile(full))
         elif key == "openwith":
@@ -594,15 +600,21 @@ class LogDlg(QDialog):
             self._compare_previous(commit)
 
     def _compare_wc(self, commit: GitRev):
-        DiffDlg(self.repo, commit.hash, paths=self.pathspec or None, parent=self).exec()
+        from .modeless import show_modeless
+        show_modeless(DiffDlg(self.repo, commit.hash,
+                              paths=self.pathspec or None, parent=self))
 
     def _compare_previous(self, commit: GitRev):
-        DiffDlg(self.repo,
-                commit.hash + "^" if not commit.is_root else commit.hash,
-                commit.hash, paths=self.pathspec or None, parent=self).exec()
+        from .modeless import show_modeless
+        show_modeless(DiffDlg(
+            self.repo,
+            commit.hash + "^" if not commit.is_root else commit.hash,
+            commit.hash, paths=self.pathspec or None, parent=self))
 
     def _compare_two(self, a: GitRev, b: GitRev):
-        DiffDlg(self.repo, a.hash, b.hash, paths=self.pathspec or None, parent=self).exec()
+        from .modeless import show_modeless
+        show_modeless(DiffDlg(self.repo, a.hash, b.hash,
+                              paths=self.pathspec or None, parent=self))
 
     def _sync_date_range(self):
         """加载后把 From/To 设为日志的时间范围（对齐原版 GetTimeRange）。"""
@@ -666,8 +678,9 @@ class LogDlg(QDialog):
         super().keyPressEvent(event)
 
     def _on_stats(self):
+        from .modeless import show_modeless
         from .statgraphdlg import StatGraphDlg
-        StatGraphDlg(self.repo, parent=self).exec()
+        show_modeless(StatGraphDlg(self.repo, parent=self))
 
     def _on_walk(self):
         from .logorderingdlg import LogOrderingDlg
@@ -770,8 +783,10 @@ class LogDlg(QDialog):
         menu.addAction(tr("log_find", "Find…"), self.filter_edit.setFocus)
 
     def _browse(self, commit: GitRev):
+        from .modeless import show_modeless
         from .repobrowserdlg import RepositoryBrowserDlg
-        RepositoryBrowserDlg(self.repo, rev=commit.hash, parent=self).exec()
+        show_modeless(RepositoryBrowserDlg(self.repo, rev=commit.hash,
+                                           parent=self))
 
     def _merge(self, commit: GitRev):
         from .mergedlg import MergeDlg

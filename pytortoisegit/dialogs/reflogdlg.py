@@ -291,9 +291,10 @@ class ReflogDlg(QDialog):
             parent = f"{entry.hash_}^"
             has_parent = self.repo.runner.run("rev-parse", "--verify",
                                               parent + "^{commit}").returncode == 0
-            DiffDlg(self.repo, parent if has_parent else entry.hash_,
-                    entry.hash_ if has_parent else None,
-                    parent=self).exec()
+            from .modeless import show_modeless
+            show_modeless(DiffDlg(
+                self.repo, parent if has_parent else entry.hash_,
+                entry.hash_ if has_parent else None, parent=self))
 
 
 class ReflogSearchDlg(QDialog):

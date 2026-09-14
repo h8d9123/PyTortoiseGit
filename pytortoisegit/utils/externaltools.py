@@ -46,6 +46,13 @@ def _split(cmd: str) -> list[str]:
         return cmd.split()
 
 
+# 支持 {}、$、% 三种占位符风格；命令模板含任一即视为“已自带参数”。
+_DIFF_PLACEHOLDERS = ("{path}", "{path_a}", "{path_b}", "%path",
+                      "%base", "%mine")
+_MERGE_PLACEHOLDERS = ("{base}", "{local}", "{remote}", "{merged}", "{path}",
+                       "%base", "%theirs", "%mine", "%merged", "%path")
+
+
 class DiffTool:
     def __init__(self, diff_cmd: str = "", merge_cmd: str = ""):
         self.diff_cmd = diff_cmd
@@ -78,15 +85,24 @@ class DiffTool:
         for key, val in kw.items():
             template = template.replace("{" + key + "}", val)
             template = template.replace("$" + key, val)
+            template = template.replace("%" + key, val)
         return template
 
     def diff_command_paths(self, repo: Repository, full_a: str,
                            full_b: str) -> list[str]:
-        """用两个绝对路径构造外部比较命令。"""
+        """用两个绝对路径构造外部比较命令。
+
+        对齐原版 StartExtDiff：模板未含占位符时，自动追加两个文件参数
+        （这样只填“程序路径”也能正常比较）。
+        """
+        has_pos = any(p in self.diff_cmd for p in _DIFF_PLACEHOLDERS)
         filled = self._fill(
             self.diff_cmd, path=full_a, path_a=full_a, path_b=full_b,
-            repo=repo.root, repo_name=repo.name)
-        return _split(filled)
+            base=full_a, mine=full_b, repo=repo.root, repo_name=repo.name)
+        cmd = _split(filled)
+        if not has_pos:
+            cmd += [full_a, full_b]
+        return cmd
 
     def diff_command(self, repo: Repository, path_a: str, path_b: str) -> list[str]:
         full_a = os.path.join(repo.root, path_a)
@@ -94,14 +110,24 @@ class DiffTool:
         return self.diff_command_paths(repo, full_a, full_b)
 
     def merge_command(self, repo: Repository, path: str) -> list[str]:
-        """为冲突文件 path 构建外部合并命令（先提取三阶段到临时文件）。"""
+        """为冲突文件 path 构建外部合并命令（先提取三阶段到临时文件）。
+
+        对齐原版 StartExtMerge：模板未含占位符时，自动追加
+        ``base theirs mine merged`` 四个文件参数。
+        """
         from ..git.mergeop import _extract_stage  # noqa: PLC0415
         base, local, remote = _extract_stage(repo, path)
         full = os.path.join(repo.root, path)
+        has_pos = any(p in self.merge_cmd for p in _MERGE_PLACEHOLDERS)
         filled = self._fill(
-            self.merge_cmd, base=base, local=local, remote=remote, merged=full,
-            path=full, repo=repo.root, repo_name=repo.name)
-        return _split(filled)
+            self.merge_cmd, base=base, local=local, remote=remote,
+            mine=local, theirs=remote, merged=full, path=full,
+            repo=repo.root, repo_name=repo.name)
+        cmd = _split(filled)
+        if not has_pos:
+            # 原版顺序：%base %theirs %mine %merged
+            cmd += [base, remote, local, full]
+        return cmd
 
 
 def _run_blocking(cmd: list[str]) -> bool:

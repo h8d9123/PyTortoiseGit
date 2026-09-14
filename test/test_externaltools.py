@@ -79,3 +79,31 @@ def test_launch_diff_paths_without_config(git_repo, monkeypatch):
                         lambda cmd: called.__setitem__("n", called["n"] + 1))
     assert externaltools.launch_diff_paths(git_repo, "A", "B") is False
     assert called["n"] == 0
+
+
+def test_diff_appends_files_when_no_placeholder(git_repo):
+    """只填程序路径（无占位符）→ 自动追加两个文件（对齐原版 StartExtDiff）。"""
+    tool = DiffTool(diff_cmd="/usr/bin/bcompare")
+    assert tool.diff_command_paths(git_repo, "/w/a.txt", "/t/a.txt") == \
+        ["/usr/bin/bcompare", "/w/a.txt", "/t/a.txt"]
+
+
+def test_diff_placeholder_no_duplicate_append(git_repo):
+    tool = DiffTool(diff_cmd="bc {path_a} {path_b}")
+    assert tool.diff_command_paths(git_repo, "/w/a.txt", "/t/a.txt") == \
+        ["bc", "/w/a.txt", "/t/a.txt"]
+
+
+def test_diff_percent_placeholder(git_repo):
+    tool = DiffTool(diff_cmd="bc %base %mine")
+    assert tool.diff_command_paths(git_repo, "/w/a.txt", "/t/a.txt") == \
+        ["bc", "/w/a.txt", "/t/a.txt"]
+
+
+def test_merge_appends_four_when_no_placeholder(git_repo):
+    """只填程序路径 → 自动追加 base theirs mine merged（对齐原版 StartExtMerge）。"""
+    tool = DiffTool(merge_cmd="/usr/bin/bcompare")
+    cmd = tool.merge_command(git_repo, "a.txt")
+    assert cmd[0] == "/usr/bin/bcompare"
+    assert len(cmd) == 5
+    assert cmd[-1] == os.path.join(git_repo.root, "a.txt")

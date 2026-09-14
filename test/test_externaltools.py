@@ -71,6 +71,9 @@ def test_launch_diff_paths_uses_config(git_repo, monkeypatch):
 
 def test_launch_diff_paths_without_config(git_repo, monkeypatch):
     from pytortoisegit.utils import externaltools
+    # 隔离宿主机全局 git 配置（可能设置了 tortoisegit.externaldiff）
+    monkeypatch.setattr(externaltools.DiffTool, "from_repo",
+                        staticmethod(lambda repo: externaltools.DiffTool()))
     called = {"n": 0}
     monkeypatch.setattr(externaltools, "_run_blocking",
                         lambda cmd: called.__setitem__("n", called["n"] + 1))

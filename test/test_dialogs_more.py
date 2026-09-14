@@ -82,6 +82,10 @@ def test_conflicts_widget_mark_all(qapp, conflict_repo):
 def test_conflicts_widget_extmerge_warns(qapp, conflict_repo, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
     from pytortoisegit.dialogs.conflicts import ConflictsWidget
+    from pytortoisegit.utils import externaltools
+    # 隔离宿主机全局 git 配置（可能设置了 tortoisegit.externalmerge）
+    monkeypatch.setattr(externaltools.DiffTool, "from_repo",
+                        staticmethod(lambda repo: externaltools.DiffTool()))
     warned = {}
     monkeypatch.setattr(QMessageBox, "warning",
                         staticmethod(lambda *a, **k: warned.setdefault("y", True)))

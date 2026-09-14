@@ -826,7 +826,8 @@ def test_pull_no_options_by_default(qapp, repo):
     dlg = PullFetchDlg(repo, fetch_only=False)
     args = dlg._build_args()
     assert args[0] == "pull"
-    assert not any(a.startswith("--") for a in args)
+    # 默认显式 merge（--no-rebase），避免 git>=2.27 在分叉分支上直接报错
+    assert [a for a in args if a.startswith("--")] == ["--no-rebase"]
 
 
 def test_pull_args_remote_and_branch(qapp, repo):

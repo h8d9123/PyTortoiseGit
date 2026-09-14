@@ -507,6 +507,72 @@ class LogDlg(QDialog):
         from ..utils.clipboard import ClipboardHelper
         ClipboardHelper().copy_text(text)
 
+    def _build_file_menu(self):
+        """构建文件右键菜单，返回 (menu, {action: key})，便于测试。"""
+        menu = QMenu(self)
+        acts = {}
+        acts[menu.addAction(tr("log_compare_base", "Compare with base version"))] = "base"
+        acts[menu.addAction(tr("log_gnudiff", "Show unified diff"))] = "gnu"
+        acts[menu.addAction(tr("log_compare_wc", "Compare with working copy"))] = "wc"
+        menu.addSeparator()
+        acts[menu.addAction(tr("log_show_log", "Show log"))] = "log"
+        acts[menu.addAction(tr("log_blame", "Blame"))] = "blame"
+        acts[menu.addAction(tr("log_revert_to_rev", "Revert to this revision"))] = "revert"
+        menu.addSeparator()
+        acts[menu.addAction(tr("log_save_as", "Save as…"))] = "save"
+        acts[menu.addAction(tr("log_view_rev", "View revision"))] = "view"
+        acts[menu.addAction(tr("log_open", "Open"))] = "open"
+        acts[menu.addAction(tr("log_open_with", "Open with…"))] = "openwith"
+        acts[menu.addAction(tr("log_explore", "Open in Explorer"))] = "explore"
+        clip = menu.addMenu(tr("log_copy_clip", "Copy to clipboard"))
+        acts[clip.addAction(tr("log_copy_full", "Full path"))] = "copy_full"
+        acts[clip.addAction(tr("log_copy_rel", "Relative path"))] = "copy_rel"
+        acts[clip.addAction(tr("log_copy_name", "File name"))] = "copy_name"
+        return menu, acts
+
+    def _handle_file_menu(self, key: str, path: str, commit: GitRev):
+        full = self.repo.full_path(path)
+        if key == "base":
+            self._open_file_diff(path, commit)
+        elif key == "gnu":
+            base = commit.hash + "^" if not commit.is_root else None
+            DiffDlg(self.repo, base or commit.hash, commit.hash,
+                    paths=[path], parent=self).exec()
+        elif key == "wc":
+            self._open_file_diff(path, commit, with_wc=True)
+        elif key == "log":
+            LogDlg(self.repo, pathspec=path, rev=commit.hash, parent=self).exec()
+        elif key == "blame":
+            from .blamedlg import BlameDlg
+            BlameDlg(self.repo, path, rev=commit.hash, parent=self).exec()
+        elif key == "revert":
+            self._do_simple(["checkout", commit.hash, "--", path])
+        elif key == "save":
+            dest, _ = QFileDialog.getSaveFileName(
+                self, tr("log_save_as", "Save as…"), os.path.basename(path))
+            if dest:
+                data = self.repo.runner.run(
+                    "show", f"{commit.hash}:{path}").stdout or ""
+                with open(dest, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(data)
+        elif key == "view":
+            DiffDlg(self.repo,
+                    commit.hash + "^" if not commit.is_root else commit.hash,
+                    commit.hash, paths=[path], parent=self).exec()
+        elif key == "open":
+            QDesktopServices.openUrl(QUrl.fromLocalFile(full))
+        elif key == "openwith":
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(full)))
+        elif key == "explore":
+            folder = full if os.path.isdir(full) else os.path.dirname(full)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+        elif key == "copy_full":
+            self._copy_text(full)
+        elif key == "copy_rel":
+            self._copy_text(path)
+        elif key == "copy_name":
+            self._copy_text(os.path.basename(path))
+
     def _on_file_menu(self, pos):
         item = self.file_list.itemAt(pos)
         if item is None:
@@ -515,66 +581,13 @@ class LogDlg(QDialog):
         commit = self._current_commit()
         if not path or commit is None:
             return
-        menu = QMenu(self)
-        act_base = menu.addAction(tr("log_compare_base", "Compare with base version"))
-        act_gnu = menu.addAction(tr("log_gnudiff", "Show unified diff"))
-        act_wc = menu.addAction(tr("log_compare_wc", "Compare with working copy"))
-        menu.addSeparator()
-        act_log = menu.addAction(tr("log_show_log", "Show log"))
-        act_blame = menu.addAction(tr("log_blame", "Blame"))
-        act_revert = menu.addAction(tr("log_revert_to_rev", "Revert to this revision"))
-        menu.addSeparator()
-        act_save = menu.addAction(tr("log_save_as", "Save as…"))
-        act_view = menu.addAction(tr("log_view_rev", "View revision"))
-        act_open = menu.addAction(tr("log_open", "Open"))
-        act_openwith = menu.addAction(tr("log_open_with", "Open with…"))
-        act_explore = menu.addAction(tr("log_explore", "Open in Explorer"))
-        clip = menu.addMenu(tr("log_copy_clip", "Copy to clipboard"))
-        act_full = clip.addAction(tr("log_copy_full", "Full path"))
-        act_rel = clip.addAction(tr("log_copy_rel", "Relative path"))
-        act_name = clip.addAction(tr("log_copy_name", "File name"))
+        menu, acts = self._build_file_menu()
         chosen = menu.exec(self.file_list.viewport().mapToGlobal(pos))
         if chosen is None:
             return
-        full = self.repo.full_path(path)
-        if chosen is act_base:
-            self._open_file_diff(path, commit)
-        elif chosen is act_gnu:
-            base = commit.hash + "^" if not commit.is_root else None
-            DiffDlg(self.repo, base or commit.hash, commit.hash,
-                    paths=[path], parent=self).exec()
-        elif chosen is act_wc:
-            self._open_file_diff(path, commit, with_wc=True)
-        elif chosen is act_log:
-            LogDlg(self.repo, pathspec=path, rev=commit.hash, parent=self).exec()
-        elif chosen is act_blame:
-            from .blamedlg import BlameDlg
-            BlameDlg(self.repo, path, rev=commit.hash, parent=self).exec()
-        elif chosen is act_revert:
-            self._do_simple(["checkout", commit.hash, "--", path])
-        elif chosen is act_save:
-            dest, _ = QFileDialog.getSaveFileName(self, tr("log_save_as", "Save as…"),
-                                                  os.path.basename(path))
-            if dest:
-                data = self.repo.runner.run("show", f"{commit.hash}:{path}").stdout or ""
-                with open(dest, "w", encoding="utf-8", newline="") as fh:
-                    fh.write(data)
-        elif chosen is act_view:
-            DiffDlg(self.repo, commit.hash + "^" if not commit.is_root else commit.hash,
-                    commit.hash, paths=[path], parent=self).exec()
-        elif chosen is act_open:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(full))
-        elif chosen is act_openwith:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(full)))
-        elif chosen is act_explore:
-            folder = full if os.path.isdir(full) else os.path.dirname(full)
-            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
-        elif chosen is act_full:
-            self._copy_text(full)
-        elif chosen is act_rel:
-            self._copy_text(path)
-        elif chosen is act_name:
-            self._copy_text(os.path.basename(path))
+        key = acts.get(chosen)
+        if key:
+            self._handle_file_menu(key, path, commit)
 
     def _on_double_clicked(self, item, _col):
         commit = self._commit_of(item)

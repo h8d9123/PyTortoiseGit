@@ -34,7 +34,25 @@ def test_clone_putty_enabled_links_edit(qapp, monkeypatch):
     assert dlg.btn_putty.isEnabled()
 
 
-def test_clone_svn_toggle_disables_git_options(qapp):
+def test_clone_svn_grayed_without_git_svn(qapp, monkeypatch):
+    """git svn 不可用时，From SVN 整块置灰（功能不支持）。"""
+    monkeypatch.setattr("pytortoisegit.git.git.git_svn_available", lambda: False)
+    from pytortoisegit.dialogs.clonedlg import CloneDlg
+    dlg = CloneDlg()
+    assert not dlg.chk_svn.isEnabled()
+    assert not dlg.chk_svn.isChecked()
+    assert not dlg._ctl["IDC_CLONE_GROUP_SVN"].isEnabled()
+
+
+def test_clone_svn_enabled_with_git_svn(qapp, monkeypatch):
+    monkeypatch.setattr("pytortoisegit.git.git.git_svn_available", lambda: True)
+    from pytortoisegit.dialogs.clonedlg import CloneDlg
+    dlg = CloneDlg()
+    assert dlg.chk_svn.isEnabled()
+
+
+def test_clone_svn_toggle_disables_git_options(qapp, monkeypatch):
+    monkeypatch.setattr("pytortoisegit.git.git.git_svn_available", lambda: True)
     from pytortoisegit.dialogs.clonedlg import CloneDlg
     dlg = CloneDlg()
     dlg.chk_depth.setChecked(True)
@@ -52,7 +70,8 @@ def test_clone_svn_toggle_disables_git_options(qapp):
     assert dlg.chk_depth.isEnabled()
 
 
-def test_clone_svn_args(qapp):
+def test_clone_svn_args(qapp, monkeypatch):
+    monkeypatch.setattr("pytortoisegit.git.git.git_svn_available", lambda: True)
     from pytortoisegit.dialogs.clonedlg import CloneDlg
     dlg = CloneDlg()
     dlg.chk_svn.setChecked(True)
@@ -77,6 +96,7 @@ def test_clone_svn_args(qapp):
 
 
 def test_clone_accept_uses_svn_args(qapp, monkeypatch, auto_progress):
+    monkeypatch.setattr("pytortoisegit.git.git.git_svn_available", lambda: True)
     from pytortoisegit.dialogs import clonedlg
     captured = {}
 
@@ -92,6 +112,26 @@ def test_clone_accept_uses_svn_args(qapp, monkeypatch, auto_progress):
     dlg._on_accept()
     assert captured["args"][:2] == ["svn", "clone"]
     assert dlg.result() == QDialog.DialogCode.Accepted
+
+
+def test_clone_svn_end_to_end(qapp, tmp_path, monkeypatch, auto_progress):
+    """端到端 git svn clone（需 PYTG_SVN_URL 指向可访问的 SVN 仓库）。
+
+    本机无 svnadmin/SVN 仓库时跳过；设置 PYTG_SVN_URL 后可真实验证。
+    """
+    import os
+    url = os.environ.get("PYTG_SVN_URL")
+    if not url:
+        pytest.skip("设置 PYTG_SVN_URL 指向测试 SVN 仓库后运行")
+    monkeypatch.setattr("pytortoisegit.git.git.git_svn_available", lambda: True)
+    from pytortoisegit.dialogs import clonedlg
+    target = tmp_path / "svnclone"
+    dlg = clonedlg.CloneDlg()
+    dlg.url_combo.setEditText(url)
+    dlg.dir_edit.setText(str(target))
+    dlg.chk_svn.setChecked(True)
+    dlg._on_accept()
+    assert target.exists()
 
 
 def test_clone_accept_uses_git_args(qapp, monkeypatch, auto_progress):

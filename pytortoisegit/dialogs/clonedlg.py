@@ -229,6 +229,13 @@ class CloneDlg(QDialog):
         self.url_combo.setEditText(self._url or "")
         self.url_combo.lineEdit().editingFinished.connect(self._on_url_edited)
         self.url_combo.lineEdit().returnPressed.connect(self._on_accept)
+        # git svn 不可用时，整块 From SVN 置灰（功能不支持）
+        from ..git.git import git_svn_available
+        svn_ok = git_svn_available()
+        grp_svn.setEnabled(svn_ok)
+        self.chk_svn.setEnabled(svn_ok)
+        if not svn_ok:
+            self.chk_svn.setChecked(False)
         self.chk_svn_toggled(False)
 
     def _is_ssh_putty(self) -> bool:

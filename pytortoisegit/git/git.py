@@ -93,6 +93,15 @@ def find_git_executable() -> str:
     raise RuntimeError(tr("git_not_found", "git executable not found; install git or set the GIT_PATH environment variable"))
 
 
+def git_svn_available() -> bool:
+    """检测 git-svn 是否可用（`git svn --version`）。"""
+    try:
+        runner = GitRunner(cwd=os.path.expanduser("~"))
+        return runner.run("svn", "--version").returncode == 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
 class GitRunner:
     """执行 git 命令的轻量封装。"""
 

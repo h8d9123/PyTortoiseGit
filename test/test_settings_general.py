@@ -312,7 +312,7 @@ def test_colors3_line_width_node_size(qapp, isolated_settings, ui):
 
 def test_diff_page_browse_enable_persist(qapp, isolated_settings, monkeypatch):
     from pytortoisegit.dialogs.settingsdlg import _DiffPage, general_settings
-    monkeypatch.setattr("pytortoisegit.utils.pick.pick_file",
+    monkeypatch.setattr("pytortoisegit.utils.pick.pick_open_file",
                         lambda *a, **k: "D:/BC/BCompare.exe")
     page = _DiffPage()
     page.load_settings()
@@ -332,7 +332,7 @@ def test_diff_page_browse_enable_persist(qapp, isolated_settings, monkeypatch):
 
 def test_merge_page_enable_and_persist(qapp, isolated_settings, monkeypatch):
     from pytortoisegit.dialogs.settingsdlg import _MergePage, general_settings
-    monkeypatch.setattr("pytortoisegit.utils.pick.pick_file",
+    monkeypatch.setattr("pytortoisegit.utils.pick.pick_open_file",
                         lambda *a, **k: "D:/BC/BComp.exe")
     page = _MergePage()
     page.load_settings()
@@ -358,6 +358,23 @@ def test_diffdlg_use_external_setting(qapp, isolated_settings):
 # ---------------------------------------------------------------------------
 # 备用编辑器
 # ---------------------------------------------------------------------------
+
+def test_alternative_editor_browse_uses_open_dialog(qapp, isolated_settings,
+                                                    monkeypatch):
+    """选择编辑器应使用“打开”对话框，而非“保存”。"""
+    from pytortoisegit.dialogs.settingsdlg import _AlternativeEditorPage
+    called = {}
+    monkeypatch.setattr("pytortoisegit.utils.pick.pick_open_file",
+                        lambda *a, **k: called.setdefault("open", True) and "C:/ed.exe")
+    monkeypatch.setattr("pytortoisegit.utils.pick.pick_file",
+                        lambda *a, **k: called.setdefault("save", True) and "C:/bad.exe")
+    page = _AlternativeEditorPage()
+    page._ctl["IDC_ALTERNATIVEEDITOR_ON"].setChecked(True)
+    page._ctl["IDC_ALTERNATIVEEDITORBROWSE"].click()
+    assert called.get("open") is True
+    assert "save" not in called
+    assert page._ctl["IDC_ALTERNATIVEEDITOR"].text() == "C:/ed.exe"
+
 
 def test_alternative_editor_toggle_and_persist(qapp, isolated_settings):
     from pytortoisegit.dialogs.settingsdlg import (

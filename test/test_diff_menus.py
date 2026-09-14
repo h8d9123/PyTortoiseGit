@@ -19,6 +19,15 @@ def _english_ui():
     strings.set_language("zh")
 
 
+@pytest.fixture()
+def isolated_settings(tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+    s = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr(
+        "pytortoisegit.dialogs.settingsdlg.general_settings", lambda: s)
+    return s
+
+
 def _trigger_file_menu(dlg, p, text, is_dir=False):
     """按文本选中 DiffDlg 文件菜单项并执行对应动作（模拟用户点击）。"""
     _menu, acts = dlg._build_file_menu(p, is_dir)
@@ -240,6 +249,20 @@ def test_statusmenu_show_unified(qapp, git_repo, monkeypatch):
                    "statusmenu_unified",
                    "Show changes as unified diff").trigger()
     assert opened.get("text")
+
+
+def test_statusmenu_view_revision_uses_alt_editor(qapp, git_repo, monkeypatch,
+                                                  isolated_settings):
+    """“用备用编辑器查看修订”读取设置并启动备用编辑器。"""
+    from pytortoisegit.dialogs import statusmenu
+    from pytortoisegit.dialogs.settingsdlg import general_settings
+    general_settings().setValue("AlternativeEditorUseCustom", 1)
+    general_settings().setValue("AlternativeEditor", "C:/ed.exe")
+    launched = {}
+    monkeypatch.setattr(statusmenu.subprocess, "Popen",
+                        lambda args, *a, **k: launched.setdefault("args", args))
+    statusmenu._view_revision(None, git_repo, "a.txt")
+    assert launched.get("args", [None])[0] == "C:/ed.exe"
 
 
 def test_statusmenu_unversioned_add(qapp, git_repo):

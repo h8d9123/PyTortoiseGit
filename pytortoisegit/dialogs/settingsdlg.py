@@ -604,8 +604,8 @@ class _DiffPage(_SettingPage):
                 g.addButton(w)
 
     def _browse_into(self, cid: str):
-        from ..utils.pick import pick_file
-        p = pick_file(self, tr("set_select_program", "Select program"), "")
+        from ..utils.pick import pick_open_file
+        p = pick_open_file(self, tr("set_select_program", "Select program"), "")
         if p and (w := self._ctl.get(cid)):
             w.setText(p)
 
@@ -670,8 +670,8 @@ class _MergePage(_SettingPage):
         self._update_enabled()
 
     def _browse(self):
-        from ..utils.pick import pick_file
-        p = pick_file(self, tr("set_select_program", "Select program"), "")
+        from ..utils.pick import pick_open_file
+        p = pick_open_file(self, tr("set_select_program", "Select program"), "")
         if p and (w := self._ctl.get("IDC_EXTMERGE")):
             w.setText(p)
 
@@ -727,8 +727,8 @@ class _NetworkPage(_SettingPage):
         return self._ctl.get("IDC_SSHCLIENT")
 
     def _browse_ssh(self):
-        from ..utils.pick import pick_file
-        p = pick_file(self, tr("set_selectssh", "Select SSH client"), "")
+        from ..utils.pick import pick_open_file
+        p = pick_open_file(self, tr("set_selectssh", "Select SSH client"), "")
         if p and self.ssh_edit is not None:
             self.ssh_edit.setText(p)
 
@@ -809,8 +809,8 @@ class _AlternativeEditorPage(_SettingPage):
                 w.setEnabled(enabled)
 
     def _browse(self):
-        from ..utils.pick import pick_file
-        p = pick_file(self, tr("set_select_editor", "Select editor"), "")
+        from ..utils.pick import pick_open_file
+        p = pick_open_file(self, tr("set_select_editor", "Select editor"), "")
         if p and (w := self._ctl.get("IDC_ALTERNATIVEEDITOR")):
             w.setText(p)
 
@@ -1564,8 +1564,8 @@ class _Dialogs3Page(_SettingPage):
             b.clicked.connect(self._browse_icon)
 
     def _browse_icon(self):
-        from ..utils.pick import pick_file
-        p = pick_file(self, tr("set_select_icon", "Select overlay icon"), "")
+        from ..utils.pick import pick_open_file
+        p = pick_open_file(self, tr("set_select_icon", "Select overlay icon"), "")
         if p:
             w = self._ctl.get("IDC_ICONFILE")
             if w is not None:
@@ -1767,8 +1767,8 @@ class HookConfigDlg(_RcDialog):
             self._ctl["IDC_HOOKPATH"].setText(p)
 
     def _browse_cmd(self):
-        from ..utils.pick import pick_file
-        p = pick_file(self, tr("hook_select_script", "Select script file"), "")
+        from ..utils.pick import pick_open_file
+        p = pick_open_file(self, tr("hook_select_script", "Select script file"), "")
         if p:
             self._ctl["IDC_HOOKCOMMANDLINE"].setText(p)
 

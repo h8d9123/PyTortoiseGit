@@ -173,7 +173,9 @@ def test_menu_hidden_and_top_commands(qapp, isolated_settings):
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
     assert MainMenuDlg._menu_hidden_commands(None) == {
         "svnignore", "stashapply", "subsync"}
-    assert MainMenuDlg._menu_top_commands(None) is None
+    # 未设置时用原版默认第一层命令（Sync/CreateRepo/Clone/Commit）
+    assert MainMenuDlg._menu_top_commands(None) == {
+        "sync", "repocreate", "clone", "commit"}
 
 
 def test_menu_hidden_stale_all_falls_back_to_default(qapp, isolated_settings):

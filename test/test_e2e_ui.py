@@ -90,6 +90,28 @@ def test_TC_SET_003_theme(qapp, ui):
         qapp.setStyleSheet(old)
 
 
+def test_TC_UI_013_menu_top_and_submenu_split(qapp, ui, git_repo, monkeypatch):
+    """右键菜单：勾选命令在第一层，未勾选进 TortoiseGit 子菜单。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    dlg = MainMenuDlg()
+    monkeypatch.setattr(dlg, "_menu_top_commands", lambda: {"sync", "commit"})
+    menu = dlg._build_dir_menu(git_repo.root)
+
+    def _has(items, *needles):
+        return any(n in t for t in items for n in needles)
+
+    top = [a.text() for a in menu.actions() if a.text()]
+    sub = []
+    for a in menu.actions():
+        if a.menu() and a.text():
+            sub = [x.text() for x in a.menu().actions() if x.text()]
+            break
+    assert sub, "TortoiseGit 子菜单不应为空"
+    assert _has(top, "提交", "Commit")
+    assert not _has(top, "差异", "Diff", "日志", "Log")
+    assert _has(sub, "差异", "Diff")
+
+
 def test_TC_I18N_001_language_switch(qapp, ui):
     """语言切换后界面文案变化。"""
     from pytortoisegit.res import strings

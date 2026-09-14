@@ -120,11 +120,13 @@ _ORIGINAL_COMMANDS = {
     "registerwin11contextmenu", "inaccessible", "firststart",
 }
 
+# 原版 defaultTopMenuEntries = Sync | CreateRepo | Clone | Commit
+# （ContextMenu.cpp：勾选项直接进主菜单，其余进「TortoiseGit」子菜单）
+_DEFAULT_TOP_COMMANDS = {"sync", "repocreate", "clone", "commit"}
+
 
 class MainMenuDlg(QMainWindow):
     """主窗口：菜单栏 + 标签面板（仓库管理 / 目录树）+ 命令面板。"""
-
-    # 菜单栏“命令(&C)”分组：组名 → 该组包含的命令
     MENU_GROUPS = [
         ("menu_grp_changes", "Local Changes",
          ["commit", "revert", "cleanup", "add", "remove", "ignore",
@@ -557,21 +559,11 @@ class MainMenuDlg(QMainWindow):
             self._navigate(path)
 
     def _build_dir_menu(self, path: str, parent=None) -> "QMenu":
-        """目录右键菜单：基本操作 + TortoiseGit 两级。"""
+        """目录右键菜单：基本操作 + 第一层命令 + TortoiseGit 子菜单。"""
         from PySide6.QtWidgets import QMenu
         menu = QMenu(parent or self.content_list)
         self._add_basic_ops(menu, path)
-        tg = self._add_tortoisegit_submenu(menu, path)
-        if not self._inside_repo(path):
-            act_clone = tg.addAction(tr("repo_menu_clone", "Git Clone…"))
-            self._set_action_icon(act_clone, "IDI_CLONE")
-            act_clone.triggered.connect(
-                lambda _=False, p=path: self._run_clone_in(p))
-            act_set = tg.addAction(tr("repo_menu_settings", "Settings"))
-            self._set_action_icon(act_set, "IDI_SETTINGS")
-            act_set.triggered.connect(
-                lambda _=False, p=path:
-                self._dispatch("settings", extra={"path": p}))
+        self._add_tortoisegit_submenu(menu, path)
         return menu
 
     def _build_blank_menu(self, path: str, parent=None) -> "QMenu":
@@ -603,15 +595,21 @@ class MainMenuDlg(QMainWindow):
         self._populate_tortoisegit_menu(menu, path, shift)
         return menu
 
-    def _menu_top_commands(self):
-        """Context Menu 页勾选的“第一层”命令集合；未设置返回 None（全部显示）。"""
+    # 原版 defaultTopMenuEntries = Sync | CreateRepo | Clone | Commit
+    def _menu_top_commands(self) -> set:
+        """Context Menu 页勾选的“第一层”命令集合。
+
+        未设置时用原版默认值（Sync/CreateRepo/Clone/Commit）。勾选项直接显示在
+        主菜单，未勾选项进入「TortoiseGit」子菜单（对齐 ContextMenu.cpp）。
+        """
         try:
             from .settingsdlg import general_settings
-            saved = general_settings().value(
-                "contextMenuEntries", [], type=list)
-            return set(saved) if saved else None
+            s = general_settings()
+            if not s.contains("contextMenuEntries"):
+                return set(_DEFAULT_TOP_COMMANDS)
+            return set(s.value("contextMenuEntries", [], type=list) or [])
         except Exception:  # noqa: BLE001
-            return None
+            return set(_DEFAULT_TOP_COMMANDS)
 
     @staticmethod
     def _all_menu_commands() -> set:
@@ -684,25 +682,33 @@ class MainMenuDlg(QMainWindow):
             return False
 
     def _populate_tortoisegit_menu(self, menu, path: str,
-                                   shift: bool | None = None):
-        """把状态驱动的 TortoiseGit 菜单项填入给定菜单（按“第一层”设置过滤）。"""
+                                   shift: bool | None = None,
+                                   *, top_level: bool | None = None) -> int:
+        """把状态驱动的 TortoiseGit 菜单项填入给定菜单，返回添加条数。
+
+        top_level=True  → 只放“第一层”勾选命令（显示在主菜单）
+        top_level=False → 只放未勾选命令（显示在「TortoiseGit」子菜单）
+        top_level=None  → 不过滤层级（平铺全部，用于经典单级菜单）
+        """
         from .. import menuitems as mi
         if shift is None:
             shift = self._shift_pressed()
         if self._is_no_context_path(path):
-            return
+            return 0
         states = mi.compute_item_states(path, extended=shift)
         if self._hide_unversioned_menus() and not (states & mi.ITEMIS_INGIT):
-            return
+            return 0
         enabled = self._menu_top_commands()
         hidden = self._menu_hidden_commands()
         pending_sep = False
+        added = 0
         for entry in mi.menu_entries(states, extended=shift):
             if entry.command == "separator":
                 if menu.actions():
                     pending_sep = True
                 continue
-            if enabled is not None and entry.command not in enabled:
+            is_top = entry.command in enabled
+            if top_level is not None and top_level != is_top:
                 continue
             if not shift and entry.command in hidden:
                 continue
@@ -716,6 +722,8 @@ class MainMenuDlg(QMainWindow):
             act.triggered.connect(
                 lambda _=False, c=entry.command, p=path:
                 self._dispatch(c, extra={"path": p}))
+            added += 1
+        return added
 
     @staticmethod
     def _add_submenu(menu, title: str):
@@ -897,10 +905,16 @@ class MainMenuDlg(QMainWindow):
         self._refresh_content()
 
     def _add_tortoisegit_submenu(self, menu, path: str):
-        """「TortoiseGit」子菜单（状态驱动）。"""
+        """第一层命令加到 menu，其余挂到「TortoiseGit」子菜单（对齐原版）。
+
+        返回子菜单对象；子菜单为空则不挂载（镜像 ContextMenu.cpp 的 bMenuEmpty）。
+        """
+        self._populate_tortoisegit_menu(menu, path, top_level=True)
         tg = self._add_submenu(menu, tr("menu_tortoisegit", "TortoiseGit"))
-        if self._inside_repo(path):
-            self._populate_tortoisegit_menu(tg, path)
+        self._populate_tortoisegit_menu(tg, path, top_level=False)
+        if not tg.actions():
+            menu.removeAction(tg.menuAction())
+            return None
         return tg
 
     def _copy_path(self, path: str):

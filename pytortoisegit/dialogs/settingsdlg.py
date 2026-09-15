@@ -246,9 +246,20 @@ def general_settings() -> QSettings:
 # ---------------------------------------------------------------------------
 
 
+def _swatch_text_color(color_hex: str) -> str:
+    """按背景亮度选黑/白文字（对齐 GetBestContrastColor 的 Rec.709 亮度）。"""
+    from PySide6.QtGui import QColor
+    c = QColor(color_hex)
+    if not c.isValid():
+        return "#000000"
+    lum = 0.2126 * c.redF() + 0.7152 * c.greenF() + 0.0722 * c.blueF()
+    return "#000000" if lum > 0.5 else "#ffffff"
+
+
 def _set_swatch(btn, color_hex: str):
     btn.setText(color_hex)
-    btn.setStyleSheet(f"background-color: {color_hex};")
+    btn.setStyleSheet(
+        f"background-color: {color_hex}; color: {_swatch_text_color(color_hex)};")
 
 
 def _pick_color(parent, current: str):
@@ -281,10 +292,22 @@ class _ColorPage(_SettingPage):
             _set_swatch(b, picked)
 
     def _restore_defaults(self):
+        # 恢复全部颜色按钮
         for _key, cid, default in self._COLORS:
             b = self._ctl.get(cid)
             if b is not None:
                 _set_swatch(b, default)
+        # 同时恢复本页其它设置控件（原版 Restore 重置整页）
+        for _key, cid, kind, default in getattr(self, "_SETTINGS", []):
+            w = self._ctl.get(cid)
+            if w is None:
+                continue
+            if kind == "bool":
+                w.setChecked(bool(default))
+            elif kind == "index":
+                w.setCurrentIndex(int(default))
+            else:
+                self._set_widget_text(w, str(default))
 
     def load_settings(self):
         super().load_settings()
@@ -302,6 +325,9 @@ class _ColorPage(_SettingPage):
                 s.setValue(key, b.text().strip() or default)
         s.sync()
         super().save_settings()
+        # 颜色被消费端缓存，保存后失效，下次绘制取新值
+        from .settings_colors import invalidate
+        invalidate()
 
 
 # 语言下拉可选项（文本, 语言键）

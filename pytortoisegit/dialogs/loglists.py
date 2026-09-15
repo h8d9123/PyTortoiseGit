@@ -76,16 +76,63 @@ def file_default_hidden() -> tuple:
     return (FILE_COL_FILENAME, FILE_COL_MODIFIED, FILE_COL_SIZE)
 
 
-# Colors.cpp 默认：Modified / Added / Deleted / Renamed / Conflict
+# Colors.cpp 默认（与设置页 Colors1 键一致）：Modified / Added / Deleted /
+# Renamed / Conflict。渲染时从 QSettings 读取，未设置回退这些默认值。
 _STATUS_COLOR = {
-    "M": (0, 50, 160),
-    "A": (100, 0, 100),
-    "D": (100, 0, 0),
-    "R": (0, 0, 255),
-    "C": (100, 0, 100),
-    "U": (255, 0, 0),
-    "T": (0, 50, 160),
+    "M": "#0032a0",
+    "A": "#640064",
+    "D": "#640000",
+    "R": "#0000ff",
+    "C": "#640064",
+    "U": "#ff0000",
+    "T": "#0032a0",
 }
+
+# 状态码 → 设置键（Copied 沿用 Added，Type change 沿用 Modified）
+_STATUS_COLOR_KEY = {
+    "M": "Colors/Modified",
+    "A": "Colors/Added",
+    "D": "Colors/Deleted",
+    "R": "Colors/Renamed",
+    "C": "Colors/Added",
+    "U": "Colors/Conflict",
+    "T": "Colors/Modified",
+}
+
+
+def invalidate() -> None:
+    """设置页保存颜色后清空本模块使用的颜色缓存。"""
+    from .settings_colors import invalidate as _invalidate
+    _invalidate()
+
+
+def _rgb(qcolor) -> tuple:
+    return (qcolor.red(), qcolor.green(), qcolor.blue())
+
+
+def _status_code(code: str) -> str:
+    return (code or "?").lstrip()[:1].upper()
+
+
+def status_color(code: str):
+    """日志文件列表状态色（读 Colors/* 设置）。"""
+    from .settings_colors import color
+    key = _status_code(code)
+    skey = _STATUS_COLOR_KEY.get(key)
+    if skey is None:
+        return None
+    return _rgb(color(skey, _STATUS_COLOR[key]))
+
+
+def filediff_action_color(code: str):
+    """CFileDiffDlg::OnNMCustomdrawFilelist：A/D 用对应色，其余 Modified。"""
+    from .settings_colors import color
+    key = _status_code(code)
+    if key == "A":
+        return _rgb(color("Colors/Added", _STATUS_COLOR["A"]))
+    if key == "D":
+        return _rgb(color("Colors/Deleted", _STATUS_COLOR["D"]))
+    return _rgb(color("Colors/Modified", _STATUS_COLOR["M"]))
 
 
 _STATUS_TEXT = {
@@ -100,24 +147,9 @@ _STATUS_TEXT = {
 
 
 def status_text(code: str) -> str:
-    key = (code or "?").lstrip()[:1].upper()
+    key = _status_code(code)
     fn = _STATUS_TEXT.get(key)
     return fn() if fn else code
-
-
-def status_color(code: str):
-    key = (code or "?").lstrip()[:1].upper()
-    return _STATUS_COLOR.get(key)
-
-
-def filediff_action_color(code: str):
-    """CFileDiffDlg::OnNMCustomdrawFilelist：A/D/M 用对应色，其余 PropertyChanged。"""
-    key = (code or "?").lstrip()[:1].upper()
-    if key == "A":
-        return (100, 0, 100)
-    if key == "D":
-        return (100, 0, 0)
-    return (0, 50, 160)
 
 
 @dataclass

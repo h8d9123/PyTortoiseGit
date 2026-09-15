@@ -19,20 +19,44 @@ from PySide6.QtWidgets import QStyledItemDelegate, QStyle, QStyleOptionViewItem
 from ..git.lanes import COLORS_NUM, LaneType, is_merge
 from .loglists import LOG_COL_ACTIONS, LOG_COL_GRAPH
 
-# Colors.cpp BranchLine1..8 默认值
+# Colors.cpp BranchLine1..8 默认值（#RRGGBB）
 _LANE_COLORS = (
-    QColor(0, 0, 0),
-    QColor(0xFF, 0, 0),
-    QColor(0, 0xFF, 0),
-    QColor(0, 0, 0xFF),
-    QColor(128, 128, 128),
-    QColor(128, 128, 0),
-    QColor(0, 128, 128),
-    QColor(128, 0, 128),
+    "#000000",
+    "#ff0000",
+    "#00ff00",
+    "#0000ff",
+    "#808080",
+    "#808000",
+    "#008080",
+    "#800080",
 )
 
 _LINE_WIDTH = 2
 _NODE_SIZE = 10
+
+
+def invalidate() -> None:
+    """设置页保存颜色后清空本模块使用的颜色缓存。"""
+    from .settings_colors import invalidate as _invalidate
+    _invalidate()
+
+
+def lane_color(index: int) -> QColor:
+    """读取 Colors/BranchLineN，未设置回退 Colors.cpp 默认值。"""
+    from .settings_colors import color
+    i = index % COLORS_NUM
+    return color(f"Colors/BranchLine{i + 1}", _LANE_COLORS[i])
+
+
+def line_width() -> int:
+    from .settings_colors import int_value
+    return int_value("LogLineWidth", _LINE_WIDTH)
+
+
+def node_size() -> int:
+    from .settings_colors import int_value
+    return int_value("LogNodeSize", _NODE_SIZE)
+
 
 _ACTION_ICONS = (
     ("M", "IDI_ACTIONMODIFIED"),
@@ -44,21 +68,17 @@ _ACTION_ICONS = (
 )
 
 
-def lane_color(index: int) -> QColor:
-    return _LANE_COLORS[index % COLORS_NUM]
-
-
 def paint_graph_lane(p: QPainter, lane_h: int, typ: LaneType,
                      x1: int, x2: int, col: QColor, active: QColor, top: int):
     """对齐 CGitLogListBase::paintGraphLane。"""
     h = lane_h // 2
     m = (x1 + x2) // 2
-    r = max(2, (x2 - x1) * _NODE_SIZE // 30)
+    r = max(2, (x2 - x1) * node_size() // 30)
     d = 2 * r
     cy = h + top
 
     def line(pen_col: QColor, ax, ay, bx, by):
-        p.setPen(QPen(pen_col, _LINE_WIDTH, Qt.PenStyle.SolidLine,
+        p.setPen(QPen(pen_col, line_width(), Qt.PenStyle.SolidLine,
                       Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
         p.drawLine(ax, ay, bx, by)
 
@@ -87,16 +107,16 @@ def paint_graph_lane(p: QPainter, lane_h: int, typ: LaneType,
     # 弧（join/head/tail）
     p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     if typ in (LaneType.JOIN, LaneType.JOIN_R, LaneType.HEAD, LaneType.HEAD_R):
-        pen = QPen(active, _LINE_WIDTH)
+        pen = QPen(active, line_width())
         p.setPen(pen)
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawArc(x1 - (x2 - x1) // 2 - 1, top + h - 1, x2 - x1, lane_h, 270 * 16, 90 * 16)
     elif typ == LaneType.JOIN_L:
-        p.setPen(QPen(col, _LINE_WIDTH))
+        p.setPen(QPen(col, line_width()))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawArc(x1 + (x2 - x1) // 2, top + h - 1, x2 - x1, lane_h, 180 * 16, 90 * 16)
     elif typ in (LaneType.TAIL, LaneType.TAIL_R):
-        p.setPen(QPen(active, _LINE_WIDTH))
+        p.setPen(QPen(active, line_width()))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawArc(x1 - (x2 - x1) // 2 - 1, top - h - 1, x2 - x1, lane_h, 0, 90 * 16)
 

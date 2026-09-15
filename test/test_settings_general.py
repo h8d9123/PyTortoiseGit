@@ -393,3 +393,105 @@ def test_alternative_editor_toggle_and_persist(qapp, isolated_settings):
     assert page2._ctl["IDC_ALTERNATIVEEDITOR_ON"].isChecked()
     page2._ctl["IDC_ALTERNATIVEEDITOR_OFF"].click()     # 切回记事本
     assert not page2._ctl["IDC_ALTERNATIVEEDITOR"].isEnabled()
+
+
+# ---------------------------------------------------------------------------
+# 颜色设置 → 消费端接线（改了颜色要真的影响渲染）
+# ---------------------------------------------------------------------------
+
+def test_status_color_reads_settings(qapp, isolated_settings):
+    """日志文件列表状态色跟随 Colors1 设置。"""
+    from pytortoisegit.dialogs import loglists
+    from pytortoisegit.dialogs.settingsdlg import _Colors1Page, general_settings
+    # 默认值：Modified = #0032a0
+    assert loglists.status_color("M") == (0, 50, 160)
+    general_settings().setValue("Colors/Modified", "#010203")
+    loglists.invalidate()
+    assert loglists.status_color("M") == (1, 2, 3)
+    # Copied 沿用 Added
+    assert loglists.status_color("C") == loglists.status_color("A")
+    # 未知状态无颜色
+    assert loglists.status_color("?") is None
+    # 通过设置页保存也应生效（save_settings 内部失效缓存）
+    page = _Colors1Page()
+    page.load_settings()
+    from pytortoisegit.dialogs import settingsdlg as sd
+    sd._set_swatch(page._ctl["IDC_ADDEDCOLOR"], "#0a0b0c")
+    page.save_settings()
+    assert loglists.status_color("A") == (10, 11, 12)
+
+
+def test_filediff_action_color_reads_settings(qapp, isolated_settings):
+    from pytortoisegit.dialogs import loglists
+    from pytortoisegit.dialogs.settingsdlg import general_settings
+    general_settings().setValue("Colors/Added", "#111111")
+    general_settings().setValue("Colors/Deleted", "#222222")
+    loglists.invalidate()
+    assert loglists.filediff_action_color("A") == (17, 17, 17)
+    assert loglists.filediff_action_color("D") == (34, 34, 34)
+    # 其余状态（M）用 Modified
+    assert loglists.filediff_action_color("M") == (0, 50, 160)
+
+
+def test_lane_color_line_width_node_size(qapp, isolated_settings):
+    """日志图线色/线宽/节点大小跟随 Colors3 设置。"""
+    from pytortoisegit.dialogs import loggraph
+    from pytortoisegit.dialogs.settingsdlg import _Colors3Page, general_settings
+    assert loggraph.line_width() == 2
+    assert loggraph.node_size() == 10
+    assert (loggraph.lane_color(0).red(), loggraph.lane_color(0).green(),
+            loggraph.lane_color(0).blue()) == (0, 0, 0)
+
+    page = _Colors3Page()
+    page.load_settings()
+    from pytortoisegit.dialogs import settingsdlg as sd
+    sd._set_swatch(page._ctl["IDC_COLOR_LINE2"], "#123456")
+    page._ctl["IDC_LOGGRAPHLINEWIDTH"].setCurrentText("5")
+    page._ctl["IDC_LOGGRAPHNODESIZE"].setCurrentText("20")
+    page.save_settings()
+
+    c = loggraph.lane_color(1)
+    assert (c.red(), c.green(), c.blue()) == (0x12, 0x34, 0x56)
+    assert loggraph.line_width() == 5
+    assert loggraph.node_size() == 20
+    # 8 条线循环
+    assert loggraph.lane_color(9).name() == loggraph.lane_color(1).name()
+
+
+def test_restore_defaults_resets_whole_colors_page(qapp, isolated_settings):
+    """Restore Default 需重置整页（颜色 + 复选框 + 下拉），不只颜色。"""
+    from pytortoisegit.dialogs.settingsdlg import _Colors1Page, _Colors3Page
+    from pytortoisegit.dialogs import settingsdlg as sd
+
+    p1 = _Colors1Page()
+    p1.load_settings()
+    sd._set_swatch(p1._ctl["IDC_CONFLICTCOLOR"], "#123456")
+    p1._ctl["IDC_DARKTHEME"].setChecked(True)
+    p1._ctl["IDC_REVGRAPHUSELOCALFORCUR"].setChecked(True)
+    p1._ctl["IDC_RESTORE"].click()
+    assert p1._ctl["IDC_CONFLICTCOLOR"].text() == "#ff0000"
+    assert not p1._ctl["IDC_DARKTHEME"].isChecked()
+    assert not p1._ctl["IDC_REVGRAPHUSELOCALFORCUR"].isChecked()
+
+    p3 = _Colors3Page()
+    p3.load_settings()
+    p3._ctl["IDC_COLOR_LINE1"].setText("#abcdef")
+    p3._ctl["IDC_LOGGRAPHLINEWIDTH"].setCurrentText("7")
+    p3._ctl["IDC_LOGGRAPHNODESIZE"].setCurrentText("25")
+    p3._ctl["IDC_RESTORE"].click()
+    assert p3._ctl["IDC_COLOR_LINE1"].text() == "#000000"
+    assert p3._ctl["IDC_LOGGRAPHLINEWIDTH"].currentText() == "2"
+    assert p3._ctl["IDC_LOGGRAPHNODESIZE"].currentText() == "10"
+
+
+def test_swatch_text_contrast(qapp, isolated_settings):
+    """色块文字按背景亮度自动黑/白，深色默认色也能看清。"""
+    from pytortoisegit.dialogs.settingsdlg import _Colors1Page
+    from pytortoisegit.dialogs import settingsdlg as sd
+    assert sd._swatch_text_color("#000000") == "#ffffff"
+    assert sd._swatch_text_color("#640000") == "#ffffff"
+    assert sd._swatch_text_color("#ffffff") == "#000000"
+    assert sd._swatch_text_color("#ffff00") == "#000000"
+    p = _Colors1Page()
+    p.load_settings()
+    assert "#ffffff" in p._ctl["IDC_CONFLICTCOLOR"].styleSheet()

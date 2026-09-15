@@ -69,15 +69,24 @@ _ARROW_SIZE = 8.0
 _ARROW_COS = math.cos(math.pi / 8)
 _ARROW_SIN = math.sin(math.pi / 8)
 
-# Colors.cpp 默认色
-_COLORS = {
-    "current_branch": QColor(200, 0, 0),
-    "branch": QColor(0, 195, 0),
-    "remote": QColor(255, 221, 170),
-    "tag": QColor(255, 255, 0),
-    "stash": QColor(128, 128, 128),
-    "commit": QColor(255, 229, 229),
+# 颜色默认值（#RRGGBB，与设置页 Colors2 默认一致）；渲染时从 QSettings 读取，
+# 未设置回退这些默认值。stash / commit 无对应设置键，保持硬编码。
+_DEFAULT_COLORS = {
+    "current_branch": "#c80000",
+    "branch": "#00c300",
+    "remote": "#ffddaa",
+    "tag": "#ffff00",
+    "stash": "#808080",
+    "commit": "#ffe5e5",
 }
+
+_COLORS = {k: QColor(v) for k, v in _DEFAULT_COLORS.items()}
+
+
+def invalidate() -> None:
+    """设置页保存颜色后清空本模块使用的颜色缓存。"""
+    from .settings_colors import invalidate as _invalidate
+    _invalidate()
 
 
 def _best_text_color(bg: QColor) -> QColor:
@@ -177,10 +186,18 @@ class _GraphCanvas(QWidget):
 
     # ---- 颜色 ----
     def _ref_color(self, text: str, ref_type: str) -> QColor:
+        from .settings_colors import bool_value, color
         if ref_type == "branch":
-            if text == self._current_branch:
-                return _COLORS["current_branch"]
-            return _COLORS["branch"]
+            # RevGraphUseLocalForCur：勾选后用本地分支色画当前分支（不再区分）
+            if text == self._current_branch \
+                    and not bool_value("RevGraphUseLocalForCur", False):
+                return color("Colors/CurrentBranch",
+                             _DEFAULT_COLORS["current_branch"])
+            return color("Colors/LocalBranch", _DEFAULT_COLORS["branch"])
+        if ref_type == "remote":
+            return color("Colors/RemoteBranch", _DEFAULT_COLORS["remote"])
+        if ref_type == "tag":
+            return color("Colors/Tag", _DEFAULT_COLORS["tag"])
         return _COLORS.get(ref_type, _COLORS["commit"])
 
     # ---- 绘制 ----

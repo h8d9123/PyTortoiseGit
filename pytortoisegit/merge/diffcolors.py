@@ -102,7 +102,11 @@ class DiffColors:
         DiffState.ConflictsResolved: QColor(66, 83, 66),
     }
 
-    def __init__(self, dark: bool = False):
+    def __init__(self, dark: bool | None = None):
+        if dark is None:
+            # 未显式指定时读取设置页 Colors1 的“Dark theme”（UseDarkMode）
+            from ..dialogs.settings_colors import bool_value
+            dark = bool_value("UseDarkMode", False)
         self.dark = dark
 
     def text_color(self, state: DiffState) -> QColor:

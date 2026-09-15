@@ -39,18 +39,49 @@ def _shot(app, widget, name: str, wait: float = 1.0):
     _pump(app, 0.1)
 
 
+CJK_FAMILIES = ("Microsoft YaHei", "Microsoft YaHei UI", "SimSun", "SimHei",
+                "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei",
+                "PingFang SC")
+
+# offscreen 平台常不加载系统字体，需要显式从字体文件注册。
+CJK_FONT_FILES = (
+    r"C:\Windows\Fonts\msyh.ttc",
+    r"C:\Windows\Fonts\simsun.ttc",
+    r"C:\Windows\Fonts\simhei.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    "/System/Library/Fonts/PingFang.ttc",
+)
+
+
 def _use_cjk_font(app):
     """offscreen 默认字体无中文字形，挑一个系统 CJK 字体避免显示成方块。"""
     from PySide6.QtGui import QFont, QFontDatabase
     try:
         families = set(QFontDatabase.families())
     except Exception:
-        return
-    for cand in ("Microsoft YaHei", "SimSun", "Noto Sans CJK SC",
-                 "Source Han Sans SC", "WenQuanYi Micro Hei", "PingFang SC"):
+        families = set()
+    for cand in CJK_FAMILIES:
         if cand in families:
             app.setFont(QFont(cand, 9))
             print("font:", cand)
+            return
+    # 没有可用的系统字体时，直接注册字体文件。
+    for path in CJK_FONT_FILES:
+        if not os.path.exists(path):
+            continue
+        fid = QFontDatabase.addApplicationFont(path)
+        if fid == -1:
+            continue
+        names = QFontDatabase.applicationFontFamilies(fid)
+        for cand in CJK_FAMILIES:
+            if cand in names:
+                app.setFont(QFont(cand, 9))
+                print("font:", cand, "(from", path + ")")
+                return
+        if names:
+            app.setFont(QFont(names[0], 9))
+            print("font:", names[0], "(from", path + ")")
             return
 
 

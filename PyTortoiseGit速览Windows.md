@@ -4,7 +4,7 @@
 命令行协议与操作习惯。本页汇总主要对话框的实际界面截图。
 
 > 截图由 `python scripts/screenshots.py` 在 offscreen 平台自动生成，输出到
-> `screenshots/`（该目录在 `.gitignore` 中，不随仓库提交）。
+> `screenshots/`（已随仓库提交）。
 
 ## 目录
 

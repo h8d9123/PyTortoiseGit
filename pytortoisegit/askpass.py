@@ -39,12 +39,14 @@ def main(argv) -> int:
     from .dialogs.credentialdlg import SimplePromptDlg
     dlg = SimplePromptDlg(realm=prompt, parent=None)
     if dlg.exec():
-        # git askpass 期望把答案写回 stdout；username/password 分开调用
-        # 由 GIT_ASKPASS 两次调用：一次用户名一次密码
+        # git askpass 期望把答案写回 stdout：GIT_ASKPASS 会分别调用一次
+        # 用户名、一次密码。stdout 是直连 git 的管道，不会进入日志，
+        # 因此下面的写入是协议要求的行为，而非日志泄露。
+        # codeql[py/clear-text-logging-sensitive-data] 抑制上述误报。
         if "username" in prompt.lower():
-            sys.stdout.write(dlg.username)
+            sys.stdout.write(dlg.username)  # codeql[py/clear-text-logging-sensitive-data]
         else:
-            sys.stdout.write(dlg.password)
+            sys.stdout.write(dlg.password)  # codeql[py/clear-text-logging-sensitive-data]
         return 0
     return 1
 

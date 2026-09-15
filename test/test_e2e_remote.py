@@ -175,3 +175,119 @@ def test_TC_FLOW_001_pull_stash_rebase_pop(qapp, ui, remote_repo, auto_progress)
     # 线性历史（无 merge 提交）
     assert runner.run("rev-list", "--merges", "HEAD").stdout.strip() == "", \
         "pull --rebase 后不应产生 merge 提交"
+
+
+def test_TC_PULL_003_has_local_changes(qapp, remote_repo):
+    """_has_local_changes：已跟踪改动为真，未跟踪文件忽略。"""
+    from pathlib import Path
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+
+    root = Path(remote_repo.local.root)
+    dlg = PullFetchDlg(remote_repo.local, fetch_only=False)
+    assert dlg._has_local_changes() is False
+    (root / "untracked.txt").write_text("u\n", encoding="utf-8")
+    assert dlg._has_local_changes() is False, "未跟踪文件不应算本地改动"
+    (root / "a.txt").write_text("dirty\n", encoding="utf-8")
+    assert dlg._has_local_changes() is True
+
+
+def _prepare_local_wip(remote_repo):
+    """提交并推送 b.txt，再制造本地未提交改动（远端改 a.txt，避免 pop 冲突）。"""
+    from pathlib import Path
+    root = Path(remote_repo.local.root)
+    runner = remote_repo.runner
+    (root / "b.txt").write_text("b1\n", encoding="utf-8")
+    assert runner.run("add", "b.txt").returncode == 0
+    assert runner.run("commit", "-m", "add b").returncode == 0
+    assert runner.run("push", "origin", "main").returncode == 0
+    (root / "b.txt").write_text("b1\nlocal wip\n", encoding="utf-8")
+    return root
+
+
+def test_TC_PULL_004_auto_stash_yes(qapp, ui, remote_repo, auto_progress, monkeypatch):
+    """本地有改动、选择 stash：自动 stash → pull --rebase → stash pop 恢复。"""
+    from pytortoisegit.dialogs import pulldlg
+
+    local = remote_repo.local
+    root = _prepare_local_wip(remote_repo)
+    remote_head = _remote_new_commit(remote_repo)
+
+    monkeypatch.setattr(pulldlg, "ask_stash", lambda *a, **k: True)
+
+    dlg = pulldlg.PullFetchDlg(local, fetch_only=False)
+    dlg.chk_rebase.setChecked(True)
+    dlg.show()
+    ui.click(dlg.btn_ok)
+
+    assert local.run("rev-parse", "HEAD").stdout.strip() == remote_head, \
+        "pull --rebase 未更新到远端 HEAD"
+    assert "local wip" in (root / "b.txt").read_text(encoding="utf-8"), \
+        "stash pop 未恢复本地改动"
+    assert local.run("stash", "list").stdout.strip() == "", \
+        "stash 未清空"
+
+
+def test_TC_PULL_005_auto_stash_no(qapp, ui, remote_repo, auto_progress, monkeypatch):
+    """选择不 stash：pull --rebase 因工作区不干净失败，本地改动原样保留。"""
+    from pytortoisegit.dialogs import pulldlg
+
+    local = remote_repo.local
+    root = _prepare_local_wip(remote_repo)
+    local_head = local.run("rev-parse", "HEAD").stdout.strip()
+    _remote_new_commit(remote_repo)
+
+    monkeypatch.setattr(pulldlg, "ask_stash", lambda *a, **k: False)
+
+    dlg = pulldlg.PullFetchDlg(local, fetch_only=False)
+    dlg.chk_rebase.setChecked(True)
+    dlg.show()
+    ui.click(dlg.btn_ok)
+
+    assert local.run("rev-parse", "HEAD").stdout.strip() == local_head, \
+        "选 No 时不应改变 HEAD"
+    assert (root / "b.txt").read_text(encoding="utf-8") == "b1\nlocal wip\n"
+    assert local.run("stash", "list").stdout.strip() == "", "选 No 时不应产生 stash"
+
+
+def test_TC_SYNC_002_pull_auto_stash(qapp, ui, remote_repo, auto_progress, monkeypatch):
+    """Sync 的 Pull && Rebase：有本地改动时同样自动 stash → pull → pop。"""
+    from pytortoisegit.dialogs import sync as sync_mod
+
+    local = remote_repo.local
+    root = _prepare_local_wip(remote_repo)
+    remote_head = _remote_new_commit(remote_repo)
+
+    monkeypatch.setattr(sync_mod, "ask_stash", lambda *a, **k: True)
+
+    dlg = sync_mod.SyncDlg(local)
+    dlg.show()
+    dlg._do("pull", rebase=True)
+
+    assert local.run("rev-parse", "HEAD").stdout.strip() == remote_head
+    assert "local wip" in (root / "b.txt").read_text(encoding="utf-8")
+    assert local.run("stash", "list").stdout.strip() == ""
+
+
+def test_TC_REBASE_002_auto_stash(qapp, ui, remote_repo, auto_progress, monkeypatch):
+    """Rebase 对话框起始 rebase：有本地改动时自动 stash → rebase → pop。"""
+    from pytortoisegit.dialogs import rebasedlg as rb
+
+    local = remote_repo.local
+    root = _prepare_local_wip(remote_repo)
+    remote_head = _remote_new_commit(remote_repo)
+    # rebase 用的是本地 origin/main 引用，先 fetch 使其与远端一致
+    assert local.run("fetch", "origin").returncode == 0
+
+    monkeypatch.setattr(rb, "ask_stash", lambda *a, **k: True)
+
+    dlg = rb.RebaseDlg(local)
+    dlg.show()
+    dlg.branch_combo.setCurrentText("main")
+    dlg.upstream_combo.setCurrentText("origin/main")
+    dlg._on_continue()
+
+    assert local.run("rev-parse", "HEAD").stdout.strip() == remote_head, \
+        "rebase 未更新到远端 HEAD"
+    assert "local wip" in (root / "b.txt").read_text(encoding="utf-8"), \
+        "stash pop 未恢复本地改动"
+    assert local.run("stash", "list").stdout.strip() == ""

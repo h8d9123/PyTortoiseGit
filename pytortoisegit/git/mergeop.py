@@ -29,6 +29,8 @@ from ..res.strings import tr
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
+import os
+
 from .git import RunResult
 from .repo import Repository
 from .status import GitStatus, GitStatusEntry
@@ -115,6 +117,17 @@ def abort_rebase(repo: Repository) -> bool:
 
 def continue_rebase(repo: Repository) -> bool:
     return repo.runner.run("rebase", "--continue").returncode == 0
+
+
+def is_rebase_active(repo: Repository) -> bool:
+    """是否处于 rebase 进行中（rebase-merge / rebase-apply 目录存在）。"""
+    git_dir = repo.runner.run("rev-parse", "--git-path", ".").stdout.strip()
+    if not git_dir:
+        return False
+    if not os.path.isabs(git_dir):
+        git_dir = os.path.join(repo.root, git_dir)
+    return any(os.path.exists(os.path.join(git_dir, name))
+               for name in ("rebase-merge", "rebase-apply"))
 
 
 def do_merge(repo: Repository, branch: str, **opts) -> OpResult:

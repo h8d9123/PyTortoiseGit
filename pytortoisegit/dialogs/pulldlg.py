@@ -28,12 +28,14 @@ from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QDialog, QGroupBox, QLabel, QLineEdit,
     QPushButton, QRadioButton, QSpinBox,
 )
+from ..git.autostash import auto_stash, has_tracked_changes
 from ..git.repo import Repository
 from ..res.strings import tr
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
 from .resize import AnchorLayout
 from .progress import ProgressDialog
+from .stashprompt import ask_stash
 
 
 class PullFetchDlg(QDialog):
@@ -296,16 +298,34 @@ class PullFetchDlg(QDialog):
             args.append("--no-rebase")
         return args
 
+    def _has_local_changes(self) -> bool:
+        """是否有已跟踪文件的未提交改动（未跟踪文件不阻塞 pull）。"""
+        return has_tracked_changes(self.repo)
+
     def _on_ok(self):
         self._save_branch_history()
         args = self._build_args()
+        stash = (not self.fetch_only and self._has_local_changes()
+                 and ask_stash(self))
         dlg = ProgressDialog(title=tr("progress", "Progress"), parent=self)
         dlg.set_label("git " + " ".join(args))
-        def _bg():
+
+        def _pull() -> bool:
             r = self.repo.runner.run_interactive(*args)
-            if r.stdout: dlg.log(r.stdout)
-            if r.stderr: dlg.log(r.stderr)
+            if r.stdout:
+                dlg.log(r.stdout)
+            if r.stderr:
+                dlg.log(r.stderr)
             return r.returncode == 0
+
+        def _bg() -> bool:
+            if not stash:
+                return _pull()
+            with auto_stash(self.repo, dlg.log) as stashed:
+                if not stashed:
+                    return False
+                return _pull()
+
         dlg.run(_bg)
         dlg.exec()
         self.accept()

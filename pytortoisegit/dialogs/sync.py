@@ -45,12 +45,14 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
 )
 
+from ..git.autostash import auto_stash, has_tracked_changes
 from ..git.repo import Repository
 from ..res.strings import format_string, tr
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
 from .progress import ProgressDialog
 from .resize import AnchorLayout
+from .stashprompt import ask_stash
 
 
 class SyncDlg(QDialog):
@@ -345,8 +347,22 @@ class SyncDlg(QDialog):
         dlg = ProgressDialog(title=title, parent=self)
         dlg.set_label(title)
         self.log_view.appendPlainText("$ " + title)
-        dlg.run(lambda: _run_reporter(dlg, self.repo, args,
-                                      log=self.log_view))
+        need_stash = (action == "pull" and has_tracked_changes(self.repo)
+                      and ask_stash(self))
+
+        def _run() -> bool:
+            return _run_reporter(dlg, self.repo, args, log=self.log_view)
+
+        def _bg() -> bool:
+            if not need_stash:
+                return _run()
+            # 拉取前自动暂存本地改动，完成后恢复（对齐 TortoiseGit 体验）
+            with auto_stash(self.repo, self.log_view.appendPlainText) as stashed:
+                if not stashed:
+                    return False
+                return _run()
+
+        dlg.run(_bg)
         dlg.on_finish(lambda ok: self._refresh_status() if ok else None)
         dlg.exec()
 

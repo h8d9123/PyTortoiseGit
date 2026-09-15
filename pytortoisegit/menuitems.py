@@ -402,12 +402,8 @@ def is_merge_active(repo: Repository) -> bool:
 
 
 def is_rebase_active(repo: Repository) -> bool:
-    git_dir = repo.runner.run("rev-parse", "--git-path", ".").stdout.strip()
-    for name in ("rebase-merge", "rebase-apply"):
-        p = os.path.join(git_dir if os.path.isabs(git_dir) else os.path.join(repo.root, git_dir), name)
-        if git_dir and os.path.exists(p):
-            return True
-    return False
+    from .git.mergeop import is_rebase_active as _impl
+    return _impl(repo)
 
 
 def path_status(repo: Repository, path: str) -> int:

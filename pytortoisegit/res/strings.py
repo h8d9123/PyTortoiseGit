@@ -1044,6 +1044,8 @@ STRINGS: Dict[str, str] = {
     "pull_putty": "自动加载 PuTTY 密钥(&K)",
     "pull_manage": "管理远程",
     "pull_rebase": "抓取后启动变基(&L)",
+    "stash_prompt_title": "本地有修改",
+    "stash_prompt_ask": "本地存在未提交的修改。\n\n是否先暂存（stash），操作完成后自动恢复（stash pop）？",
     "fetch_title": "抓取",
     "push_ref_group": "引用",
     "push_dest_group": "目标",

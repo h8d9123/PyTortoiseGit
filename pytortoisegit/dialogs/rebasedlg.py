@@ -41,7 +41,8 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
 )
 
-from ..git.mergeop import abort_rebase
+from ..git.autostash import auto_stash, has_tracked_changes
+from ..git.mergeop import abort_rebase, is_rebase_active
 from ..git.repo import Repository
 from ..res.strings import tr
 from ..ui import rc as rc_mod
@@ -49,6 +50,7 @@ from ..ui.rc import DialogUnits
 from .conflicts import ConflictsWidget
 from .progress import ProgressDialog
 from .resize import AnchorLayout
+from .stashprompt import ask_stash
 
 _ACTIONS = ["pick", "reword", "edit", "squash", "fixup", "drop"]
 
@@ -306,13 +308,27 @@ class RebaseDlg(QDialog):
         dlg = ProgressDialog(title="git " + " ".join(args), parent=self)
         dlg.set_label("git " + " ".join(args))
 
-        def _bg() -> bool:
+        def _run() -> bool:
             result = self.repo.runner.run(*args)
             if result.stdout:
                 dlg.log(result.stdout)
             if result.stderr:
                 dlg.log(result.stderr)
             return result.returncode == 0
+
+        # 仅“起始 rebase”会被本地改动挡住；进行中的 rebase（--continue 语义）
+        # 工作区本就有待提交的冲突解决结果，绝不能自动 stash。
+        need_stash = (not is_rebase_active(self.repo)
+                      and has_tracked_changes(self.repo)
+                      and ask_stash(self))
+
+        def _bg() -> bool:
+            if not need_stash:
+                return _run()
+            with auto_stash(self.repo, dlg.log) as stashed:
+                if not stashed:
+                    return False
+                return _run()
 
         dlg.run(_bg)
         dlg.on_finish(self._after_action)

@@ -30,6 +30,7 @@ import subprocess
 from typing import Optional
 
 from ..git.repo import Repository
+from ..utils.proc import no_window_kwargs
 
 
 def get_versioned_file(repo: Repository, path: str, version: str,
@@ -90,7 +91,8 @@ def run_external_merge(repo: Optional[Repository], base: str, theirs: str,
                        ours: str, merged: str):
     """用外部 merge 工具打开（git mergetool 语义）。"""
     try:
-        subprocess.Popen(["git", "mergetool", "--tool-help"], shell=False)
+        subprocess.Popen(["git", "mergetool", "--tool-help"], shell=False,
+                         **no_window_kwargs())
     except OSError:
         pass
 

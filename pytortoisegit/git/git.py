@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 from ..res.strings import tr
+from ..utils.proc import no_window_kwargs
 
 import os
 import shutil
@@ -150,6 +151,7 @@ class GitRunner:
                 timeout=timeout,
                 env=self.env,
                 shell=False,
+                **no_window_kwargs(),
             )
         except OSError as exc:
             raise GitError(cmd, 127, stderr=str(exc)) from exc

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .proc import no_window_kwargs
+
 
 class ClipboardHelper:
     """访问系统剪贴板文本，不强制依赖 QApplication（懒加载）。"""
@@ -52,7 +54,7 @@ def _copy_via_qt(text: str) -> None:
             subprocess.run(
                 ["powershell", "-NoProfile", "-Command",
                  f"Set-Clipboard -Value ([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('{b64}')))"],
-                check=True, capture_output=True)
+                check=True, capture_output=True, **no_window_kwargs())
         return
     app.clipboard().setText(text)
 

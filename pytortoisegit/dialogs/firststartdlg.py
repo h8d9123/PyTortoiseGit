@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
 from ..res.strings import tr
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
+from ..utils.proc import no_window_kwargs
 
 
 class _WizardPage(QWizardPage):
@@ -155,7 +156,8 @@ class _GitPage(_WizardPage):
         if git:
             try:
                 out = subprocess.run([git, "--version"], capture_output=True,
-                                     text=True).stdout.strip()
+                                     text=True,
+                                     **no_window_kwargs()).stdout.strip()
                 self.git_ver.setText(f"Git: {out}")
             except Exception:  # noqa: BLE001
                 self.git_ver.setText("")

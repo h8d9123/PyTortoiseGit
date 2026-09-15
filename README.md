@@ -52,6 +52,15 @@ python packaging/build.py --clean
 运行时）。分发时把整个 `dist/PyTortoiseGit/` 目录拷贝即可；若拷贝到其他路径，
 需重新运行一次右键菜单安装对话框以更新入口路径。
 
+打包后建议运行产物验证（检查资源是否齐全、体积、能否启动、无黑控制台窗口、
+日志无异常）：
+
+```bash
+python scripts/verify_dist.py
+# 或在 CI 中以 pytest 形式启用：
+# PYTG_PACKAGED=1 pytest test/test_packaged_smoke.py
+```
+
 ## 测试
 
 功能测试点（手动 / UI 自动化）见 [docs/功能测试点.md](docs/功能测试点.md)。

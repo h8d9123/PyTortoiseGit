@@ -57,6 +57,7 @@ from ..git.repo import Repository
 from ..res.strings import set_language, tr, tr_settings
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
+from ..utils.proc import no_window_kwargs
 from .settings_data import (
     HOOK_TYPES,
     BugTraqAssociation,
@@ -395,7 +396,8 @@ class _GeneralPage(_SettingPage):
             return
         try:
             out = subprocess.run([git, "--version"], capture_output=True,
-                                 text=True).stdout.strip()
+                                 text=True,
+                                 **no_window_kwargs()).stdout.strip()
             if self.version_label is not None:
                 self.version_label.setText(out or tr("set_ver", "Version:"))
         except Exception:

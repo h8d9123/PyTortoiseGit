@@ -1,11 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec：构建 PyTortoiseGit Windows 桌面版。
+"""PyInstaller spec：构建 PyTortoiseGit 桌面版（Windows / Linux）。
 
 用法：
     pyinstaller packaging/PyTortoiseGit.spec --noconfirm
-产物：dist/PyTortoiseGit/PyTortoiseGit.exe（onedir 模式）。
+产物：dist/PyTortoiseGit/PyTortoiseGit[.exe]（onedir 模式）。
 """
 
+import re
+import sys
 from pathlib import Path
 
 # 所有相对路径一律基于仓库根目录解析，避免受调用时工作目录 / spec 目录影响。
@@ -112,35 +114,76 @@ a = Analysis(
     noarchive=False,
 )
 # ---- 精简 Qt 依赖 ----
-# PyInstaller 的 Qt 钩子会按插件连带收集 DLL：虚拟键盘插件 -> Quick/Qml 全家桶；
+# PyInstaller 的 Qt 钩子会按插件连带收集运行库：虚拟键盘插件 -> Quick/Qml 全家桶；
 # qpdf/qsvg -> Qt6Pdf/Qt6Svg；tls/networkinformation -> Qt6Network。本程序只用
-# QtCore/QtGui/QtWidgets，这些都用不到，统一剔除（含软件 OpenGL 兜底 DLL）。
-_DROP_BINARIES = {
-    "opengl32sw.dll",
-    "qt6quick.dll", "qt6quick3d.dll", "qt6quick3dutils.dll",
-    "qt6quick3druntimerender.dll", "qt6quick3dparticles.dll",
-    "qt6qml.dll", "qt6qmlcompiler.dll", "qt6qmlmeta.dll", "qt6qmlmodels.dll",
-    "qt6qmlworkerscript.dll", "qt6qmlnet.dll", "qt6qmlxmllistmodel.dll",
-    "qt6virtualkeyboard.dll", "qt6virtualkeyboardqml.dll",
-    "qt6pdf.dll", "qt6svg.dll", "qt6network.dll", "qt6opengl.dll",
-    "qt6openglwidgets.dll", "qt6shadertools.dll",
-    "qtnetwork.pyd", "qtpdf.pyd", "qtsvg.pyd", "qtsvgwidgets.pyd",
-    "qtqml.pyd", "qtquick.pyd", "qtquick3d.pyd", "qtvirtualkeyboard.pyd",
-    "qmlls.exe",
-}
-_DROP_PLUGIN_PARTS = (
-    "/platforminputcontexts/", "/virtualkeyboard/", "/qmltooling/",
-    "/imageformats/qpdf", "/imageformats/qsvg", "/iconengines/qsvgicon",
-    "/tls/", "/networkinformation/", "/generic/qtuiotouchplugin",
-    "/platforms/qdirect2d",
+# QtCore/QtGui/QtWidgets，这些都用不到，统一剔除（含软件 OpenGL 兜底）。
+#
+# 平台命名差异：Windows 运行库为 Qt6Xxx.dll、PySide6 扩展为 QtXxx.pyd；Linux 为
+# libQt6Xxx.so.6 / QtXxx.abi3.so。这里先归一到统一的 Qt 模块 key（如 quick/core），
+# 再按 key 剔除，避免为两套命名各维护一份清单。
+_IS_WINDOWS = sys.platform.startswith("win")
+_LIB_EXT = "dll" if _IS_WINDOWS else "so.6"
+
+
+def _qt_key(name: str) -> str:
+    """把二进制文件名归一为 Qt 模块 key。
+
+    libQt6Quick.so.6 / Qt6Quick.dll -> "quick"
+    QtQuick.pyd / QtQuick.abi3.so  -> "quick"（PySide6 扩展才剥掉 "qt"）
+    libqico.so / qico.dll          -> "qico"（插件名不做 "qt" 剥离，避免 qtga->ga）
+    """
+    n = name.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    is_pyext = n.endswith(".pyd") or re.search(
+        r"\.(abi3|cpython-[^.]+)\.so(\.\d+)*$", n) is not None
+    n = re.sub(r"\.(abi3|cpython-[^.]+)?\.?so(\.\d+)*$", "", n)
+    n = re.sub(r"\.(dll|pyd|exe)$", "", n)
+    if n.startswith("lib"):
+        n = n[3:]
+    if n.startswith("qt6"):
+        n = n[3:]
+    elif is_pyext and n.startswith("qt"):
+        n = n[2:]
+    return n
+
+
+# 未使用 Qt 模块运行库：按归一化 key 前缀剔除（Quick/Qml 全家桶、虚拟键盘、
+# Pdf、Svg、Network、OpenGL、着色器工具、以及本程序用不到的显示平台后端）。
+_DROP_MODULE_PREFIXES = (
+    "quick", "qml", "virtualkeyboard", "pdf", "svg", "network", "opengl",
+    "shadertools", "wayland", "eglfs", "wlshellintegration", "qmlls",
 )
+# 未使用 Qt 插件：按归一化 key 剔除（各平台通用的 qXxx 插件名）。
+_DROP_PLUGIN_KEYS = {
+    "qpdf", "qsvg", "qsvgicon", "qtga", "qtiff", "qicns", "qwbmp", "qwebp",
+    "qopensslbackend", "qcertonlybackend", "qglib", "qnetworkmanager",
+    "qtvirtualkeyboardplugin", "qtuiotouchplugin", "qdirect2d",
+}
+# 整类插件目录：本程序不用的 QML 工具 / 虚拟键盘 / TLS / 网络信息插件。
+_DROP_PLUGIN_DIRS = [
+    "/qmltooling/", "/virtualkeyboard/", "/tls/", "/networkinformation/",
+]
+if _IS_WINDOWS:
+    # Windows 由系统 IMM 处理输入法，平台输入法上下文插件不需要。
+    _DROP_PLUGIN_DIRS.append("/platforminputcontexts/")
+else:
+    # Linux 保留 ibus/compose 输入法上下文，仅剔除用不到的其他显示平台插件。
+    _DROP_PLUGIN_KEYS |= {
+        "qeglfs", "qminimalegl", "qlinuxfb", "qvnc", "qvkkhrdisplay",
+        "qwayland-egl", "qwayland-generic",
+        "qeglfs-emu-integration", "qeglfs-kms-egldevice-integration",
+        "qeglfs-x11-integration", "qxcb-egl-integration", "qxcb-glx-integration",
+    }
 
 
 def _keep_binary(entry) -> bool:
-    low = entry[0].replace("\\", "/").lower()
-    if low.rsplit("/", 1)[-1] in _DROP_BINARIES:
+    raw = entry[0].replace("\\", "/")
+    low = raw.lower()
+    if any(d in low for d in _DROP_PLUGIN_DIRS):
         return False
-    return not any(part in low for part in _DROP_PLUGIN_PARTS)
+    key = _qt_key(raw)
+    if key.startswith(_DROP_MODULE_PREFIXES) or key in _DROP_PLUGIN_KEYS:
+        return False
+    return True
 
 
 a.binaries = [e for e in a.binaries if _keep_binary(e)]
@@ -149,10 +192,12 @@ a.datas = [e for e in a.datas
            if "/translations/" not in e[0].replace("\\", "/").lower()]
 
 # 构建期守护：确保瘦身后核心 Qt 运行库仍在（防止误删）。
-_BIN_NAMES = {Path(e[0].replace("\\", "/")).name.lower() for e in a.binaries}
-for _need in ("qt6core.dll", "qt6gui.dll", "qt6widgets.dll"):
-    if _need not in _BIN_NAMES:
-        raise SystemExit(f"[spec] 缺少必需运行库：{_need}（检查 _DROP_BINARIES）")
+_BIN_KEYS = {_qt_key(e[0]) for e in a.binaries}
+for _need in ("core", "gui", "widgets"):
+    if _need not in _BIN_KEYS:
+        raise SystemExit(
+            f"[spec] 缺少必需运行库：qt6{_need}.{_LIB_EXT}"
+            "（检查 _DROP_MODULE_PREFIXES）")
 
 pyz = PYZ(a.pure)
 

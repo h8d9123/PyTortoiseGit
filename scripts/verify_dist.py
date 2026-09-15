@@ -3,8 +3,8 @@
 打包 bug 常常只在运行冻结产物时才暴露（漏数据文件、缺 DLL、黑控制台窗口、
 hiddenimport 缺失），源码测试覆盖不到。本脚本直接在 dist 上做冒烟：
 
-  1. 目录/关键文件：exe、_internal、res 资源文件集（源码 vs 打包逐一对齐）、
-     关键 Qt DLL；
+  1. 目录/关键文件：可执行文件、_internal、res 资源文件集（源码 vs 打包逐一对齐）、
+     关键 Qt 运行库；
   2. 体积基线：超过阈值判失败，防插件/依赖回涨；
   3. 逐命令启动 exe：进程存活 + 出现可见窗口 + 期间无可见控制台窗口 +
      日志无新增 ERROR/Traceback。
@@ -46,7 +46,17 @@ DEFAULT_COMMANDS: list[tuple[str, str | None]] = [
     ("merge", "合并"),
 ]
 
-REQUIRED_QT_DLLS = ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll")
+# 平台相关：Windows 产物为 .exe + Qt6Xxx.dll，Linux 为无扩展名可执行 + libQt6Xxx.so.6。
+_IS_WINDOWS = os.name == "nt"
+EXE_NAME = "PyTortoiseGit.exe" if _IS_WINDOWS else "PyTortoiseGit"
+REQUIRED_QT_LIBS = (
+    ("PySide6/Qt6Core.dll", "PySide6/Qt6Gui.dll", "PySide6/Qt6Widgets.dll")
+    if _IS_WINDOWS else
+    ("PySide6/Qt/lib/libQt6Core.so.6",
+     "PySide6/Qt/lib/libQt6Gui.so.6",
+     "PySide6/Qt/lib/libQt6Widgets.so.6")
+)
+PYTHON_RUNTIME_GLOB = "python3*.dll" if _IS_WINDOWS else "libpython3*.so*"
 SKIP_SUFFIXES = {".py", ".pyc"}
 
 
@@ -59,7 +69,7 @@ def _packaged_res(dist: Path) -> Path:
 
 def check_files(dist: Path) -> list[str]:
     problems: list[str] = []
-    exe = dist / "PyTortoiseGit.exe"
+    exe = dist / EXE_NAME
     if not exe.is_file():
         problems.append(f"缺少可执行文件：{exe}")
     internal = dist / "_internal"
@@ -79,25 +89,34 @@ def check_files(dist: Path) -> list[str]:
             if not (packed_res / rel).is_file():
                 problems.append(f"未打包资源：pytortoisegit/res/{rel.as_posix()}")
 
-    # 关键 Qt DLL
-    pyside = internal / "PySide6"
-    for dll in REQUIRED_QT_DLLS:
-        if not (pyside / dll).is_file():
-            problems.append(f"缺少 Qt 运行库：PySide6/{dll}")
-    if not any(internal.glob("python3*.dll")):
-        problems.append("缺少 python 运行库：_internal/python3*.dll")
+    # 关键 Qt 运行库
+    for rel in REQUIRED_QT_LIBS:
+        if not (internal / rel).is_file():
+            problems.append(f"缺少 Qt 运行库：{rel}")
+    if not any(internal.glob(PYTHON_RUNTIME_GLOB)):
+        problems.append(f"缺少 python 运行库：_internal/{PYTHON_RUNTIME_GLOB}")
     return problems
 
 
 def dir_size_mb(path: Path) -> float:
-    total = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+    """按 inode 去重统计体积，避免 PyInstaller 的符号链接/硬链接被重复计算。"""
+    seen: set[tuple[int, int]] = set()
+    total = 0
+    for f in path.rglob("*"):
+        if not f.is_file():
+            continue
+        st = f.stat()
+        key = (st.st_dev, st.st_ino)
+        if key in seen:
+            continue
+        seen.add(key)
+        total += st.st_size
     return total / (1024 * 1024)
 
 
 # ---------------------------------------------------------------------------
 # Windows 窗口/进程探测（ctypes，无第三方依赖）
 # ---------------------------------------------------------------------------
-_IS_WINDOWS = os.name == "nt"
 if _IS_WINDOWS:
     _user32 = ctypes.windll.user32
     _kernel32 = ctypes.windll.kernel32
@@ -283,7 +302,7 @@ def main(argv: list[str]) -> int:
         commands = DEFAULT_COMMANDS
 
     print("== 启动冒烟 ==")
-    exe = dist / "PyTortoiseGit.exe"
+    exe = dist / EXE_NAME
     for command, _hint in commands:
         res = launch_and_probe(exe, command, args.repo, args.wait)
         status = "PASS" if res.ok else "FAIL"

@@ -48,9 +48,10 @@ pip install pyinstaller
 python packaging/build.py --clean
 ```
 
-产物在 `dist/PyTortoiseGit/PyTortoiseGit.exe`（onedir 模式，含 PySide6
-运行时）。分发时把整个 `dist/PyTortoiseGit/` 目录拷贝即可；若拷贝到其他路径，
-需重新运行一次右键菜单安装对话框以更新入口路径。
+产物在 `dist/PyTortoiseGit/`（onedir 模式，含 PySide6 运行时）：Windows 为
+`PyTortoiseGit.exe`，Linux 为 `PyTortoiseGit`。分发时把整个
+`dist/PyTortoiseGit/` 目录拷贝即可；若拷贝到其他路径，需重新运行一次右键菜单
+安装对话框以更新入口路径。
 
 打包后建议运行产物验证（检查资源是否齐全、体积、能否启动、无黑控制台窗口、
 日志无异常）：

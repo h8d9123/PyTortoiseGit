@@ -286,6 +286,13 @@ class MainMenuDlg(QMainWindow):
             tr("repo_col_commit", "Commit"),
             tr("repo_col_path", "Path"),
         ])
+        repo_header = self.repo_tree.header()
+        repo_header.setStretchLastSection(True)
+        # 左面板较窄，给名称/状态/提交信息合理宽度，路径列占余量；
+        # 截断项由 tooltip 提供完整文本。
+        self.repo_tree.setColumnWidth(0, 120)
+        self.repo_tree.setColumnWidth(1, 55)
+        self.repo_tree.setColumnWidth(2, 140)
         self.repo_tree.setRootIsDecorated(True)
         self.repo_tree.setIndentation(16)
         self.repo_tree.itemClicked.connect(self._on_repo_clicked)
@@ -376,7 +383,7 @@ class MainMenuDlg(QMainWindow):
         split.addWidget(right)
         split.setStretchFactor(0, 2)
         split.setStretchFactor(1, 3)
-        split.setSizes([350, 570])
+        split.setSizes([470, 450])
         self.setCentralWidget(split)
         self._populate_folder_tree()
 
@@ -1001,9 +1008,12 @@ class MainMenuDlg(QMainWindow):
                 repo = Repository.open(path)
             except Exception:
                 continue
+            subject = self._commit_subject(path)
             item = QTreeWidgetItem([
-                repo.name, repo.current_branch(),
-                self._commit_subject(path), path])
+                repo.name, repo.current_branch(), subject, path])
+            for col, text in enumerate(
+                    (repo.name, repo.current_branch(), subject, path)):
+                item.setToolTip(col, text)
             item.setData(0, ROLE_PATH, path)
             item.setData(0, ROLE_KIND, "repo")
             self.repo_tree.addTopLevelItem(item)
@@ -1038,6 +1048,9 @@ class MainMenuDlg(QMainWindow):
                 name = os.path.basename(e.path.rstrip("/\\"))
                 sub = QTreeWidgetItem([
                     name, e.status_text, (e.sha1 or "")[:8], sub_abs])
+                for _c, _t in enumerate(
+                        (name, e.status_text, (e.sha1 or ""), sub_abs)):
+                    sub.setToolTip(_c, _t)
                 sub.setData(0, ROLE_PATH, sub_abs)
                 sub.setData(0, ROLE_KIND, "submodule")
                 sub.setData(0, ROLE_PARENT, repo_path)

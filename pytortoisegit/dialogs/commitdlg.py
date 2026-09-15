@@ -222,9 +222,10 @@ class CommitDlg(QDialog):
         self.status_tree.setColumnCount(len(cols))
         self.status_tree.setHeaderLabels(cols)
         self.status_tree.setColumnWidth(0, 200)
-        self.status_tree.setColumnWidth(1, 52)
-        self.status_tree.setColumnWidth(2, 72)
+        self.status_tree.setColumnWidth(1, 56)
+        self.status_tree.setColumnWidth(2, 96)   # Status：容纳 "Non-versioned"
         self.status_tree.setColumnWidth(3, 62)
+        self.status_tree.setColumnWidth(4, 62)
         self.status_tree.setIndentation(12)
         self.status_tree.itemChanged.connect(self._on_item_changed)
         self.status_tree.itemDoubleClicked.connect(self._on_item_double_clicked)
@@ -627,6 +628,9 @@ class CommitDlg(QDialog):
         color = QColor(r.color)
         item.setForeground(0, color)
         item.setForeground(2, color)
+        # 列宽有限时 Qt 会省略号截断，tooltip 提供完整文本
+        item.setToolTip(0, r.display_path)
+        item.setToolTip(2, r.action)
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
         item.setCheckState(0, Qt.CheckState.Checked if self._checked.get(r.path)
                            else Qt.CheckState.Unchecked)

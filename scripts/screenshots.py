@@ -166,8 +166,12 @@ def main(argv):
                            ("udiff", "settings_udiff"),
                            ("advanced", "settings_advanced")):
             item = dlg._items.get(key)
-            if item is not None:
-                dlg.tree.setCurrentItem(item)
+            if item is None:
+                # 当前平台无此页（如 Linux 无 win11menu），跳过而不是
+                # 截到上一页导致内容重复。
+                print("skip", label, f"({key} 无此页)")
+                continue
+            dlg.tree.setCurrentItem(item)
             _shot(app, dlg, label, wait=0.5)
 
     if should("log"):

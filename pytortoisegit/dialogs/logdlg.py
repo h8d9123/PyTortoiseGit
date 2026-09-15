@@ -108,6 +108,9 @@ class LogDlg(QDialog):
         self.date_to.setDate(QDate(2099, 12, 31))
         self.search_edit = QLineEdit(self)
         self.search_edit.setPlaceholderText("author:xxx grep:yyy")
+        self.search_edit.setToolTip(tr(
+            "log_filter_tip",
+            "Filter syntax: author:xxx / grep:yyy, Enter to refresh"))
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.returnPressed.connect(self._populate)
         self.jump_combo = QComboBox(self)

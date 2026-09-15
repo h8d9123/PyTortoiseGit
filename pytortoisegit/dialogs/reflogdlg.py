@@ -122,6 +122,10 @@ class ReflogDlg(QDialog):
         self.table.setAlternatingRowColors(True)
         header = self.table.horizontalHeader()
         header.setStretchLastSection(True)
+        # 选择器/日期默认 100px 会把 "HEAD@{2026-09-15 22:15}" 与日期截断，
+        # 按内容放宽；信息列自适应剩余宽度。
+        for col, width in ((0, 230), (1, 84), (2, 180)):
+            self.table.setColumnWidth(col, width)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._on_menu)
         self.table.currentCellChanged.connect(
@@ -193,6 +197,7 @@ class ReflogDlg(QDialog):
                 item = QTableWidgetItem(text)
                 item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
                 item.setData(Qt.ItemDataRole.UserRole, e.hash_)
+                item.setToolTip(text)
                 self.table.setItem(row, col, item)
 
     def _sync_search_row(self, row: int):

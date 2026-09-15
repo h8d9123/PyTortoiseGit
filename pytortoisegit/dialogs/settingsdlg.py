@@ -127,6 +127,13 @@ class _SettingPage(QWidget):
                 continue
             wgt.setParent(self)
             rc_mod.place_widget(self, fu, ctrl, wgt)
+            # RC 模板高度按固定行数给定，含换行的标签需按实际文本增高，
+            # 否则末尾内容会被裁掉。
+            from PySide6.QtWidgets import QLabel as _QLabel
+            if isinstance(wgt, _QLabel) and wgt.wordWrap():
+                hint = wgt.sizeHint().height()
+                if hint > wgt.height():
+                    wgt.resize(wgt.width(), hint)
             self._ctl[ctrl.ctrl_id] = wgt
 
     def _make_control(self, ctrl):
@@ -141,6 +148,10 @@ class _SettingPage(QWidget):
             elif isinstance(wgt, (QCheckBox, QRadioButton, QPushButton)):
                 wgt.setText(text)
             elif isinstance(wgt, QLabel):
+                if "\\n" in text:
+                    # RC 里是字面量 \n（未转义），原样显示会被截断；转为换行并自动换行
+                    text = text.replace("\\n", "\n")
+                    wgt.setWordWrap(True)
                 wgt.setText(text)
         return wgt
 

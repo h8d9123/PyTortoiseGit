@@ -525,6 +525,7 @@ STRINGS: Dict[str, str] = {
     # ---- 日志对话框（logdlg）----
     "log_msg_hint": "提交信息…",
     "log_filter": "过滤…",
+    "log_filter_tip": "过滤语法：author:xxx / grep:yyy，回车刷新",
     "log_help": "搜索语法：author:xxx / grep:yyy，回车刷新。\n双击提交可与上一版本比较。",
     "log_commits": "个提交",
     # ---- 提交对话框（commitdlg）----

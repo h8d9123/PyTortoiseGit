@@ -1,10 +1,12 @@
-"""scripts/screenshots.py —— 生成各主要对话框截图到 screenshots/。
+"""scripts/screenshots.py —— 生成各主要对话框截图到 screenshots/Windows/。
 
 用法：
     python scripts/screenshots.py            # 全部
     python scripts/screenshots.py settings   # 只生成指定窗口
 
 默认使用 offscreen 平台，可在无显示环境运行。
+    PYTG_SCREENSHOT_DIR=screenshots/ubuntu22 python scripts/screenshots.py
+可自定义输出目录（如按操作系统分目录）。
 """
 
 from __future__ import annotations
@@ -18,7 +20,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-OUT = os.environ.get("PYTG_SCREENSHOT_DIR") or os.path.join(ROOT, "screenshots")
+OUT = (os.environ.get("PYTG_SCREENSHOT_DIR")
+       or os.path.join(ROOT, "screenshots", "Windows"))
 
 
 def _pump(app, seconds: float):
@@ -220,7 +223,8 @@ def main(argv):
         menu.popup(dlg.mapToGlobal(dlg.rect().center()))
         _pump(app, 0.4)
         menu.grab().save(os.path.join(OUT, "contextmenu.png"))
-        print("saved screenshots/contextmenu.png")
+        print("saved", os.path.relpath(
+            os.path.join(OUT, "contextmenu.png"), ROOT))
         menu.close()
         dlg.deleteLater()
 

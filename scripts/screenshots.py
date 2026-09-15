@@ -18,7 +18,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-OUT = os.path.join(ROOT, "screenshots")
+OUT = os.environ.get("PYTG_SCREENSHOT_DIR") or os.path.join(ROOT, "screenshots")
 
 
 def _pump(app, seconds: float):

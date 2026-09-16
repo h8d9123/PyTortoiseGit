@@ -95,6 +95,57 @@ _ANCHORS = {
 }
 
 
+def _fold_key(path: str) -> str:
+    """路径比较用键：统一为正斜杠，Windows 下忽略大小写。
+
+    注意不能用 os.path.normcase：它在 Windows 上会把 '/' 改写成 '\\'，
+    导致 `target.startswith(dir + "/")` 这类前缀比较失效（目录过滤失效）。
+    """
+    p = str(path or "").replace("\\", "/")
+    return p.lower() if os.name == "nt" else p
+
+
+def _normalize_filter_paths(repo: Repository, paths) -> List[str]:
+    """把过滤路径规范成仓库内相对路径（正斜杠）。
+
+    命令行（TortoiseGitProc / 资源管理器右键 / 托盘菜单）传进来的是**绝对**
+    路径，而状态行里的 path 是仓库**相对**路径。不归一化的话
+    `_row_matches_paths` 会把全部条目过滤掉，提交对话框里一个文件都不显示
+    （对齐原版经 CTGitPathList 统一转换的做法，见 commands/log.py 同类处理）。
+
+    返回空串列表 [""] 表示“整个项目”。
+    """
+    root = os.path.abspath(repo.root)
+    out: List[str] = []
+    for raw in paths or []:
+        p = str(raw or "").strip()
+        if not p:
+            continue
+        if os.path.isabs(p):
+            absolute = os.path.abspath(p)
+            if _fold_key(absolute) == _fold_key(root):
+                return [""]                      # 仓库根 => 整个项目
+            try:
+                rel = os.path.relpath(absolute, root)
+            except ValueError:
+                continue                         # 跨盘符等无法求相对路径
+            if rel == os.pardir or rel.startswith(os.pardir + os.sep):
+                continue                         # 仓库之外，忽略
+            p = rel
+        p = p.replace("\\", "/")
+        while p.startswith("./"):
+            p = p[2:]
+        p = p.strip("/")
+        if not p or p == ".":
+            return [""]
+        p = os.path.normpath(p).replace("\\", "/")
+        if p == os.pardir or p.startswith(os.pardir + "/"):
+            continue                             # 相对路径也指向仓库外，忽略
+        if p not in out:
+            out.append(p)
+    return out or [""]
+
+
 class CommitDlg(QDialog):
     """提交对话框。"""
 
@@ -109,7 +160,7 @@ class CommitDlg(QDialog):
                  parent=None):
         super().__init__(parent, Qt.WindowType.Window)
         self.repo = repo
-        self.paths: List[str] = list(paths or []) or [""]
+        self.paths: List[str] = _normalize_filter_paths(repo, paths)
         self.status = GitStatus(repo)
         self.index = GitIndex(repo)
         self.listctrl = GitStatusList(repo)
@@ -462,9 +513,10 @@ class CommitDlg(QDialog):
         """Show Whole Project 关闭时，仅显示所选路径下的文件。"""
         if self._whole or self.paths == [""]:
             return True
+        target = _fold_key(path)
         for spec in self.paths:
-            s = spec.strip("/")
-            if not s or path == s or path.startswith(s + "/"):
+            s = _fold_key(spec).strip("/")
+            if not s or target == s or target.startswith(s + "/"):
                 return True
         return False
 

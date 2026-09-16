@@ -158,6 +158,69 @@ def test_commit_whole_project_filter(qapp, repo):
     assert "new.txt" in paths2
 
 
+def test_commit_filter_accepts_absolute_paths(qapp, repo):
+    """命令行/资源管理器右键传入绝对路径时也要能过滤（原版经 CTGitPathList 转换）。
+
+    回归：绝对路径与状态行的相对路径不匹配时，列表会被全部滤空，
+    提交对话框里看不到任何文件改动。
+    """
+    from PySide6.QtCore import Qt
+    from pytortoisegit.dialogs.commitdlg import (
+        CommitDlg, _normalize_filter_paths)
+
+    absolute = os.path.join(repo.root, "a.txt")
+    assert _normalize_filter_paths(repo, [absolute]) == ["a.txt"]
+    # Windows 资源管理器/命令行常带反斜杠
+    assert _normalize_filter_paths(
+        repo, [absolute.replace("/", "\\")]) == ["a.txt"]
+    # 仓库根 => 整个项目
+    assert _normalize_filter_paths(repo, [repo.root]) == [""]
+
+    dlg = _smoke(qapp, lambda: CommitDlg(repo, paths=[absolute]))
+    paths = [it.data(0, Qt.ItemDataRole.UserRole + 1).path
+             for it in dlg._iter_file_items()]
+    assert paths, "绝对路径不应把改动文件全部过滤掉"
+    assert all(p == "a.txt" for p in paths)
+    assert not dlg.chk_whole_project.isChecked()
+
+
+def test_commit_filter_path_normalization_edge_cases(repo):
+    """目录/点号/仓库外路径的规范化，且不得抛异常。"""
+    from pytortoisegit.dialogs.commitdlg import _normalize_filter_paths
+
+    assert _normalize_filter_paths(repo, ["./a.txt"]) == ["a.txt"]
+    assert _normalize_filter_paths(repo, ["."]) == [""]
+    assert _normalize_filter_paths(repo, []) == [""]
+    # 仓库外的路径被忽略，回退为“整个项目”，不会得到空列表
+    assert _normalize_filter_paths(repo, ["../outside.txt"]) == [""]
+    assert _normalize_filter_paths(
+        repo, [os.path.join(os.path.dirname(repo.root), "outside.txt")]) == [""]
+    # 无盘符的根路径在 Windows 上曾是 os.path.relpath 的崩溃点
+    _normalize_filter_paths(repo, ["/a.txt"])
+    _normalize_filter_paths(repo, ["D:\\other\\x.txt"])
+
+
+def test_commit_filter_directory_shows_nested_files(qapp, git_repo):
+    """按目录过滤时应列出该目录下的全部文件。"""
+    from pathlib import Path
+    from PySide6.QtCore import Qt
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+
+    root = Path(git_repo.root)
+    (root / "sub" / "deep").mkdir(parents=True)
+    (root / "sub" / "b.txt").write_text("y\n", encoding="utf-8")
+    (root / "sub" / "deep" / "c.txt").write_text("z\n", encoding="utf-8")
+    git_repo.runner.run("add", "-A")
+    git_repo.runner.run("commit", "-m", "dirs")
+    (root / "sub" / "b.txt").write_text("y\nz\n", encoding="utf-8")
+    (root / "sub" / "deep" / "c.txt").write_text("z\nw\n", encoding="utf-8")
+
+    dlg = _smoke(qapp, lambda: CommitDlg(git_repo, paths=["sub"]))
+    paths = sorted(it.data(0, Qt.ItemDataRole.UserRole + 1).path
+                   for it in dlg._iter_file_items())
+    assert paths == ["sub/b.txt", "sub/deep/c.txt"]
+
+
 def test_commit_view_patch_opens_diff(qapp, repo, monkeypatch):
     from pytortoisegit.dialogs import diffdlg as dd
     from pytortoisegit.dialogs.commitdlg import CommitDlg

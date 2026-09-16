@@ -52,6 +52,7 @@ from ..git.statuslist import GitStatusList, StatusRow
 from ..res.strings import format_string, tr
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
+from ..utils.paths import normalize_filter_paths, path_matches_filter
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +74,7 @@ class ChangedDlg(QDialog):
                  parent=None):
         super().__init__(parent, Qt.WindowType.Window)
         self.repo = repo
-        self.paths: List[str] = list(paths or []) or [""]
+        self.paths: List[str] = normalize_filter_paths(repo.root, paths)
         self.index = GitIndex(repo)
         self.stash = GitStash(repo)
         self.listctrl = GitStatusList(repo)
@@ -240,8 +241,10 @@ class ChangedDlg(QDialog):
         flags = self._show_flags()
         self.m_bool_show.update(flags)
         self._populate()
-        counts = self.listctrl.statistics()
-        added, removed = self.listctrl.line_stats()
+        # 统计只覆盖实际列出的条目（原版在 GetStatus 阶段就按路径过滤了）
+        visible = [r for r in self.rows if self._row_visible(r)]
+        counts = self.listctrl.statistics(visible)
+        added, removed = self.listctrl.line_stats(visible)
         text = format_string(
             tr("changes_stats",
                "line: {add}(+) {remove}(-) files: normal={normal}, non-versioned={unver}, "
@@ -383,6 +386,10 @@ class ChangedDlg(QDialog):
 
     def _row_visible(self, r: StatusRow) -> bool:
         flags = self.m_bool_show
+        # 未勾选 Whole Project 时只列所选路径下的条目
+        # （对齐 ChangedDlg.cpp:168 的 GetStatus(m_bWholeProject ? nullptr : &m_pathList)）
+        if not flags.get("whole", True) and not path_matches_filter(self.paths, r.path):
+            return False
         if r.state == "ignored" and not flags.get("ignored"):
             return False
         if r.state == "untracked" and not flags.get("unversioned"):

@@ -9,7 +9,9 @@ from .dispatcher import CommandContext, register
 
 def _changed(ctx: CommandContext):
     repo = repo_from_cl(ctx.cl)
-    dlg = ChangedDlg(repo, parent=None)
+    # 与 repostatus 一致：把 /path 透传给对话框，由它按路径限定列表
+    paths = ctx.cl.all_values("path") if ctx.cl else []
+    dlg = ChangedDlg(repo, paths=paths or None, parent=None)
     dlg.exec()
     return "ok"
 

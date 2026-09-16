@@ -239,3 +239,60 @@ def absolutize(path: str, base_cwd: str | None = None) -> str:
     if not os.path.isabs(p):
         p = os.path.join(cwd, p)
     return os.path.normpath(p)
+
+
+def normalize_filter_paths(root: str, paths: Iterable[str] | None) -> List[str]:
+    """把过滤路径规范成仓库内相对路径（正斜杠）。
+
+    命令行（TortoiseGitProc / 资源管理器右键 / 托盘菜单）传进来的是**绝对**
+    路径，而 git 状态里的 path 是仓库**相对**路径；不归一化会让前缀比较永远
+    不匹配，把列表过滤成空。对齐原版经 CTGitPathList 统一转换的做法。
+
+    返回 `[""]` 表示“整个项目”。
+    """
+    base = os.path.abspath(root)
+    out: List[str] = []
+    for raw in paths or []:
+        p = str(raw or "").strip()
+        if not p:
+            continue
+        if os.path.isabs(p):
+            absolute = os.path.abspath(p)
+            if _norm_ci(absolute) == _norm_ci(base):
+                return [""]                      # 仓库根 => 整个项目
+            try:
+                rel = os.path.relpath(absolute, base)
+            except ValueError:
+                continue                         # 跨盘符等无法求相对路径
+            if rel == os.pardir or rel.startswith(os.pardir + os.sep):
+                continue                         # 仓库之外，忽略
+            p = rel
+        p = p.replace("\\", "/")
+        while p.startswith("./"):
+            p = p[2:]
+        p = p.strip("/")
+        if not p or p == ".":
+            return [""]
+        p = os.path.normpath(p).replace("\\", "/")
+        if p == os.pardir or p.startswith(os.pardir + "/"):
+            continue                             # 相对路径也指向仓库外，忽略
+        if p not in out:
+            out.append(p)
+    return out or [""]
+
+
+def path_matches_filter(paths: Iterable[str] | None, path: str) -> bool:
+    """path 是否落在过滤路径内。
+
+    空列表或 `[""]` 表示“整个项目”（对齐原版 pathList 为空/根目录的语义）。
+    目录前缀按 "/" 逐段比较，避免 "sub" 误匹配 "subx/a.txt"。
+    """
+    specs = list(paths or [])
+    if not specs or specs == [""]:
+        return True
+    target = _norm_ci(path)
+    for spec in specs:
+        s = _norm_ci(spec).strip("/")
+        if not s or target == s or target.startswith(s + "/"):
+            return True
+    return False

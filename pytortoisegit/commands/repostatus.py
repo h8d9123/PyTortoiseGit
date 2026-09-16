@@ -8,7 +8,10 @@ from .dispatcher import CommandContext, register
 @register("repostatus")
 def repostatus(ctx: CommandContext):
     repo = repo_from_cl(ctx.cl)
-    dlg = ChangedDlg(repo, paths=None, parent=None)
+    # /path 必须透传：原版 RepoStatusCommand 会 dlg.m_pathList = pathList，
+    # 由 GetStatus() 按路径限定列表；不透传则永远列整个仓库。
+    paths = ctx.cl.all_values("path") if ctx.cl else []
+    dlg = ChangedDlg(repo, paths=paths or None, parent=None)
     dlg.exec()
     return "ok"
 

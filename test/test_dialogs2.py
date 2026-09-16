@@ -165,16 +165,16 @@ def test_commit_filter_accepts_absolute_paths(qapp, repo):
     提交对话框里看不到任何文件改动。
     """
     from PySide6.QtCore import Qt
-    from pytortoisegit.dialogs.commitdlg import (
-        CommitDlg, _normalize_filter_paths)
+    from pytortoisegit.dialogs.commitdlg import CommitDlg
+    from pytortoisegit.utils.paths import normalize_filter_paths
 
     absolute = os.path.join(repo.root, "a.txt")
-    assert _normalize_filter_paths(repo, [absolute]) == ["a.txt"]
+    assert normalize_filter_paths(repo.root, [absolute]) == ["a.txt"]
     # Windows 资源管理器/命令行常带反斜杠
-    assert _normalize_filter_paths(
-        repo, [absolute.replace("/", "\\")]) == ["a.txt"]
+    assert normalize_filter_paths(
+        repo.root, [absolute.replace("/", "\\")]) == ["a.txt"]
     # 仓库根 => 整个项目
-    assert _normalize_filter_paths(repo, [repo.root]) == [""]
+    assert normalize_filter_paths(repo.root, [repo.root]) == [""]
 
     dlg = _smoke(qapp, lambda: CommitDlg(repo, paths=[absolute]))
     paths = [it.data(0, Qt.ItemDataRole.UserRole + 1).path
@@ -186,18 +186,19 @@ def test_commit_filter_accepts_absolute_paths(qapp, repo):
 
 def test_commit_filter_path_normalization_edge_cases(repo):
     """目录/点号/仓库外路径的规范化，且不得抛异常。"""
-    from pytortoisegit.dialogs.commitdlg import _normalize_filter_paths
+    from pytortoisegit.utils.paths import normalize_filter_paths
 
-    assert _normalize_filter_paths(repo, ["./a.txt"]) == ["a.txt"]
-    assert _normalize_filter_paths(repo, ["."]) == [""]
-    assert _normalize_filter_paths(repo, []) == [""]
+    assert normalize_filter_paths(repo.root, ["./a.txt"]) == ["a.txt"]
+    assert normalize_filter_paths(repo.root, ["."]) == [""]
+    assert normalize_filter_paths(repo.root, []) == [""]
     # 仓库外的路径被忽略，回退为“整个项目”，不会得到空列表
-    assert _normalize_filter_paths(repo, ["../outside.txt"]) == [""]
-    assert _normalize_filter_paths(
-        repo, [os.path.join(os.path.dirname(repo.root), "outside.txt")]) == [""]
+    assert normalize_filter_paths(repo.root, ["../outside.txt"]) == [""]
+    assert normalize_filter_paths(
+        repo.root,
+        [os.path.join(os.path.dirname(repo.root), "outside.txt")]) == [""]
     # 无盘符的根路径在 Windows 上曾是 os.path.relpath 的崩溃点
-    _normalize_filter_paths(repo, ["/a.txt"])
-    _normalize_filter_paths(repo, ["D:\\other\\x.txt"])
+    normalize_filter_paths(repo.root, ["/a.txt"])
+    normalize_filter_paths(repo.root, ["D:\\other\\x.txt"])
 
 
 def test_commit_filter_directory_shows_nested_files(qapp, git_repo):

@@ -253,10 +253,10 @@ class GitStatusList:
     # ------------------------------------------------------------------
     # 统计（对应 GetStatisticsString）
     # ------------------------------------------------------------------
-    def statistics(self) -> Dict[str, int]:
+    def statistics(self, rows: Optional[List[StatusRow]] = None) -> Dict[str, int]:
         counts = {"normal": 0, "non-versioned": 0, "modified": 0,
                   "added": 0, "deleted": 0, "conflicted": 0}
-        for r in self.rows:
+        for r in self.rows if rows is None else rows:
             if r.state == "untracked":
                 counts["non-versioned"] += 1
             elif r.state == "conflicted":
@@ -273,9 +273,10 @@ class GitStatusList:
                 counts["normal"] += 1
         return counts
 
-    def line_stats(self) -> Tuple[int, int]:
-        added = sum(r.lines_added for r in self.rows)
-        removed = sum(r.lines_removed for r in self.rows)
+    def line_stats(self, rows: Optional[List[StatusRow]] = None) -> Tuple[int, int]:
+        rows = self.rows if rows is None else rows
+        added = sum(r.lines_added for r in rows)
+        removed = sum(r.lines_removed for r in rows)
         return added, removed
 
 

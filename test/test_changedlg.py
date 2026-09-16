@@ -234,3 +234,170 @@ def test_changed_dialog_double_click_opens_merge(qapp, repo, monkeypatch):
     right = [v.line for v in frm.right_view.view_data]
     assert left == ["l1", "changed", "l3", "l4", ""]
     assert right == ["l1", "changed", "l3", "l4", "work"]
+
+
+# ---------------------------------------------------------------------------
+# 按 /path 限定列表（对齐 ChangedDlg.cpp:168 GetStatus(&m_pathList)）
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def tree_repo(tmp_path_factory):
+    """含子目录的仓库：根与两个子目录各有改动。"""
+    root = tmp_path_factory.mktemp("changedtree")
+    runner = GitRunner(cwd=str(root))
+    runner.init(str(root), initial_branch="main")
+    repo = Repository.open(str(root))
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    (root / "sub").mkdir()
+    (root / "other").mkdir()
+    for name in ("root.txt", "sub/a.txt", "other/b.txt"):
+        (root / name).write_text("x\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "init").returncode == 0
+    for name in ("root.txt", "sub/a.txt", "other/b.txt"):
+        (root / name).write_text("x\ny\nz\n", encoding="utf-8")
+    return repo
+
+
+def _shown_paths(dlg):
+    from PySide6.QtCore import Qt
+    out = []
+
+    def walk(it):
+        for i in range(it.childCount()):
+            c = it.child(i)
+            if c.data(0, Qt.ItemDataRole.UserRole + 1) is not None:
+                out.append(c.text(0))
+            walk(c)
+
+    for i in range(dlg.status_tree.topLevelItemCount()):
+        top = dlg.status_tree.topLevelItem(i)
+        if top.data(0, Qt.ItemDataRole.UserRole + 1) is not None:
+            out.append(top.text(0))
+        walk(top)
+    return sorted(out)
+
+
+def test_changed_dialog_filters_by_path(qapp, tree_repo):
+    """未勾选 Whole Project 时只列所选路径下的条目（原先会列出整个仓库）。"""
+    from pytortoisegit.dialogs.changedlg import ChangedDlg
+
+    dlg = _run_dialog(qapp, lambda: ChangedDlg(tree_repo, paths=["sub"]))
+    assert not dlg.chk_whole_project.isChecked()
+    assert _shown_paths(dlg) == ["sub/a.txt"]
+
+
+def test_changed_dialog_whole_project_toggle_shows_all(qapp, tree_repo):
+    """Whole Project 勾选框需真正生效（原先对列表毫无影响）。"""
+    from pytortoisegit.dialogs.changedlg import ChangedDlg
+
+    dlg = _run_dialog(qapp, lambda: ChangedDlg(tree_repo, paths=["sub"]))
+    assert _shown_paths(dlg) == ["sub/a.txt"]
+    dlg.chk_whole_project.setChecked(True)
+    loop_ms = 1200
+    from PySide6.QtCore import QEventLoop, QTimer
+    loop = QEventLoop()
+    QTimer.singleShot(loop_ms, loop.quit)
+    loop.exec()
+    assert _shown_paths(dlg) == ["other/b.txt", "root.txt", "sub/a.txt"]
+
+
+def test_changed_dialog_accepts_absolute_path(qapp, tree_repo):
+    """命令行/资源管理器传绝对路径时同样能限定（原版经 CTGitPathList 转换）。"""
+    from pytortoisegit.dialogs.changedlg import ChangedDlg
+
+    absolute = os.path.join(tree_repo.root, "sub")
+    dlg = _run_dialog(qapp, lambda: ChangedDlg(tree_repo, paths=[absolute]))
+    assert not dlg.chk_whole_project.isChecked()
+    assert _shown_paths(dlg) == ["sub/a.txt"]
+
+
+def test_changed_dialog_repo_root_means_whole(qapp, tree_repo):
+    """仓库根等价于整个项目，并禁用勾选框（对齐 ChangedDlg.cpp:93-97）。"""
+    from pytortoisegit.dialogs.changedlg import ChangedDlg
+
+    dlg = _run_dialog(qapp, lambda: ChangedDlg(tree_repo, paths=[tree_repo.root]))
+    assert dlg.paths == [""]
+    assert dlg.chk_whole_project.isChecked()
+    assert not dlg.chk_whole_project.isEnabled()
+    assert _shown_paths(dlg) == ["other/b.txt", "root.txt", "sub/a.txt"]
+
+
+def test_changed_dialog_stats_follow_filter(qapp, tree_repo):
+    """统计行需只覆盖实际列出的条目。"""
+    from pytortoisegit.dialogs.changedlg import ChangedDlg
+
+    dlg = _run_dialog(qapp, lambda: ChangedDlg(tree_repo, paths=["sub"]))
+    assert "2(+)" in dlg.info_label.toPlainText()
+    dlg.chk_whole_project.setChecked(True)
+    from PySide6.QtCore import QEventLoop, QTimer
+    loop = QEventLoop()
+    QTimer.singleShot(1200, loop.quit)
+    loop.exec()
+    assert "6(+)" in dlg.info_label.toPlainText()
+
+
+def test_repostatus_forwards_path(monkeypatch, tmp_path):
+    """原版 RepoStatusCommand 会 dlg.m_pathList = pathList：/path 必须透传。"""
+    from pytortoisegit import cmdline
+    from pytortoisegit.commands import repostatus as mod
+    from pytortoisegit.commands.dispatcher import CommandContext
+
+    root = tmp_path / "r"
+    root.mkdir()
+    runner = GitRunner(cwd=str(root))
+    runner.init(str(root), initial_branch="main")
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    (root / "f.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "init").returncode == 0
+    (root / "f.txt").write_text("a\nb\n", encoding="utf-8")
+
+    seen = {}
+
+    class _Fake:
+        def __init__(self, repo, paths=None, parent=None):
+            seen["paths"] = paths
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr(mod, "ChangedDlg", _Fake)
+    target = str(root / "f.txt")
+    cl = cmdline.parse(["/command:repostatus", f"/path:{target}"])
+    mod.repostatus(CommandContext(qapp=None, cl=cl))
+    assert seen.get("paths") == [target]
+
+
+def test_changed_command_forwards_path(monkeypatch, tmp_path):
+    """check_modifications / changed 同样透传 /path。"""
+    from pytortoisegit import cmdline
+    from pytortoisegit.commands import changed as mod
+    from pytortoisegit.commands.dispatcher import CommandContext
+
+    root = tmp_path / "r2"
+    root.mkdir()
+    runner = GitRunner(cwd=str(root))
+    runner.init(str(root), initial_branch="main")
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    (root / "f.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "init").returncode == 0
+
+    seen = {}
+
+    class _Fake:
+        def __init__(self, repo, paths=None, parent=None):
+            seen["paths"] = paths
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr(mod, "ChangedDlg", _Fake)
+    target = str(root / "f.txt")
+    cl = cmdline.parse(["/command:changed", f"/path:{target}"])
+    mod.changed(CommandContext(qapp=None, cl=cl))
+    assert seen.get("paths") == [target]

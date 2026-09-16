@@ -1067,12 +1067,46 @@ STRINGS: Dict[str, str] = {
     "push_sub": "递归子模块",
     "push_option": "推送选项(&O)：",
     "rename_name": "新名称(&N)：",
+    # ---- 仓库浏览器（RepositoryBrowser.cpp / IDD_REPOSITORY_BROWSER）----
     "repobrowser_path": "路径：",
     "repobrowser_rev": "修订：",
     "repobrowser_tree": "路径",
-    "repobrowser_name": "名称",
-    "repobrowser_mode": "模式",
-    "repobrowser_size": "大小",
+    "repobrowser_name": "文件名",              # IDS_STATUSLIST_COLFILENAME
+    "repobrowser_ext": "扩展名",               # IDS_STATUSLIST_COLEXT
+    "repobrowser_size": "大小",                # IDS_LOG_SIZE
+    # IDS_REPOBROWSE_INFO
+    "repobrowser_info": "{name}\n显示 {files} 个文件、{submodules} 个子模块和 {folders} 个文件夹，共 {total} 项",
+    # IDS_REPOBROWSE_INFOFILE
+    "repobrowser_info_file": "{name}\n大小 {size}",
+    # IDS_REPOBROWSE_INFOEXT
+    "repobrowser_info_ext": "子模块“{name}”\n修订 {rev}",
+    # IDS_REPOBROWSE_INFOMULTI
+    "repobrowser_info_multi": "已选择 {count} 项",
+    "repobrowser_help": "在选定修订处浏览仓库。\n双击文件夹进入；F5 刷新。\n点击列头可对文件列表排序。",
+    "size_bytes": "{n} 字节",
+    "repobrowser_open": "打开(&O)",             # IDS_REPOBROWSE_OPEN
+    "repobrowser_open_with": "打开方式(&W)…",   # IDS_LOG_POPUP_OPENWITH
+    "repobrowser_view_rev": "在默认编辑器中查看修订版本",  # IDS_LOG_POPUP_VIEWREV
+    "repobrowser_compare_wc": "与工作副本比较",  # IDS_LOG_POPUP_COMPARE
+    "repobrowser_show_log": "显示日志",          # IDS_MENULOG
+    "repobrowser_show_log_submodule": "显示子模块日志",  # IDS_LOG_SUBMODULE
+    "repobrowser_blame": "追溯…",                # IDS_LOG_POPUP_BLAME
+    "repobrowser_saveas": "另存为(&A)…",         # IDS_LOG_POPUP_SAVE / IDS_REPOBROWSE_SAVEAS
+    "repobrowser_prepare_diff": "标记为比较对象",  # IDS_PREPAREDIFF
+    "repobrowser_diff_now": "与 {name} 比较",     # IDS_MENUDIFFNOW
+    "repobrowser_copy_path": "复制路径到剪贴板",  # IDS_STATUSLIST_CONTEXT_COPY
+    "repobrowser_copy_hash": "复制提交哈希",      # IDS_COPY_COMMIT_HASH
+    "repobrowser_revert": "还原到此版本",         # IDS_LOG_POPUP_REVERTTOREV
+    "repobrowser_files_reverted": "{count} 个文件已还原到 {rev}。",  # IDS_STATUSLIST_FILESREVERTED
+    "repobrowser_checkout_failed": "无法检出文件 {path}\n版本 {rev}\n到 {file}。",
+    "repobrowser_submodule_update": "子模块 {path} 中不存在修订 {rev}。\n是否更新子模块？",
+    "repobrowser_error_title": "TortoiseGit",
+    "repobrowser_head_error": "无法获取 HEAD。",
+    "repobrowser_hash_error": "无法获取“{rev}”的哈希值。",
+    "repobrowser_object_error": "无法查找对象。",
+    "repobrowser_unknown_type": "发现未知的对象类型。",
+    "repobrowser_lookup_error": "无法查找路径。",
+    "repobrowser_open_repo_error": "无法打开仓库。",
     "req_start": "开始(&S)",
     "req_url": "仓库 URL(&U)",
     "req_end": "结束",

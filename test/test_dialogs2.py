@@ -1155,6 +1155,150 @@ def test_repobrowser_dialog(qapp, repo):
     assert dlg.list.topLevelItemCount() >= 1
 
 
+def test_repobrowser_pick_rev_uses_log_selection(qapp, git_repo, monkeypatch):
+    """点“修订”按钮应打开日志对话框选修订，并把选择回填。"""
+    from pathlib import Path
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs import logdlg
+    from pytortoisegit.dialogs.repobrowserdlg import RepositoryBrowserDlg
+
+    root = Path(git_repo.root)
+    (root / "a.txt").write_text("changed\n", encoding="utf-8")
+    git_repo.runner.run("add", "-A")
+    git_repo.runner.run("commit", "-m", "second")
+    first = git_repo.runner.run("rev-parse", "HEAD~1").stdout.strip()
+
+    seen = {}
+
+    class FakeLog:
+        selected_hash = first
+
+        def __init__(self, *args, **kwargs):
+            seen["select"] = kwargs.get("select")
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(logdlg, "LogDlg", FakeLog)
+
+    dlg = RepositoryBrowserDlg(git_repo)
+    dlg._pick_rev()
+    assert seen.get("select") is True, "应以 select 模式打开日志对话框"
+    assert dlg.rev == first
+    assert dlg.btn_revision.text() == first
+
+
+def test_repobrowser_root_selected_and_counts(qapp, git_repo):
+    """对齐 Refresh()：根目录为当前节点，信息栏给出文件/子模块/文件夹统计。"""
+    from pathlib import Path
+    from pytortoisegit.dialogs.repobrowserdlg import RepositoryBrowserDlg
+
+    root = Path(git_repo.root)
+    (root / "sub").mkdir()
+    (root / "sub" / "inner.txt").write_text("x\n", encoding="utf-8")
+    (root / "top.py").write_text("print(1)\n", encoding="utf-8")
+    git_repo.runner.run("add", "-A")
+    git_repo.runner.run("commit", "-m", "layout")
+
+    dlg = RepositoryBrowserDlg(git_repo)
+    # 原版 FillListCtrlForShadowTree(m_TreeRoot) —— 显示的是根目录内容
+    assert dlg.url_edit.text() == "/"
+    assert dlg._current_node is dlg.tree_root
+    names = [dlg.list.topLevelItem(i).text(0)
+             for i in range(dlg.list.topLevelItemCount())]
+    assert "sub" in names and "top.py" in names
+    # 文件夹恒排在文件之前（CRepoListCompareFunc 的 m_bFolder 兜底）
+    assert names.index("sub") < names.index("top.py")
+    info = dlg.info_label.text()
+    # sub/inner.txt 与 top.py 计 2 个文件，sub 计 1 个文件夹，共 3 项
+    assert "2 个文件" in info
+    assert "1 个文件夹" in info
+    assert "3 项" in info
+
+
+def test_repobrowser_file_extension_and_size_columns(qapp, git_repo):
+    """对齐 CPathUtils::GetFileExtFromPath 与 StrFormatByteSize64。"""
+    from pathlib import Path
+    from pytortoisegit.dialogs.repobrowserdlg import (
+        RepositoryBrowserDlg, _file_extension, _format_byte_size)
+
+    # 点号开头的文件也算扩展名（原版 dotPos > slashPos 即成立）
+    assert _file_extension(".gitignore") == ".gitignore"
+    assert _file_extension("demo.py") == ".py"
+    assert _file_extension("LICENSE") == ""
+    assert _file_extension("a/b/c.tar.gz") == ".gz"
+    assert _format_byte_size(109).endswith("字节")
+    assert "KB" in _format_byte_size(18 * 1024)
+
+    root = Path(git_repo.root)
+    (root / ".gitignore").write_text("*.pyc\n", encoding="utf-8")
+    (root / "LICENSE").write_text("MIT\n", encoding="utf-8")
+    git_repo.runner.run("add", "-A")
+    git_repo.runner.run("commit", "-m", "files")
+
+    dlg = RepositoryBrowserDlg(git_repo)
+    rows = {dlg.list.topLevelItem(i).text(0): dlg.list.topLevelItem(i)
+            for i in range(dlg.list.topLevelItemCount())}
+    assert rows[".gitignore"].text(1) == ".gitignore"
+    assert rows["LICENSE"].text(1) == ""
+    assert rows["LICENSE"].text(2) != ""
+
+
+def test_repobrowser_context_menu_matches_selection_type(qapp, git_repo,
+                                                        monkeypatch):
+    """对齐 ShowContextMenu：文件夹只给“打开/日志”，文件才有比较/追溯/另存。"""
+    from pathlib import Path
+    from pytortoisegit.dialogs.repobrowserdlg import RepositoryBrowserDlg
+
+    root = Path(git_repo.root)
+    (root / "folder").mkdir()
+    (root / "folder" / "f.txt").write_text("x\n", encoding="utf-8")
+    git_repo.runner.run("add", "-A")
+    git_repo.runner.run("commit", "-m", "menu")
+
+    dlg = RepositoryBrowserDlg(git_repo)
+    captured = {}
+
+    def fake_menu(self, global_pos, selected, sel_type):
+        captured["sel_type"] = sel_type
+        captured["names"] = [e.name for e in selected]
+
+    monkeypatch.setattr(RepositoryBrowserDlg, "_show_context_menu", fake_menu)
+
+    folder_node = dlg.tree_root.children["folder"]
+    dlg._show_context_menu(None, [folder_node], "folders")
+    assert captured["sel_type"] == "folders"
+
+    file_node = folder_node.children["f.txt"] if folder_node.children else None
+    if file_node is None:
+        dlg._read_tree(folder_node)
+        file_node = folder_node.children["f.txt"]
+    dlg._show_context_menu(None, [file_node], "files")
+    assert captured["sel_type"] == "files"
+
+
+def test_repobrowser_folder_ordering_wins_over_sort(qapp, git_repo):
+    """即使按大小倒序，文件夹仍排在文件之前。"""
+    from pathlib import Path
+    from pytortoisegit.dialogs.repobrowserdlg import (
+        RepositoryBrowserDlg, COL_FILESIZE)
+
+    root = Path(git_repo.root)
+    (root / "adir").mkdir()
+    (root / "adir" / "keep.txt").write_text("x\n", encoding="utf-8")
+    (root / "big.bin").write_text("y" * 5000, encoding="utf-8")
+    git_repo.runner.run("add", "-A")
+    git_repo.runner.run("commit", "-m", "sort")
+
+    dlg = RepositoryBrowserDlg(git_repo)
+    dlg._curr_sort_col = COL_FILESIZE
+    dlg._curr_sort_desc = True
+    dlg._fill_list_for_node(dlg.tree_root)
+    names = [dlg.list.topLevelItem(i).text(0)
+             for i in range(dlg.list.topLevelItemCount())]
+    assert names[0] == "adir", names
+
+
 def test_revisiongraph_dialog(qapp, repo):
     from pytortoisegit.dialogs.revisiongraphdlg import RevisionGraphDlg
     dlg = _smoke(qapp, lambda: RevisionGraphDlg(repo))

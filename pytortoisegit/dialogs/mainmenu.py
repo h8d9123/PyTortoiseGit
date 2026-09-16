@@ -175,6 +175,7 @@ class MainMenuDlg(QMainWindow):
         self._nav_forward: list[str] = []  # 前进历史
         self._nav_current: str = ""
         self._status_cache: dict = {}   # 仓库根 -> (时间戳, 状态条目)
+        self._tracked_cache: dict = {}  # 仓库根 -> (时间戳, 受版本控制的目录集合)
         self._cut_paths: list[str] = []  # 剪切中的路径（粘贴时移动）
         self._undo_stack: list = []      # 撤销栈：("delete"/"paste", data)
         self._build_menu()
@@ -422,7 +423,11 @@ class MainMenuDlg(QMainWindow):
         self._update_nav_buttons()
 
     def _status_entries(self, root: str) -> list:
-        """取仓库状态条目（带 2 秒缓存，避免频繁 git status）。"""
+        """取仓库状态条目（带 2 秒缓存，避免频繁 git status）。
+
+        含被忽略条目（`!!`），以便未受版本控制的文件/目录不被误判为
+        「正常」而显示绿勾。
+        """
         import time
         now = time.time()
         cached = self._status_cache.get(root)
@@ -432,14 +437,53 @@ class MainMenuDlg(QMainWindow):
         try:
             from ..git.repo import Repository
             from ..git.status import GitStatus
-            entries = GitStatus(Repository.open(root)).get_status()
+            entries = GitStatus(Repository.open(root)).get_status(
+                include_ignored=True)
         except Exception:  # noqa: BLE001
             entries = []
         self._status_cache[root] = (now, entries)
         return entries
 
+    def _tracked_dirs(self, root: str) -> set:
+        """仓库中「受版本控制的目录」集合（规范化绝对路径，带缓存）。
+
+        git status 不会报告未修改的已跟踪目录，故需借助 ls-files 判断
+        某目录是否在版本控制之下；否则空的未跟踪目录会被误判为 normal。
+        """
+        import time
+        now = time.time()
+        cached = self._tracked_cache.get(root)
+        if cached and now - cached[0] < 5.0:
+            return cached[1]
+        dirs: set = set()
+        root_nc = os.path.normcase(os.path.abspath(root))
+        try:
+            from ..git.repo import Repository
+            out = Repository.open(root).runner.run("ls-files", "-z").stdout or ""
+            for rel in out.split("\x00"):
+                if not rel:
+                    continue
+                d = os.path.dirname(os.path.normcase(
+                    os.path.abspath(os.path.join(root, rel))))
+                while d.startswith(root_nc) and len(d) >= len(root_nc):
+                    dirs.add(d)
+                    if d == root_nc:
+                        break
+                    d = os.path.dirname(d)
+        except Exception:  # noqa: BLE001
+            dirs = set()
+        self._tracked_cache[root] = (now, dirs)
+        return dirs
+
     def _build_overlay_icons(self, directory: str) -> dict:
-        """为 directory 下的条目构建 规范化路径 -> 合成图标（GUI 线程）。"""
+        """为 directory 下的条目构建 规范化路径 -> 合成图标（GUI 线程）。
+
+        状态判定：
+          - 已跟踪且无改动 → normal（绿勾）
+          - 未跟踪 → unversioned
+          - 被忽略 → ignored
+          - 未出现在 status 且不在版本控制下的目录/文件 → unversioned
+        """
         out: dict = {}
         root = find_repo_root(directory)
         if not root:
@@ -451,14 +495,24 @@ class MainMenuDlg(QMainWindow):
         except Exception:  # noqa: BLE001
             return out
         root_nc = os.path.normcase(os.path.abspath(root))
+        tracked_dirs = self._tracked_dirs(root)
         file_state: dict = {}
         dir_state: dict = {}
         for e in self._status_entries(root):
             key = e.overlay_key
-            p = os.path.normcase(os.path.abspath(os.path.join(root, e.path)))
-            file_state[p] = overlays.worse(file_state.get(p), key)
+            rel = e.path
+            p = os.path.normcase(os.path.abspath(
+                os.path.join(root, rel)))
+            if rel.endswith("/"):
+                # git 以结尾斜杠表示「目录」条目
+                dir_state[p] = overlays.worse(dir_state.get(p), key)
+            else:
+                file_state[p] = overlays.worse(file_state.get(p), key)
             d = os.path.dirname(p)
             while d.startswith(root_nc) and len(d) > len(root_nc):
+                if key == "ignored" and d in tracked_dirs:
+                    # 已跟踪目录内含被忽略文件时，不应把目录整体标为 ignored
+                    break
                 dir_state[d] = overlays.worse(dir_state.get(d), key)
                 d = os.path.dirname(d)
         try:
@@ -468,6 +522,8 @@ class MainMenuDlg(QMainWindow):
         base_provider = QFileIconProvider()
         git_icon = None
         for name in names:
+            if name == ".git":
+                continue
             full = os.path.join(directory, name)
             nc = os.path.normcase(os.path.abspath(full))
             try:
@@ -475,7 +531,12 @@ class MainMenuDlg(QMainWindow):
             except OSError:
                 continue
             if is_dir:
-                status = dir_state.get(nc, "normal")
+                if nc in dir_state:
+                    status = dir_state[nc]
+                elif nc in tracked_dirs:
+                    status = "normal"
+                else:
+                    status = "unversioned"
                 if nc == root_nc:
                     if git_icon is None:
                         git_icon = icons.icon("IDI_GITFOLDER")

@@ -892,6 +892,53 @@ def test_main_window_builds_overlay_icons(qapp, repo):
         assert ic is not None and not ic.isNull()
 
 
+def test_overlay_nonversioned_not_green(qapp, tmp_path):
+    """未纳入版本控制的文件/目录不应显示绿勾（normal）。"""
+    from PySide6.QtCore import QFileInfo, QSize
+    from PySide6.QtWidgets import QFileIconProvider
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.res import overlays
+
+    runner = GitRunner(cwd=str(tmp_path))
+    runner.init(str(tmp_path), initial_branch="main")
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    (tmp_path / ".gitignore").write_text("__pycache__/\n*.log\n", encoding="utf-8")
+    (tmp_path / "tracked.txt").write_text("x\n", encoding="utf-8")
+    (tmp_path / "trackeddir").mkdir()
+    (tmp_path / "trackeddir" / "t.txt").write_text("x\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "init").returncode == 0
+    # 已跟踪目录内的被忽略文件：目录本身仍应是绿勾
+    (tmp_path / "trackeddir" / "x.log").write_text("x\n", encoding="utf-8")
+    (tmp_path / "untrackeddir").mkdir()
+    (tmp_path / "untrackeddir" / "u.txt").write_text("x\n", encoding="utf-8")
+    (tmp_path / "__pycache__").mkdir()
+    (tmp_path / "__pycache__" / "x.pyc").write_text("x\n", encoding="utf-8")
+    (tmp_path / "emptyuntracked").mkdir()
+
+    dlg = MainMenuDlg(repo_path=str(tmp_path))
+    actual = dlg._build_overlay_icons(str(tmp_path))
+
+    def status_of(name):
+        full = str(tmp_path / name)
+        p = os.path.normcase(os.path.abspath(full))
+        base = QFileIconProvider().icon(QFileInfo(full))
+        for st in ("normal", "modified", "added", "conflicted", "deleted",
+                   "ignored", "unversioned"):
+            exp = overlays.compose(base, st)
+            if exp is not None and exp.pixmap(QSize(16, 16)).toImage() \
+                    == actual[p].pixmap(QSize(16, 16)).toImage():
+                return st
+        return None
+
+    assert status_of("tracked.txt") == "normal"
+    assert status_of("trackeddir") == "normal"
+    assert status_of("untrackeddir") == "unversioned"
+    assert status_of("emptyuntracked") == "unversioned"
+    assert status_of("__pycache__") == "ignored"
+
+
 def test_pull_dialog_horizontal_resize_only(qapp, repo):
     from pytortoisegit.dialogs.pulldlg import PullFetchDlg
     dlg = PullFetchDlg(repo, fetch_only=False)

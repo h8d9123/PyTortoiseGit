@@ -129,8 +129,12 @@ class GitStatus:
         self.ignore_submodules = ignore_submodules
         self.entries: List[GitStatusEntry] = []
 
-    def get_status(self) -> List[GitStatusEntry]:
+    def get_status(self, include_ignored: bool = False) -> List[GitStatusEntry]:
         args = ["status", "--porcelain=v1", "-z", "--untracked-files=all"]
+        if include_ignored:
+            # traditional：逐个列出被忽略的文件，而非仅忽略目录本身，
+            # 便于覆盖图标按单个文件/目录准确归类。
+            args.append("--ignored=traditional")
         if self.ignore_submodules:
             args.append("--ignore-submodules=dirty")
         result = self.repo.runner.run(*args)

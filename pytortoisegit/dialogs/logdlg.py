@@ -75,6 +75,7 @@ class LogDlg(QDialog):
         self.current_item: Optional[QTreeWidgetItem] = None
         self._ordering: str = "default"
         self._build_ui()
+        self._apply_log_prefs()
         self._populate()
 
     # ---- UI（IDD_LOGMESSAGE 模板）----
@@ -310,9 +311,41 @@ class LogDlg(QDialog):
         run_async(self._load_bg, on_done=self._on_loaded,
                   on_error=self._on_error, parent=self)
 
+    def _apply_log_prefs(self):
+        """读取 Dialogs 1 设置：字体/字号、相对时间（改动后打开日志即生效）。"""
+        from .settingsdlg import general_settings
+        s = general_settings()
+        self._rel_times = bool(s.value("RelativeTimes", False))
+        name = s.value("LogFontName", "", type=str)
+        size = int(s.value("LogFontSize", "0") or 0)
+        if name or size > 0:
+            font = self.font()
+            if name:
+                font.setFamily(name)
+            if size > 0:
+                font.setPointSize(size)
+            self.setFont(font)
+
+    def _commit_time(self, commit) -> str:
+        """按 RelativeTimes 设置显示相对或绝对时间（git %ar 已可用）。"""
+        if self._rel_times and commit.author_date_relative:
+            return commit.author_date_relative
+        return commit.date_span()
+
+    def _log_limit(self) -> int:
+        """Dialogs 1 默认日志条数：No limit(0) 加载全部，否则取 NumberOfLogs。"""
+        from .settingsdlg import general_settings
+        s = general_settings()
+        if int(s.value("NumberOfLogsScale", 0)) == 0:
+            return 0
+        try:
+            return max(1, int(s.value("NumberOfLogs", 1)))
+        except (TypeError, ValueError):
+            return 1
+
     def _load_bg(self) -> list:
         search = self.search_edit.text() or None
-        self.log.load(limit=self.limit_spin.value(),
+        self.log.load(limit=self._log_limit(),
                       search=search,
                       pathspec="" if self.chk_whole.isChecked() else self.pathspec,
                       ordering=self._ordering,
@@ -328,12 +361,12 @@ class LogDlg(QDialog):
                 "",
                 commit.subject + refs,
                 commit.author_name,
-                commit.date_span(),
+                self._commit_time(commit),
                 commit.hash,
                 commit.author_email,
                 commit.committer_name,
                 commit.committer_email,
-                commit.date_span(),
+                self._commit_time(commit),
             ])
             item.setToolTip(LOG_COL_ACTIONS, self._action_tip(commit.actions))
             item.setToolTip(LOG_COL_MESSAGE, commit.body or commit.subject)
@@ -411,10 +444,10 @@ class LogDlg(QDialog):
     def _show_commit(self, commit: GitRev):
         author = f"{commit.author_name} [{commit.author_email}]" if commit.author_email else commit.author_name
         self.msg_box.setPlainText(
-            f"{commit.hash}\n{author}  {commit.date_span()}\n"
+            f"{commit.hash}\n{author}  {self._commit_time(commit)}\n"
             f"{commit.subject}\n\n{commit.body}".strip() + "\n")
         self.log_info.setText(
-            f"{commit.short_hash} · {author} · {commit.date_span()}")
+            f"{commit.short_hash} · {author} · {self._commit_time(commit)}")
         run_async(self._load_files_bg, args=(commit.hash,),
                   on_done=self._on_files_loaded, parent=self)
 

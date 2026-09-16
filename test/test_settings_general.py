@@ -267,6 +267,62 @@ def test_dialogs3_combos_populated(qapp, isolated_settings):
     assert page._ctl["IDC_WARN_NO_SIGNED_OFF_BY"].count() == 3
 
 
+def test_dialogs1_font_defaults_selectable_and_fallback(qapp,
+                                                        isolated_settings):
+    """字号下拉须含默认 9；已保存但不在下拉项里的字体/字号也要能显示。"""
+    from pytortoisegit.dialogs.settingsdlg import _DialogsPage, general_settings
+    page = _DialogsPage()
+    page.load_settings()
+    assert page._ctl["IDC_FONTSIZES"].currentText() == "9"
+    general_settings().setValue("LogFontName", "MyCustomFont")
+    general_settings().setValue("LogFontSize", "13")
+    page2 = _DialogsPage()
+    page2.load_settings()
+    assert page2._ctl["IDC_FONTNAMES"].currentText() == "MyCustomFont"
+    assert page2._ctl["IDC_FONTSIZES"].currentText() == "13"
+
+
+def test_dialogs3_inherit_and_saveto_persist(qapp, isolated_settings):
+    """Dialogs3 的 inherit 复选框与 Save to 下拉需持久化。"""
+    from pytortoisegit.dialogs.settingsdlg import _Dialogs3Page
+    page = _Dialogs3Page()
+    page.load_settings()
+    page._ctl["IDC_CHECK_INHERIT_LIMIT"].setChecked(True)
+    page._ctl["IDC_CHECK_INHERIT_BORDER"].setChecked(True)
+    page._ctl["IDC_CHECK_INHERIT_ICONPATH"].setChecked(True)
+    page._ctl["IDC_COMBO_SETTINGS_SAFETO"].setCurrentIndex(1)  # Local
+    page.save_settings()
+    page2 = _Dialogs3Page()
+    page2.load_settings()
+    assert page2._ctl["IDC_CHECK_INHERIT_LIMIT"].isChecked()
+    assert page2._ctl["IDC_CHECK_INHERIT_BORDER"].isChecked()
+    assert page2._ctl["IDC_CHECK_INHERIT_ICONPATH"].isChecked()
+    assert page2._ctl["IDC_COMBO_SETTINGS_SAFETO"].currentIndex() == 1
+
+
+def test_overlay_handlers_regedit_cross_platform(qapp, isolated_settings,
+                                                 monkeypatch):
+    """非 Windows 平台点注册表按钮应提示，而不是跑 regedit.exe。"""
+    from PySide6.QtWidgets import QMessageBox
+    import pytortoisegit.dialogs.settingsdlg as sd
+    called = []
+    monkeypatch.setattr(QMessageBox, "information",
+                        staticmethod(lambda *a, **k: called.append(1)))
+    monkeypatch.setattr("sys.platform", "linux")
+    page = sd._OverlayHandlersPage()
+    page._open_regedit()
+    assert called
+
+
+def test_overlay_icons_list_has_previews(qapp, isolated_settings):
+    """Icon Set 列表 9 项且带图标预览。"""
+    from pytortoisegit.dialogs.settingsdlg import _OverlayIconsPage
+    page = _OverlayIconsPage()
+    tree = page._ctl["IDC_ICONLIST"]
+    assert tree.topLevelItemCount() == 9
+    assert not tree.topLevelItem(0).icon(0).isNull()
+
+
 # ---------------------------------------------------------------------------
 # 颜色 1/2/3
 # ---------------------------------------------------------------------------
@@ -495,3 +551,107 @@ def test_swatch_text_contrast(qapp, isolated_settings):
     p = _Colors1Page()
     p.load_settings()
     assert "#ffffff" in p._ctl["IDC_CONFLICTCOLOR"].styleSheet()
+
+
+# ---------------------------------------------------------------------------
+# Dialogs 1 设置 → 日志对话框消费端（条数/字体/相对时间）
+# ---------------------------------------------------------------------------
+
+def test_logdlg_reads_log_limit_font_relative_times(qapp, isolated_settings,
+                                                    tmp_path):
+    from pytortoisegit.dialogs import settingsdlg as sd
+    from pytortoisegit.dialogs.logdlg import LogDlg
+    s = sd.general_settings()
+    s.setValue("NumberOfLogsScale", 3)     # Last N commits
+    s.setValue("NumberOfLogs", "7")
+    s.setValue("LogFontName", "Courier New")
+    s.setValue("LogFontSize", "13")
+    s.setValue("RelativeTimes", True)
+
+    class R:
+        def run(self, *a, **k):
+            from types import SimpleNamespace
+            return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+    class FakeRepo:
+        name = "repo"
+        runner = R()
+        def current_branch(self): return "main"
+    # 构造一个不真正加载的 LogDlg：monkeypatch run_async 阻止后台加载
+    import pytortoisegit.dialogs.logdlg as logdlg_mod
+    calls = []
+    old_run_async = logdlg_mod.run_async
+    logdlg_mod.run_async = lambda fn, *a, **k: calls.append(fn)
+    try:
+        dlg = LogDlg(FakeRepo())
+    finally:
+        logdlg_mod.run_async = old_run_async
+    assert dlg._log_limit() == 7
+    assert dlg._rel_times is True
+    assert dlg.font().family() == "Courier New"
+    assert dlg.font().pointSize() == 13
+
+
+def test_log_limit_no_limit_loads_all(qapp, isolated_settings):
+    from pytortoisegit.dialogs import settingsdlg as sd
+    sd.general_settings().setValue("NumberOfLogsScale", 0)   # No limit
+    from pytortoisegit.dialogs.logdlg import LogDlg
+    assert LogDlg._log_limit.__get__ if False else True  # placeholder no-op
+    # 直接验证：No limit 时 _log_limit 为 0（全部加载）
+    class Dummy(LogDlg):
+        def __init__(self): pass
+    d = Dummy()
+    assert d._log_limit() == 0
+
+
+# ---------------------------------------------------------------------------
+# Dialogs 2 设置 → 进度对话框消费端（显示计时 / 自动关闭）
+# ---------------------------------------------------------------------------
+
+def test_progress_run_git_shows_timing(qapp, isolated_settings, tmp_path,
+                                       monkeypatch):
+    from pytortoisegit.dialogs import settingsdlg as sd
+    from pytortoisegit.dialogs.progress import ProgressDialog
+    sd.general_settings().setValue("ShowGitexeTimings", True)
+
+    class Runner:
+        def run_interactive(self, *args):
+            from types import SimpleNamespace
+            return SimpleNamespace(stdout="out", stderr="", returncode=0)
+
+    dlg = ProgressDialog()
+    out = []
+    dlg.log_async = lambda t: out.append(t)
+    dlg.run = lambda fn: fn()          # 同步执行后台任务
+    dlg.run_git(Runner(), "status")
+    assert any("ms)" in str(t) for t in out)
+
+
+def test_progress_autoclose_modes(qapp, isolated_settings):
+    from pytortoisegit.dialogs import settingsdlg as sd
+    from pytortoisegit.dialogs.progress import ProgressDialog
+    s = sd.general_settings()
+    # Manual：成功不自动关
+    s.setValue("AutoCloseGitProgress", 0)
+    dlg = ProgressDialog()
+    dlg.accept = lambda: setattr(dlg, "_accepted", True)
+    dlg._maybe_autoclose(True)
+    assert not getattr(dlg, "_accepted", False)
+    # If no errors：成功自动关
+    s.setValue("AutoCloseGitProgress", 2)
+    dlg2 = ProgressDialog()
+    dlg2._accepted = False
+    dlg2.accept = lambda: setattr(dlg2, "_accepted", True)
+    dlg2._maybe_autoclose(True)
+    from PySide6.QtTest import QTest
+    QTest.qWait(600)
+    assert dlg2._accepted is True
+    # If no options：有 post action 时不关
+    s.setValue("AutoCloseGitProgress", 1)
+    dlg3 = ProgressDialog()
+    dlg3.add_post_action("Again", lambda: None)
+    dlg3._accepted = False
+    dlg3.accept = lambda: setattr(dlg3, "_accepted", True)
+    dlg3._maybe_autoclose(True)
+    QTest.qWait(600)
+    assert dlg3._accepted is False

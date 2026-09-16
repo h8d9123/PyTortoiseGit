@@ -922,8 +922,17 @@ class _OverlayHandlersPage(_SettingPage):
             b.clicked.connect(self._open_regedit)
 
     def _open_regedit(self):
-        from PySide6.QtCore import QProcess
-        QProcess.startDetached("regedit.exe", [])
+        import sys
+        if sys.platform == "win32":
+            from PySide6.QtCore import QProcess
+            QProcess.startDetached("regedit.exe", [])
+            return
+        QMessageBox.information(
+            self,
+            tr("set_overlayhandlers_regedit_title", "Registry editor"),
+            tr("set_overlayhandlers_regedit_note",
+               "Overlay handler settings live in the Windows registry and "
+               "are not editable on this platform."))
 
 
 class _OverlayIconsPage(_SettingPage):
@@ -950,8 +959,20 @@ class _OverlayIconsPage(_SettingPage):
             tree.setColumnCount(1)
             tree.setHeaderHidden(True)
             tree.setRootIsDecorated(False)
+            from PySide6.QtGui import QIcon
+            overlay_dir = None
+            try:
+                from pathlib import Path
+                overlay_dir = Path(__file__).resolve().parents[1] / "res" / "overlay"
+            except Exception:  # noqa: BLE001
+                overlay_dir = None
             for name in self._ICON_NAMES:
-                tree.addTopLevelItem(QTreeWidgetItem([name]))
+                item = QTreeWidgetItem([name])
+                if overlay_dir is not None:
+                    ic = QIcon(str(overlay_dir / f"{name}Icon.ico"))
+                    if not ic.isNull():
+                        item.setIcon(0, ic)
+                tree.addTopLevelItem(item)
 
 
 class _Win11MenuPage(_SettingPage):
@@ -1446,6 +1467,21 @@ class _DialogsPage(_SettingPage):
             lbl.setGeometry(self._fu.px(x, y, w, h))
         self._populate_combos()
 
+    def load_settings(self):
+        super().load_settings()
+        # 下拉项集合未必包含已保存的字体名/字号（如 Linux 无 Consolas、
+        # 字号默认 9 不在偶数列表），加载时兜底插入，避免显示为空或被改写。
+        s = general_settings()
+        for key, cid, default in (
+                ("LogFontName", "IDC_FONTNAMES", "Consolas"),
+                ("LogFontSize", "IDC_FONTSIZES", "9")):
+            if (c := self._ctl.get(cid)) is None:
+                continue
+            val = str(s.value(key, default))
+            if val and c.findText(val) < 0:
+                c.addItem(val)
+                c.setCurrentText(val)
+
     def _populate_combos(self):
         from PySide6.QtGui import QFontDatabase
         if c := self._ctl.get("IDC_DEFAULT_SCALE"):
@@ -1460,7 +1496,8 @@ class _DialogsPage(_SettingPage):
         if c := self._ctl.get("IDC_FONTNAMES"):
             c.addItems(QFontDatabase.families())
         if c := self._ctl.get("IDC_FONTSIZES"):
-            c.addItems([str(s) for s in range(6, 32, 2)])
+            # 含默认 9 的连续字号（6..31），保证默认值可直接选中
+            c.addItems([str(s) for s in range(6, 32)])
         if c := self._ctl.get("IDC_GRAVATARURL"):
             c.setEditable(True)
             c.addItems([
@@ -1575,6 +1612,12 @@ class _Dialogs3Page(_SettingPage):
         ("LogWidthMarker", "IDC_BORDER", "text", ""),
         ("WarnNoSignedOffBy", "IDC_WARN_NO_SIGNED_OFF_BY", "index", 0),
         ("IconFile", "IDC_ICONFILE", "text", ""),
+        # inherit 复选框（原版 SettingsDialogs3 对应项）
+        ("LogMinSizeInherit", "IDC_CHECK_INHERIT_LIMIT", "bool", False),
+        ("LogWidthMarkerInherit", "IDC_CHECK_INHERIT_BORDER", "bool", False),
+        ("IconFileInherit", "IDC_CHECK_INHERIT_ICONPATH", "bool", False),
+        # Save to 下拉（原版 m_cComboSaveTo，默认 Global=3）
+        ("Dialogs3SaveTo", "IDC_COMBO_SETTINGS_SAFETO", "index", 3),
     ]
     _RADIO_GROUPS = [
         ("Dialogs3ConfigSource",

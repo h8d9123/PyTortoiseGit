@@ -5,6 +5,7 @@ from __future__ import annotations
 import queue
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -130,13 +131,18 @@ class ProgressDialog(QDialog):
 
     def run_git(self, runner, *args: str):
         """跑一条 git 命令：先写命令行，再收输出，结束时标 Success / 退出码。"""
+        from .settingsdlg import general_settings
+        show_timings = bool(general_settings().value("ShowGitexeTimings", True))
         shown = "git.exe " + " ".join(args)
         self.log(shown + "\n")
         self.set_label(tr("progress_wait", "Please wait…"))
 
         def _bg():
+            t0 = time.monotonic()
             r = runner.run_interactive(*args)
             parts = []
+            if show_timings:
+                parts.append(f"({(time.monotonic() - t0) * 1000:.0f} ms)")
             if r.stdout and r.stdout.strip():
                 parts.append(r.stdout.rstrip())
             if r.stderr and r.stderr.strip():
@@ -233,6 +239,24 @@ class ProgressDialog(QDialog):
         close_btn.setFocus()
         if self._on_finish:
             self._on_finish(ok)
+        self._maybe_autoclose(ok)
+
+    def _maybe_autoclose(self, ok: bool):
+        """Dialogs 2 的 Autoclose Git.exe dialog：0=Manual 1=If no options 2=If no errors。"""
+        if not ok:
+            return
+        from .settingsdlg import general_settings
+        try:
+            mode = int(general_settings().value("AutoCloseGitProgress", 0))
+        except (TypeError, ValueError):
+            mode = 0
+        if mode == 0:
+            return
+        if mode == 1 and (self._post_box.count() or self._on_finish is not None):
+            return
+        # 稍延片刻让 “Success” 可见，再自动关闭
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(400, self.accept)
 
     def add_post_action(self, label: str, callback: Callable[[], None]):
         """对齐 ProgressDlg 失败后的 post-cmd（Pull / Fetch / 再 Push）。"""

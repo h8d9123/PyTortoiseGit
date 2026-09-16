@@ -210,7 +210,7 @@ MENU_INFO: List[MenuEntry] = [
     _e("stashlist", _M_STASHLIST, "IDI_LOG", "menu_cmd_stashlist", "Stash list…",
        (ITEMIS_FOLDERINGIT | ITEMIS_ONLYONE | ITEMIS_STASH, 0)),
     MenuEntry("separator", _M_SEPARATOR, "", "", ""),
-    _e("bisect", _M_BISECT, "IDI_BISECT", "menu_cmd_bisect", "Bisect…",
+    _e("bisect", _M_BISECT, "IDI_BISECT", "menu_cmd_bisect", "Bisect start",
        (ITEMIS_FOLDERINGIT | ITEMIS_ONLYONE, ITEMIS_BISECT | ITEMIS_MERGEACTIVE)),
     _e("bisect", _M_BISECT, "IDI_THUMB_UP", "menu_cmd_bisectgood", "Bisect Good",
        (ITEMIS_FOLDERINGIT | ITEMIS_ONLYONE | ITEMIS_BISECT, 0)),

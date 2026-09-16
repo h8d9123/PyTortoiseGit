@@ -1039,6 +1039,43 @@ def test_bisectstart_dialog(qapp, repo):
     assert dlg.good_combo.count() >= 1
 
 
+def test_bisectstart_pick_commit_buttons(qapp, repo, monkeypatch):
+    """“...”按钮打开日志选择提交，commit id 回填到 good/bad 下拉框。"""
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs.bisectstartdlg import BisectStartDlg
+
+    class _FakeLog:
+        def __init__(self, *_a, **_k):
+            self.selected_hash = "deadbeef0123456789"
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr("pytortoisegit.dialogs.logdlg.LogDlg", _FakeLog)
+    dlg = BisectStartDlg(repo)
+    assert not dlg.btn_ok.isEnabled()      # good 默认为空 → OK 禁用
+    dlg.btn_good.click()
+    assert dlg.good_combo.currentText() == "deadbeef0123456789"
+    assert dlg.btn_ok.isEnabled()          # 两框都有值后启用
+    dlg.btn_bad.click()
+    assert dlg.bad_combo.currentText() == "deadbeef0123456789"
+    dlg.deleteLater()
+
+
+def test_bisectstart_defaults_and_ok_gating(qapp, repo):
+    """对齐原版：bad 默认当前分支、good 留空；任一框清空则 OK 禁用。"""
+    from pytortoisegit.dialogs.bisectstartdlg import BisectStartDlg
+    dlg = BisectStartDlg(repo)
+    assert dlg.good_combo.currentText() == ""
+    assert dlg.bad_combo.currentText() == "main"
+    assert not dlg.btn_ok.isEnabled()
+    dlg.good_combo.setCurrentText("HEAD")
+    assert dlg.btn_ok.isEnabled()
+    dlg.bad_combo.setEditText("")
+    assert not dlg.btn_ok.isEnabled()
+    dlg.deleteLater()
+
+
 def test_command_registry_has_c2_commands():
     from pytortoisegit.commands.dispatcher import available_commands, _ensure_imports
     _ensure_imports()

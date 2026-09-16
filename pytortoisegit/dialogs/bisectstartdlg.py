@@ -49,7 +49,7 @@ class BisectStartDlg(QDialog):
         r = fu.px(0, 0, spec.width, spec.height)
         self.resize(r.width(), r.height())
         rc_mod.apply_horizontal_resize(self, r.width(), r.height())
-        self.setWindowTitle(spec.caption or "Bisect start")
+        self.setWindowTitle(tr("bisect_start_title", spec.caption or "Bisect start"))
         self._anchors = AnchorLayout(self.width(), self.height())
         self._ctl: dict = {}
 
@@ -57,10 +57,12 @@ class BisectStartDlg(QDialog):
         self.good_combo = QComboBox(self)
         self.good_combo.setEditable(True)
         self.btn_good = QPushButton("...", self)
+        self.btn_good.clicked.connect(self._on_pick_good)
         self.bad_label = QLabel(tr("bisect_bad", "First known &bad:"), self)
         self.bad_combo = QComboBox(self)
         self.bad_combo.setEditable(True)
         self.btn_bad = QPushButton("...", self)
+        self.btn_bad.clicked.connect(self._on_pick_bad)
         self.btn_ok = QPushButton(tr("ok"), self)
         self.btn_ok.setDefault(True)
         self.btn_ok.clicked.connect(self._on_start)
@@ -95,8 +97,52 @@ class BisectStartDlg(QDialog):
         out = self.repo.runner.run("for-each-ref",
                                    "--format=%(refname:short)").stdout or ""
         refs = [x.strip() for x in out.splitlines() if x.strip()] or ["HEAD"]
-        self.good_combo.addItems([r for r in refs])
-        self.bad_combo.addItems([r for r in refs] + ["HEAD"])
+        for combo in (self.good_combo, self.bad_combo):
+            combo.addItems([r for r in refs])
+        # addItems 会自动选中第一项；对齐原版 OnInitDialog 把 good 留空待用户选择
+        self.good_combo.setCurrentIndex(-1)
+        # 对齐原版 CBisectStartDlg::OnInitDialog：bad 默认当前分支（分离头/空仓库则
+        # HEAD），good 留空待用户选择；OK 按钮两框都非空才启用（RC 的 WS_DISABLED
+        # 在这里由代码接管，避免空值执行 git bisect start 直接报 bad revision）。
+        cur = self.repo.current_branch()
+        if cur and not cur.startswith("(") and cur in refs:
+            self.bad_combo.setCurrentText(cur)
+        else:
+            self.bad_combo.setCurrentText("HEAD")
+        self.good_combo.currentTextChanged.connect(self._update_ok)
+        self.bad_combo.currentTextChanged.connect(self._update_ok)
+        self._update_ok()
+
+    def _update_ok(self, *_a):
+        """对齐原版 OnChangedRevision：good/bad 都非空才启用 OK。"""
+        self.btn_ok.setEnabled(bool(self.good_combo.currentText().strip()
+                                    and self.bad_combo.currentText().strip()))
+
+    def _strip_remotes(self, rev: str) -> str:
+        """对齐原版 OnBnClickedOk：剥离 remotes/ 前缀（git 命令行不接受该写法）。"""
+        return rev[len("remotes/"):] if rev.startswith("remotes/") else rev
+
+    def _pick_commit(self, combo: QComboBox):
+        """“...”按钮：打开日志选择提交，把 commit id 回填到下拉框。
+
+        对齐原版 OnBnClickedButtonGood/Bad：日志从当前框内输入定位（rev 参数），
+        单选提交后回填完整 hash；关闭后把本对话框带回前台（原版 issue #3493）。
+        """
+        from PySide6.QtWidgets import QDialog
+        from .logdlg import LogDlg
+        dlg = LogDlg(self.repo, rev=combo.currentText().strip() or None,
+                     parent=self, select=True)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.selected_hash:
+            combo.setCurrentText(dlg.selected_hash)
+            self._update_ok()
+        self.raise_()
+        self.activateWindow()
+
+    def _on_pick_good(self):
+        self._pick_commit(self.good_combo)
+
+    def _on_pick_bad(self):
+        self._pick_commit(self.bad_combo)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -104,8 +150,10 @@ class BisectStartDlg(QDialog):
             self._anchors.apply(self.width(), self.height())
 
     def _on_start(self):
-        good = self.good_combo.currentText().strip()
-        bad = self.bad_combo.currentText().strip()
+        good = self._strip_remotes(self.good_combo.currentText().strip())
+        bad = self._strip_remotes(self.bad_combo.currentText().strip())
+        if not good or not bad:
+            return
         dlg = ProgressDialog(title=tr("progress", "Progress"), parent=self)
         dlg.set_label(f"git bisect start {bad} {good}")
 

@@ -1245,6 +1245,8 @@ STRINGS: Dict[str, str] = {
     "set_overlayhandlers_note": "注意：这会影响所有 Tortoise 客户端，而不仅是 TortoiseGit！",
     "set_overlayhandlers_regedit_title": "注册表编辑器",
     "set_overlayhandlers_regedit_note": "覆盖处理程序设置保存在 Windows 注册表中，\n当前平台无法在此编辑。",
+    "set_unimpl_tip": "该功能尚未实现，暂不可用。",
+    "set_overlay_winonly": "图标覆盖是 Windows shell 扩展功能，当前平台不可用。",
     "set_saved_actionlog_group": "操作日志",
     "set_saved_maxlines": "操作日志最大行数",
     "set_select_editor": "选择编辑器",

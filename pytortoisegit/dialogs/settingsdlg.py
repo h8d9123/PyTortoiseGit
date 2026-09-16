@@ -104,12 +104,31 @@ class _SettingPage(QWidget):
     TEMPLATE: str = ""
     READONLY: bool = False  # 功能暂未开发：整页置灰不可编辑
 
+    # 功能未接线的控件：[控件ID, ...]，双平台均置灰
+    _DISABLED: list = []
+    # 仅 Windows 支持的控件：非 Windows 平台置灰
+    _DISABLED_NONWIN: list = []
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._ctl: dict = {}
         self._build_ui()
         if self.READONLY:
             self.setEnabled(False)
+        self._apply_disabled()
+
+    def _apply_disabled(self):
+        """按平台把未接线/不支持的控件置灰，避免用户设置后无效果。"""
+        import sys
+        disabled = list(getattr(self, "_DISABLED", []))
+        if sys.platform != "win32":
+            disabled += list(getattr(self, "_DISABLED_NONWIN", []))
+        tip = tr("set_unimpl_tip", "Not implemented yet, disabled.")
+        for cid in disabled:
+            w = self._ctl.get(cid)
+            if w is not None:
+                w.setEnabled(False)
+                w.setToolTip(tip)
 
     def _build_ui(self):
         if not self.TEMPLATE:
@@ -890,6 +909,15 @@ class _OverlayPage(_SettingPage):
     def __init__(self, parent=None):
         super().__init__(parent)
         _add_static_labels(self)
+        # 图标覆盖是 Windows shell 扩展概念（TGitCache/TortoiseOverlays），
+        # 跨平台版在非 Windows 无对应机制，整页置灰。
+        import sys
+        if sys.platform != "win32":
+            self.setEnabled(False)
+            self.setToolTip(tr("set_overlay_winonly",
+                               "Icon overlays are Windows shell extension "
+                               "features and are not available on this "
+                               "platform."))
 
 
 class _OverlayHandlersPage(_SettingPage):
@@ -913,6 +941,13 @@ class _OverlayHandlersPage(_SettingPage):
         ("ShowLockedOverlay", "IDC_SHOWLOCKEDOVERLAY", "bool", True),
         ("ShowReadonlyOverlay", "IDC_SHOWREADONLYOVERLAY", "bool", True),
         ("ShowDeletedOverlay", "IDC_SHOWDELETEDOVERLAY", "bool", True),
+    ]
+
+    # 六个开关尚未被覆盖图标合成读取，置灰避免改动无效
+    _DISABLED = [
+        "IDC_SHOWIGNOREDOVERLAY", "IDC_SHOWUNVERSIONEDOVERLAY",
+        "IDC_SHOWADDEDOVERLAY", "IDC_SHOWLOCKEDOVERLAY",
+        "IDC_SHOWREADONLYOVERLAY", "IDC_SHOWDELETEDOVERLAY",
     ]
 
     def __init__(self, parent=None):
@@ -945,6 +980,11 @@ class _OverlayIconsPage(_SettingPage):
     ]
     _RADIO_GROUPS = [
         ("IconSetListView", ["IDC_LISTRADIO", "IDC_SYMBOLRADIO"], 0),
+    ]
+
+    # IconSet 选择/视图模式未被覆盖图标合成消费，置灰；列表仅作预览
+    _DISABLED = [
+        "IDC_ICONSETCOMBO", "IDC_LISTRADIO", "IDC_SYMBOLRADIO",
     ]
 
     _ICON_NAMES = ["Normal", "Modified", "Conflict", "ReadOnly", "Deleted",
@@ -1418,6 +1458,19 @@ class _DialogsPage(_SettingPage):
 
     TEMPLATE = "IDD_SETTINGSDIALOGS"
 
+    # 未接线（无消费端）的日志选项，置灰避免改了没效果；
+    # 已接线：条数/范围、字体/字号、相对时间。
+    _DISABLED = [
+        "IDC_SHORTDATEFORMAT", "IDC_SYSTEMLOCALEFORDATES",
+        "IDC_ASTERISKLOGPREFIX", "IDC_DIFFBYDOUBLECLICK",
+        "IDC_ABBREVIATERENAMINGS", "IDC_SYMBOLIZEREFNAMES",
+        "IDC_ENABLELOGCACHE", "IDC_ENABLEGRAVATAR", "IDC_GRAVATARURL",
+        "IDC_RIGHTSIDEBRANCHESTAGS", "IDC_FULLCOMMITMESSAGEONLOGLINE",
+        "IDC_SHOWREVCOUNTER", "IDC_SHOWDESCRIBE",
+        "IDC_DESCRIBESTRATEGY", "IDC_DESCRIBEABBREVIATEDSIZE",
+        "IDC_DESCRIBEALWAYSLONG", "IDC_DESCRIBEONLYFIRSTPARENT",
+    ]
+
     _LABELS = [
         (14, 20, 140, 8, "set_default_log_limit",
          "Default limitation of log messages:"),
@@ -1462,6 +1515,9 @@ class _DialogsPage(_SettingPage):
         gb = QGroupBox(tr("set_describe", "Describe"), self)
         gb.setGeometry(self._fu.px(14, 183, 272, 76))
         gb.lower()
+        gb.setEnabled(False)  # Describe 未接线
+        gb.setToolTip(tr("set_unimpl_tip", "Not implemented yet, disabled."))
+        self._ctl["describe_group"] = gb
         for x, y, w, h, key, default in self._LABELS:
             lbl = QLabel(tr(key, default), self)
             lbl.setGeometry(self._fu.px(x, y, w, h))
@@ -1522,6 +1578,18 @@ class _Dialogs2Page(_SettingPage):
 
     TEMPLATE = "IDD_SETTINGSDIALOGS2"
 
+    # 未接线（无消费端）的选项置灰；
+    # 已接线：Autoclose combo、显示 git.exe 计时。
+    _DISABLED = [
+        "IDC_USERECYCLEBIN", "IDC_CONFIRMKILLPROCESS",
+        "IDC_SYNCDIALOGRANDOMPOS", "IDC_REFCOMPAREHIDEUNCHANGED",
+        "IDC_SORTTAGSREVERSED", "IDC_NOSOUNDS",
+        "IDC_BRANCHESINCLUDEFETCHHEAD", "IDC_USEMAILMAP",
+        "IDC_AUTOCOMPLETION", "IDC_AUTOCOMPLETIONTIMEOUT", "IDC_MAXHISTORY",
+        "IDC_SELECTFILESONCOMMIT", "IDC_NOAUTOSELECTMISSING",
+        "IDC_STRIPCOMMENTEDLINES",
+    ]
+
     _LABELS = [
         (14, 16, 85, 16, "set_autoclose", "&Autoclose Git.exe dialog:"),
         (14, 257, 270, 9, "set_dialogs3_hint",
@@ -1578,6 +1646,17 @@ class _Dialogs3Page(_SettingPage):
     """IDD_SETTINGSDIALOGS3 —— Dialogs 3（补回被去重的标签/分组框）。"""
 
     TEMPLATE = "IDD_SETTINGSDIALOGS3"
+
+    # 除 Overlay Icon 与浏览按钮外均未接线（提交/日志对话框尚未消费）
+    _DISABLED = [
+        "IDC_RADIO_SETTINGS_EFFECTIVE", "IDC_RADIO_SETTINGS_LOCAL",
+        "IDC_RADIO_SETTINGS_PROJECT", "IDC_RADIO_SETTINGS_GLOBAL",
+        "IDC_RADIO_SETTINGS_SYSTEM",
+        "IDC_LANGCOMBO", "IDC_KEEPFILELISTSENGLISH", "IDC_LOGMINSIZE",
+        "IDC_CHECK_INHERIT_LIMIT", "IDC_BORDER", "IDC_CHECK_INHERIT_BORDER",
+        "IDC_WARN_NO_SIGNED_OFF_BY", "IDC_CHECK_INHERIT_ICONPATH",
+        "IDC_COMBO_SETTINGS_SAFETO",
+    ]
 
     _GROUPS = [
         (7, 7, 286, 26, "set_config_source", "Config source"),

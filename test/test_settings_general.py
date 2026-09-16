@@ -655,3 +655,47 @@ def test_progress_autoclose_modes(qapp, isolated_settings):
     dlg3._maybe_autoclose(True)
     QTest.qWait(600)
     assert dlg3._accepted is False
+
+
+# ---------------------------------------------------------------------------
+# 未接线/平台不支持控件置灰
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("cls_name,enabled_ids,disabled_ids", [
+    ("_DialogsPage",
+     ["IDC_DEFAULT_NUMBER_OF", "IDC_DEFAULT_SCALE",
+      "IDC_FONTNAMES", "IDC_FONTSIZES", "IDC_RELATIVETIMES"],
+     ["IDC_ENABLEGRAVATAR", "IDC_ENABLELOGCACHE", "IDC_SHOWDESCRIBE"]),
+    ("_Dialogs2Page",
+     ["IDC_AUTOCLOSECOMBO", "IDC_PROGRESSDLG_SHOW_TIMES"],
+     ["IDC_AUTOCOMPLETION", "IDC_MAXHISTORY", "IDC_STRIPCOMMENTEDLINES"]),
+    ("_Dialogs3Page",
+     ["IDC_ICONFILE", "IDC_ICONFILE_BROWSE"],
+     ["IDC_LANGCOMBO", "IDC_WARN_NO_SIGNED_OFF_BY",
+      "IDC_RADIO_SETTINGS_GLOBAL", "IDC_COMBO_SETTINGS_SAFETO"]),
+    ("_OverlayHandlersPage",
+     ["IDC_REGEDT"],
+     ["IDC_SHOWIGNOREDOVERLAY", "IDC_SHOWDELETEDOVERLAY"]),
+    ("_OverlayIconsPage",
+     ["IDC_ICONLIST"],
+     ["IDC_ICONSETCOMBO", "IDC_LISTRADIO", "IDC_SYMBOLRADIO"]),
+])
+def test_unimplemented_controls_disabled(qapp, isolated_settings, monkeypatch,
+                                         cls_name, enabled_ids, disabled_ids):
+    """未接线的设置控件置灰；已接线的保留可用。"""
+    import pytortoisegit.dialogs.settingsdlg as sd
+    monkeypatch.setattr("sys.platform", "linux")
+    page = getattr(sd, cls_name)()
+    for cid in disabled_ids:
+        assert page._ctl[cid].isEnabled() is False, cid
+    for cid in enabled_ids:
+        assert page._ctl[cid].isEnabled() is True, cid
+
+
+def test_overlays_page_disabled_on_linux(qapp, isolated_settings, monkeypatch):
+    """Overlays 页（Windows shell 专属）在非 Windows 整页置灰。"""
+    import pytortoisegit.dialogs.settingsdlg as sd
+    monkeypatch.setattr("sys.platform", "linux")
+    page = sd._OverlayPage()
+    assert page.isEnabled() is False
+    assert page._ctl["IDC_ONLYEXPLORER"].isEnabled() is False

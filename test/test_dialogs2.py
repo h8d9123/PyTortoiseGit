@@ -2906,6 +2906,41 @@ def test_mainmenu_content_multiselect(
     dlg.reject()
 
 
+def test_mainmenu_content_delete_key(
+        qapp, isolated_settings, tmp_path, monkeypatch):
+    """内容区按 Delete 键删除选中项，可撤销。"""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QMessageBox
+    from PySide6.QtTest import QTest
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    f = repo / "a.txt"
+    f.write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    runner.run("commit", "-m", "init")
+
+    dlg = MainMenuDlg(repo_path=str(repo))
+    dlg.show()
+    dlg._navigate(str(repo))
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
+
+    dlg.content_list.setCurrentIndex(dlg.fs_model.index(str(f)))
+    dlg.content_list.setFocus()
+    QTest.keyClick(dlg.content_list, Qt.Key.Key_Delete)
+
+    assert not f.exists(), "Delete 键应删除选中项"
+    dlg._undo_last()
+    assert f.exists(), "删除应可撤销"
+    dlg.reject()
+
+
 def test_menuitems_state_driven_entries(tmp_path_factory):
     """状态引擎：不同文件/目录状态显示不同菜单项（镜像 MenuInfo.cpp）。"""
     from pytortoisegit.git.git import GitRunner

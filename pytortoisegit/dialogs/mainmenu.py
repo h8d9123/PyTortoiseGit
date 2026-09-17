@@ -371,8 +371,9 @@ class MainMenuDlg(QMainWindow):
         right_lay.addLayout(nav)
         self.fs_model = _FsModel(right)
         self.fs_model.setIconProvider(_GitIconProvider(self))
-        self.content_list = QTreeView(right)
+        self.content_list = _ContentTree(right)
         self.content_list.setModel(self.fs_model)
+        self.content_list.delete_callback = self._delete_selected_content
         self.content_list.setRootIsDecorated(False)
         self.content_list.setItemsExpandable(False)
         self.content_list.setHeaderHidden(False)
@@ -948,6 +949,12 @@ class MainMenuDlg(QMainWindow):
 
     def _delete_path(self, path: str):
         self._delete_paths([path])
+
+    def _delete_selected_content(self):
+        """Delete 键：删除内容区当前选中的文件/目录。"""
+        paths = self._selected_paths()
+        if paths:
+            self._delete_paths(paths)
 
     def _push_undo(self, kind: str, data):
         self._undo_stack.append((kind, data))
@@ -1583,6 +1590,21 @@ class _FsModel(QFileSystemModel):
             if 0 <= section < len(labels):
                 return labels[section]
         return super().headerData(section, orientation, role)
+
+
+class _ContentTree(QTreeView):
+    """内容区视图：支持 Delete 键删除选中项。"""
+
+    #: 由主窗口注入：删除当前选中项的回调
+    delete_callback = None
+
+    def keyPressEvent(self, event):  # noqa: N802
+        if (event.key() == Qt.Key.Key_Delete
+                and callable(self.delete_callback)):
+            self.delete_callback()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class _GitIconProvider(QFileIconProvider):

@@ -135,10 +135,18 @@ class GitRunner:
             cwd: str | os.PathLike | None = None,
             input: str | bytes | None = None,
             timeout: float | None = None,
-            capture_output: bool = True
+            capture_output: bool = True,
+            env: dict | None = None
             ) -> RunResult:
+        """执行 git 命令。
+
+        env 只作用于本次调用（默认用实例的 self.env）。**不要**为了临时改环境
+        而去改写 self.env —— GitRunner 是 Repository 缓存并共享的实例，多个
+        对话框的后台线程会并发使用它。
+        """
         cmd = self._build_args(list(args))
         final_cwd = cwd or self.cwd
+        final_env = self.env if env is None else env
         stdout = subprocess.PIPE if capture_output else None
         stderr = subprocess.PIPE if capture_output else None
         try:
@@ -149,7 +157,7 @@ class GitRunner:
                 stdout=stdout,
                 stderr=stderr,
                 timeout=timeout,
-                env=self.env,
+                env=final_env,
                 shell=False,
                 **no_window_kwargs(),
             )
@@ -171,15 +179,15 @@ class GitRunner:
         return result.stdout
 
     def run_interactive(self, *args: str, **kwargs) -> RunResult:
-        """执行可能需认证的 git 命令，启用 Askpass 桥接自动弹认证框。"""
+        """执行可能需认证的 git 命令，启用 Askpass 桥接自动弹认证框。
+
+        原实现是临时改写 self.env 再恢复；GitRunner 由 Repository 缓存并共享，
+        两个后台线程并发时（如日志在加载 + 进度对话框在 push）会交错改写/恢复，
+        导致某个进程拿到别人的环境。改为把 env 作为参数只作用于本次调用。
+        """
         from .. import askpass  # 延迟导入避免循环
-        env = askpass.setup_askpass(self.env, root=self.cwd)
-        prev = self.env
-        self.env = env
-        try:
-            return self.run(*args, **kwargs)
-        finally:
-            self.env = prev
+        kwargs.setdefault("env", askpass.setup_askpass(self.env, root=self.cwd))
+        return self.run(*args, **kwargs)
 
     # ---- 常用命令 ----
     def version(self) -> str:

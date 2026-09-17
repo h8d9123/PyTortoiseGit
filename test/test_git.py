@@ -91,3 +91,64 @@ def test_unicode_message_roundtrip(git_repo):
     git_repo["commit"]("提交：修复中文乱码")
     out = git_repo["runner"].run_checked("log", "--oneline", "-2")
     assert "提交：修复中文乱码" in out
+
+
+def _spy_subprocess_env(monkeypatch):
+    """拦截 subprocess.run，返回捕获到的 env 字典。"""
+    import subprocess
+
+    captured = {}
+    real = subprocess.run
+
+    def fake(cmd, **kwargs):
+        captured["env"] = kwargs.get("env")
+        return real(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fake)
+    return captured
+
+
+def test_run_env_argument_is_per_call(monkeypatch, git_repo):
+    """run(env=...) 只作用于本次调用，不得改写共享实例状态。
+
+    GitRunner 由 Repository 缓存并被多个后台线程共用，改写 self.env 会造成
+    线程间互相污染。
+    """
+    captured = _spy_subprocess_env(monkeypatch)
+    runner = git_repo["runner"]
+    original = runner.env
+
+    sentinel = dict(original)
+    sentinel["PTG_ENV_MARK"] = "1"
+    runner.run("--version", env=sentinel)
+
+    assert captured["env"] is sentinel, "传入的 env 应原样交给子进程"
+    assert runner.env is original, "实例 env 不应被改写"
+
+
+def test_run_interactive_does_not_mutate_shared_env(monkeypatch, git_repo):
+    """run_interactive 曾临时改写 self.env（数据竞态），现在必须只走参数。"""
+    from pytortoisegit import askpass
+
+    captured = _spy_subprocess_env(monkeypatch)
+    monkeypatch.setattr(
+        askpass, "setup_askpass",
+        lambda env, root=None: {**env, "PTG_ASKPASS": "1"})
+
+    runner = git_repo["runner"]
+    original = runner.env
+
+    runner.run_interactive("--version")
+
+    assert captured["env"].get("PTG_ASKPASS") == "1", "askpass 环境应生效"
+    assert runner.env is original, "运行期间不应改写实例 env"
+
+
+def test_run_interactive_keeps_working(git_repo):
+    """走真实 askpass 桥接时命令仍能正常执行。"""
+    runner = git_repo["runner"]
+    before = len(runner.env)
+    result = runner.run_interactive("--version")
+    assert result.returncode == 0
+    assert "git version" in result.stdout
+    assert len(runner.env) == before, "调用后实例 env 应保持原样"

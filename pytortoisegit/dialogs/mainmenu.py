@@ -376,6 +376,13 @@ class MainMenuDlg(QMainWindow):
         self.content_list.setRootIsDecorated(False)
         self.content_list.setItemsExpandable(False)
         self.content_list.setHeaderHidden(False)
+        # 多选：Ctrl 点选、Shift 连选、空白处拖拽框选
+        from PySide6.QtWidgets import QAbstractItemView
+        self.content_list.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.content_list.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        self.content_list.setDragEnabled(False)
         # 显示 名称/日期/类型/大小（文件夹不显示大小）
         for c in range(self.fs_model.columnCount()):
             self.content_list.setColumnHidden(c, False)
@@ -811,11 +818,14 @@ class MainMenuDlg(QMainWindow):
         menu.addMenu(sub)
         return sub
 
-    def _add_basic_ops(self, menu, path: str):
+    def _add_basic_ops(self, menu, path: str, paths=None):
         """在菜单顶层添加基本文件操作（不折叠）。
 
         打开 / 显示位置 / 复制 / 剪切 / 粘贴 / 删除 / 新建文件 / 新建文件夹。
+        paths 为多选时的全部路径；打开/显示位置/粘贴/新建仍以 path 为准，
+        复制/剪切/删除作用于全部选中项。
         """
+        paths = list(paths) if paths else [path]
         is_dir = os.path.isdir(path)
         target_dir = path if is_dir else (os.path.dirname(path) or path)
         act_undo = menu.addAction(tr("menu_undo", "Undo"))
@@ -832,17 +842,17 @@ class MainMenuDlg(QMainWindow):
         menu.addSeparator()
         act_copy = menu.addAction(tr("menu_copy", "Copy"))
         act_copy.triggered.connect(
-            lambda _=False, p=path: self._copy_files([p]))
+            lambda _=False, ps=list(paths): self._copy_files(ps))
         act_cut = menu.addAction(tr("menu_cut", "Cut"))
         act_cut.triggered.connect(
-            lambda _=False, p=path: self._cut_files([p]))
+            lambda _=False, ps=list(paths): self._cut_files(ps))
         act_paste = menu.addAction(tr("menu_paste", "Paste"))
         act_paste.triggered.connect(
             lambda _=False, d=target_dir: self._paste_files(d))
         menu.addSeparator()
         act_del = menu.addAction(tr("menu_delete", "Delete"))
         act_del.triggered.connect(
-            lambda _=False, p=path: self._delete_path(p))
+            lambda _=False, ps=list(paths): self._delete_paths(ps))
         menu.addSeparator()
         act_newf = menu.addAction(tr("menu_new_file", "New File"))
         act_newf.triggered.connect(
@@ -903,27 +913,41 @@ class MainMenuDlg(QMainWindow):
         os.makedirs(path, exist_ok=True)
         return path
 
-    def _delete_path(self, path: str):
+    def _delete_paths(self, paths):
+        """把一个或多个路径移入临时回收目录（可撤销）。"""
         import shutil
         import time
         from PySide6.QtWidgets import QMessageBox
+        paths = [p for p in (paths or []) if p and os.path.exists(p)]
+        if not paths:
+            return
+        if len(paths) == 1:
+            question = tr("menu_delete_q", 'Delete "{name}"?').format(
+                name=os.path.basename(paths[0].rstrip("/\\")))
+        else:
+            question = tr("menu_delete_q_multi",
+                          "Delete {count} items?").format(count=len(paths))
         resp = QMessageBox.question(
-            self, tr("confirm", "Confirm"),
-            tr("menu_delete_q", 'Delete "{name}"?').format(
-                name=os.path.basename(path.rstrip("/\\"))),
+            self, tr("confirm", "Confirm"), question,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if resp != QMessageBox.StandardButton.Yes:
             return
-        # 移入临时回收目录以便撤销（而非永久删除）
-        name = os.path.basename(path.rstrip("/\\"))
-        trash = os.path.join(
-            self._trash_dir(), f"{int(time.time() * 1000)}-{name}")
-        try:
-            shutil.move(path, trash)
-        except OSError:
-            return
-        self._push_undo("delete", [(os.path.abspath(path), trash)])
-        self._refresh_content()
+        moved = []
+        for path in paths:
+            name = os.path.basename(path.rstrip("/\\"))
+            trash = os.path.join(
+                self._trash_dir(), f"{int(time.time() * 1000)}-{name}")
+            try:
+                shutil.move(path, trash)
+            except OSError:
+                continue
+            moved.append((os.path.abspath(path), trash))
+        if moved:
+            self._push_undo("delete", moved)
+            self._refresh_content()
+
+    def _delete_path(self, path: str):
+        self._delete_paths([path])
 
     def _push_undo(self, kind: str, data):
         self._undo_stack.append((kind, data))
@@ -1007,10 +1031,36 @@ class MainMenuDlg(QMainWindow):
             return self._build_file_menu(path, self.content_list)
         return self._build_dir_menu(path, self.content_list)
 
+    def _selected_paths(self) -> list:
+        """内容区当前多选的路径（去重，保持模型顺序）。"""
+        sm = self.content_list.selectionModel()
+        if sm is None:
+            return []
+        out, seen = [], set()
+        for index in sm.selectedIndexes():
+            if index.column() != 0:
+                continue
+            path = self.fs_model.filePath(index)
+            if path and path not in seen:
+                seen.add(path)
+                out.append(path)
+        return out
+
     def _on_content_context_menu(self, pos):
         index = self.content_list.indexAt(pos)
         if index.isValid() and self.content_list.visualRect(index).contains(pos):
-            self._show_context_menu_for(index, pos)
+            sm = self.content_list.selectionModel()
+            if sm is None or not sm.isSelected(index):
+                # 右键未选中项：重置为该单选（与资源管理器一致）
+                self.content_list.clearSelection()
+                self.content_list.setCurrentIndex(index)
+            paths = self._selected_paths() or [self._path_of_index(index)]
+            clicked = self._path_of_index(index)
+            from PySide6.QtWidgets import QMenu
+            menu = QMenu(self.content_list)
+            self._add_basic_ops(menu, clicked, paths=paths)
+            self._add_tortoisegit_submenu(menu, clicked)
+            menu.exec(self.content_list.viewport().mapToGlobal(pos))
             return
         # 空白处：对当前浏览目录弹右键菜单（TortoiseGit 行为）
         cur = self._current_dir()

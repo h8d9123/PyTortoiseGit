@@ -64,6 +64,28 @@ def test_TC_PATCH_FORMATPATCH_001(qapp, ui, git_repo, tmp_path, auto_progress):
     assert list(tmp_path.glob("*.patch"))
 
 
+def test_TC_PATCH_FORMATPATCH_002_empty_range_warns(
+        qapp, ui, git_repo, tmp_path, auto_progress, monkeypatch):
+    """版本范围为空时：不生成补丁、弹出提示且不关闭对话框。"""
+    from PySide6.QtWidgets import QMessageBox, QDialog
+    from pytortoisegit.dialogs.formatpatchdlg import FormatPatchDlg
+
+    warned = {}
+    monkeypatch.setattr(
+        QMessageBox, "warning",
+        staticmethod(lambda *a, **k: warned.setdefault("shown", True)))
+
+    dlg = FormatPatchDlg(git_repo)
+    dlg.dir_combo.setCurrentText(str(tmp_path))
+    dlg.rd_since.setChecked(True)
+    dlg.since_combo.setCurrentText("HEAD")   # 相对 HEAD 为空范围
+    ui.click(dlg.btn_ok)
+
+    assert warned.get("shown"), "空范围应提示未生成补丁"
+    assert dlg.result() != QDialog.DialogCode.Accepted, "应保留对话框"
+    assert not list(tmp_path.glob("*.patch"))
+
+
 def test_TC_PATCH_APPLYPATCH_001(qapp, ui, git_repo, tmp_path, auto_progress):
     """Apply Patch → 改动应用到工作区。"""
     (Path(git_repo.root) / "a.txt").write_text("patched\n", encoding="utf-8")

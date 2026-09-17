@@ -204,7 +204,8 @@ class BrowseRefsDlg(QDialog):
         refs = list(log.refs.values())
         if self._pick_kind != "all":
             kinds = {"head": ("branch",), "tag": ("tag",),
-                     "remote": ("remote",)}.get(self._pick_kind)
+                     "remote": ("remote",),
+                     "notag": ("branch", "remote")}.get(self._pick_kind)
             if kinds:
                 refs = [r for r in refs if r.ref_type in kinds]
         return refs

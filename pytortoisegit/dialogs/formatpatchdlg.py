@@ -70,6 +70,7 @@ class FormatPatchDlg(QDialog):
         self.since_combo = QComboBox(self)
         self.since_combo.setEditable(True)
         self.btn_ref = QPushButton("...", self)
+        self.btn_ref.clicked.connect(self._pick_since_ref)
         self.rd_num = QRadioButton(tr("fmt_patch_num", "Number Commits"), self)
         self.num_edit = QSpinBox(self)
         self.num_edit.setRange(1, 10000)
@@ -78,9 +79,13 @@ class FormatPatchDlg(QDialog):
         self.from_combo = QComboBox(self)
         self.from_combo.setEditable(True)
         self.btn_from = QPushButton("...", self)
+        self.btn_from.clicked.connect(
+            lambda: self._pick_revision(self.from_combo))
         self.to_combo = QComboBox(self)
         self.to_combo.setEditable(True)
         self.btn_to = QPushButton("...", self)
+        self.btn_to.clicked.connect(
+            lambda: self._pick_revision(self.to_combo))
         self.chk_sendmail = QCheckBox(tr("fmt_patch_mail", "Send Mail after create"), self)
         self.chk_noprefix = QCheckBox(tr("fmt_patch_noprefix", "No a/ and b/ prefixes"), self)
         self.btn_unified = QPushButton(
@@ -137,6 +142,44 @@ class FormatPatchDlg(QDialog):
         self.from_combo.addItems(refs)
         self.to_combo.addItems(refs + ["HEAD"])
         self.rd_since.setChecked(True)
+        for rd in (self.rd_since, self.rd_num, self.rd_range):
+            rd.toggled.connect(self._update_radios)
+        self._update_radios()
+
+    def _update_radios(self, *_a):
+        """按选中的版本来源启用对应控件（对齐 OnBnClickedRadio）。"""
+        self.since_combo.setEnabled(self.rd_since.isChecked())
+        self.btn_ref.setEnabled(self.rd_since.isChecked())
+        self.num_edit.setEnabled(self.rd_num.isChecked())
+        self.from_combo.setEnabled(self.rd_range.isChecked())
+        self.to_combo.setEnabled(self.rd_range.isChecked())
+        self.btn_from.setEnabled(self.rd_range.isChecked())
+        self.btn_to.setEnabled(self.rd_range.isChecked())
+
+    def _pick_since_ref(self):
+        """IDC_BUTTON_REF：选引用（不含标签）填入 Since。"""
+        from .browserefs import BrowseRefsDlg
+        ref = BrowseRefsDlg.pick(self.repo, parent=self, kind="notag")
+        if not ref:
+            return
+        name = ref.split("refs/heads/")[-1].split("refs/remotes/")[-1]
+        if self.since_combo.findText(name) < 0:
+            self.since_combo.addItem(name)
+        self.since_combo.setCurrentText(name)
+        self.rd_since.setChecked(True)
+
+    def _pick_revision(self, combo):
+        """IDC_BUTTON_FROM / IDC_BUTTON_TO：用日志选提交并切到 Range。"""
+        from PySide6.QtWidgets import QDialog
+        from .logdlg import LogDlg
+        dlg = LogDlg(self.repo, parent=self, select=True)
+        if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.selected_hash:
+            return
+        chosen = dlg.selected_hash
+        if combo.findText(chosen) < 0:
+            combo.addItem(chosen)
+        combo.setCurrentText(chosen)
+        self.rd_range.setChecked(True)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -164,18 +207,50 @@ class FormatPatchDlg(QDialog):
         return args
 
     def _on_format(self):
+        outdir = self.dir_combo.currentText().strip() or str(self.repo.root)
+        try:
+            os.makedirs(outdir, exist_ok=True)
+        except OSError:
+            pass
+        before = self._snapshot(outdir)
+        args = self._args()
+        outcome: dict = {}
         dlg = ProgressDialog(title=tr("progress", "Progress"), parent=self)
-        dlg.set_label("git " + " ".join(self._args()))
+        dlg.set_label("git " + " ".join(args))
 
         def _bg():
-            r = self.repo.runner.run(*self._args())
+            r = self.repo.runner.run(*args)
             if r.stdout: dlg.log(r.stdout)
             if r.stderr: dlg.log(r.stderr)
-            return r.returncode == 0
+            outcome["ok"] = r.returncode == 0
+            outcome["stderr"] = r.stderr or ""
+            return outcome["ok"]
 
         dlg.run(_bg)
         dlg.exec()
+        created = self._snapshot(outdir) - before
+        if not created:
+            # git format-patch 在空范围下会返回 0 但不产出文件；原先直接关窗，
+            # 用户以为"没成功"。这里报错并保留对话框以便修改条件。
+            from PySide6.QtWidgets import QMessageBox
+            msg = tr(
+                "fmt_patch_none",
+                "No patches were created. Check that the selected version "
+                "range (Since / Range) actually contains commits.")
+            detail = (outcome.get("stderr") or "").strip()
+            if detail:
+                msg += "\n\n" + detail[:800]
+            QMessageBox.warning(
+                self, tr("fmt_patch_title", "Format Patch"), msg)
+            return
         self.accept()
+
+    @staticmethod
+    def _snapshot(outdir: str) -> set:
+        try:
+            return {n for n in os.listdir(outdir) if n.endswith(".patch")}
+        except OSError:
+            return set()
 
     def _save_unified(self):
         from ..utils.pick import pick_file

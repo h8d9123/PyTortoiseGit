@@ -1074,6 +1074,46 @@ def test_formatpatch_dialog(qapp, repo):
     assert dlg.rd_since.isChecked()
 
 
+def test_formatpatch_pick_buttons(qapp, repo, monkeypatch):
+    """Since 的“...”选引用；Range 起止的“...”用日志选提交。"""
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs import browserefs, logdlg
+    from pytortoisegit.dialogs.formatpatchdlg import FormatPatchDlg
+
+    dlg = FormatPatchDlg(repo)
+
+    # 单选联动：Since 时 ref 可用、from/to 禁用
+    assert dlg.btn_ref.isEnabled() and not dlg.btn_from.isEnabled()
+    dlg.rd_range.setChecked(True)
+    assert dlg.btn_from.isEnabled() and dlg.btn_to.isEnabled()
+    assert not dlg.btn_ref.isEnabled()
+
+    monkeypatch.setattr(browserefs.BrowseRefsDlg, "pick",
+                        staticmethod(lambda *a, **k: "refs/heads/main"))
+    dlg.rd_since.setChecked(True)
+    dlg._pick_since_ref()
+    assert dlg.rd_since.isChecked()
+    assert dlg.since_combo.currentText() == "main"
+
+    head = repo.runner.run("rev-parse", "HEAD").stdout.strip()
+
+    class _FakeLog:
+        selected_hash = head
+
+        def __init__(self, *a, **k):
+            pass
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(logdlg, "LogDlg", _FakeLog)
+    dlg._pick_revision(dlg.from_combo)
+    assert dlg.rd_range.isChecked()
+    assert dlg.from_combo.currentText() == head
+    dlg._pick_revision(dlg.to_combo)
+    assert dlg.to_combo.currentText() == head
+
+
 def test_applypatch_dialog(qapp, repo):
     from pytortoisegit.dialogs.applypatchdlg import ApplyPatchDlg
     dlg = _smoke(qapp, lambda: ApplyPatchDlg(repo, patches=["a.patch"]))
@@ -2822,6 +2862,47 @@ def test_mainmenu_undo_delete_and_paste(
     dlg._undo_last()
     assert not dst.exists()
     assert f.exists()
+    dlg.reject()
+
+
+def test_mainmenu_content_multiselect(
+        qapp, isolated_settings, tmp_path, monkeypatch):
+    """内容区支持多选：Ctrl/Shift 选择、复制/删除作用于全部选中项。"""
+    from pathlib import Path
+    from PySide6.QtCore import QItemSelectionModel
+    from PySide6.QtWidgets import QAbstractItemView, QMessageBox
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    (repo / "a.txt").write_text("a\n", encoding="utf-8")
+    (repo / "b.txt").write_text("b\n", encoding="utf-8")
+    runner.run("add", "-A")
+    runner.run("commit", "-m", "init")
+
+    dlg = MainMenuDlg(repo_path=str(repo))
+    dlg._navigate(str(repo))
+    assert dlg.content_list.selectionMode() == \
+        QAbstractItemView.SelectionMode.ExtendedSelection
+
+    sm = dlg.content_list.selectionModel()
+    flag = (QItemSelectionModel.SelectionFlag.Select
+            | QItemSelectionModel.SelectionFlag.Rows)
+    sm.select(dlg.fs_model.index(str(repo / "a.txt")), flag)
+    sm.select(dlg.fs_model.index(str(repo / "b.txt")), flag)
+    paths = dlg._selected_paths()
+    assert {Path(p).name for p in paths} == {"a.txt", "b.txt"}
+
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
+    dlg._delete_paths(paths)
+    assert not (repo / "a.txt").exists() and not (repo / "b.txt").exists()
+    dlg._undo_last()
+    assert (repo / "a.txt").exists() and (repo / "b.txt").exists()
     dlg.reject()
 
 

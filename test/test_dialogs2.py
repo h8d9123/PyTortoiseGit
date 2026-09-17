@@ -2225,6 +2225,61 @@ def test_menuitems_state_driven_entries(tmp_path_factory):
     assert "commit" not in c and "diff" not in c
 
 
+def test_daemon_menu_disabled(qapp, isolated_settings, tmp_path_factory):
+    """daemon 暂时置灰：菜单项保留展示但不可点击，且分发被拦截。"""
+    from PySide6.QtWidgets import QMenu
+    from pytortoisegit import menuitems as mi
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.res.strings import tr
+
+    assert "daemon" in mi.DISABLED_COMMANDS
+
+    parent = tmp_path_factory.mktemp("daemon_disabled")
+    repo = parent / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    runner.run("config", "user.email", "t@x.com")
+    runner.run("config", "user.name", "T")
+    (repo / "tracked.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "tracked.txt")
+    runner.run("commit", "-m", "init")
+    (repo / "tracked.txt").write_text("mod\n", encoding="utf-8")
+
+    label = tr("menu_cmd_daemon", "Daemon…")
+    dlg = MainMenuDlg(repo_path=str(repo))
+    # 状态驱动的 TortoiseGit 子菜单：daemon 在（单文件、已版本化），但置灰
+    menu = QMenu(dlg.repo_tree)
+    dlg._populate_tortoisegit_menu(menu, str(repo / "tracked.txt"), shift=False)
+    daemon_acts = [a for a in menu.actions() if a.text() == label]
+    assert daemon_acts, "daemon 菜单项应保留展示"
+    assert not daemon_acts[0].isEnabled()
+
+    # 「命令」菜单里的 daemon 同样置灰
+    found = False
+    for act in dlg.menuBar().actions():
+        top = act.menu()
+        if top is None:
+            continue
+        for group in top.actions():
+            sub = group.menu()
+            for a in (sub.actions() if sub is not None else []):
+                if a.text() == label:
+                    assert not a.isEnabled()
+                    found = True
+    assert found, "命令菜单应包含 daemon"
+
+    # _dispatch 被拦截：不调用命令实现，仅提示暂不开放
+    called: list[str] = []
+    dlg._run = lambda ctx, name: called.append(name)  # type: ignore[method-assign]
+    dlg._dispatch("daemon", extra={"path": str(repo / "tracked.txt")})
+    assert not called
+    assert dlg.status.text() == tr(
+        "menu_cmd_disabled", "This feature is temporarily unavailable")
+    dlg.reject()
+
+
 def test_content_folder_icons_untracked_plain(tmp_path_factory, qapp):
     """内容区目录图标：仅仓库根显示 git 绿勾，未受版本管理的子目录为普通图标。"""
     import os

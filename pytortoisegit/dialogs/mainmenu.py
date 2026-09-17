@@ -258,7 +258,8 @@ class MainMenuDlg(QMainWindow):
                 self._add_command_action(sub, name)
 
     def _add_command_action(self, menu, name: str):
-        """添加一个命令菜单项；原版未提供的命令置灰。"""
+        """添加一个命令菜单项；原版未提供或暂不开放的命令置灰。"""
+        from .. import menuitems as mi
         act = menu.addAction(tr("menu_cmd_" + name, name))
         icon_id = _CMD_ICON.get(name)
         if icon_id:
@@ -268,6 +269,10 @@ class MainMenuDlg(QMainWindow):
             act.setToolTip(tr(
                 "menu_cmd_unavailable",
                 "Not available in the original TortoiseGit UI"))
+        elif name in mi.DISABLED_COMMANDS:
+            act.setEnabled(False)
+            act.setToolTip(tr(
+                "menu_cmd_disabled", "This feature is temporarily unavailable"))
         act.triggered.connect(lambda _=False, n=name: self._dispatch(n))
 
     # ---- 主区：左侧标签页（仓库管理 + 目录树）+ 右侧内容浏览 ----
@@ -787,6 +792,11 @@ class MainMenuDlg(QMainWindow):
             icon_id = entry.icon_id or _CMD_ICON.get(entry.command)
             if icon_id:
                 self._set_action_icon(act, icon_id)
+            if entry.command in mi.DISABLED_COMMANDS:
+                act.setEnabled(False)
+                act.setToolTip(tr(
+                    "menu_cmd_disabled",
+                    "This feature is temporarily unavailable"))
             act.triggered.connect(
                 lambda _=False, c=entry.command, p=path:
                 self._dispatch(c, extra={"path": p}))
@@ -1374,6 +1384,11 @@ class MainMenuDlg(QMainWindow):
 
     # ---- 命令执行 ----
     def _dispatch(self, name: str, extra=None):
+        from .. import menuitems as mi
+        if name in mi.DISABLED_COMMANDS:
+            self.status.setText(tr(
+                "menu_cmd_disabled", "This feature is temporarily unavailable"))
+            return
         extra_path = bool(extra and extra.get("path"))
         if not (self.repo or self.path_row.text().strip() or extra_path):
             self.status.setText(tr("menu_select_first", "Please select a repository path first."))

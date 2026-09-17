@@ -310,6 +310,11 @@ def _registered_commands() -> set:
 
 _REGISTERED: set = _registered_commands()
 
+# 暂时置灰、不开放的功能：菜单项仍展示以保持原版布局，但不可点击。
+# daemon（git daemon 常驻服务）当前无法在 GUI 内可靠停止，暂时不开放；命令实现
+# 保留在 commands/daemon.py，后续可用时从本集合移除即可恢复。
+DISABLED_COMMANDS: set = {"daemon"}
+
 
 # ------------------------------------------------------------ 过滤逻辑
 def _should_enable(pair: Tuple[int, int], states: int) -> bool:

@@ -2917,6 +2917,51 @@ def test_daemon_menu_disabled(qapp, isolated_settings, tmp_path_factory):
     dlg.reject()
 
 
+def test_context_menu_tag_browserefs_cleanup_wiring(qapp, isolated_settings,
+                                                     tmp_path_factory):
+    """右键菜单接线：标签→tag、浏览引用→refbrowse、清理→cleanup（对齐原版）。"""
+    from PySide6.QtWidgets import QMenu
+    from pytortoisegit import menuitems as mi
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.res.strings import tr
+
+    parent = tmp_path_factory.mktemp("menu_wiring")
+    repo = parent / "repo"
+    repo.mkdir()
+    runner = GitRunner(cwd=str(repo))
+    runner.init(str(repo), initial_branch="main")
+    runner.run("config", "user.email", "t@x.com")
+    runner.run("config", "user.name", "T")
+    (repo / "a.txt").write_text("a\n", encoding="utf-8")
+    runner.run("add", "-A")
+    runner.run("commit", "-m", "init")
+
+    # 引擎层：显示的命令名正确，旧的未注册名 browserefs 不再出现
+    states = mi.compute_item_states(str(repo))
+    cmds = [e.command for e in mi.menu_entries(states) if e.command != "separator"]
+    for want in ("tag", "refbrowse", "cleanup"):
+        assert want in cmds, want
+    assert "browserefs" not in cmds
+
+    # GUI 层：点击菜单项分发到正确的命令
+    dlg = MainMenuDlg(repo_path=str(repo))
+    called: list[str] = []
+    dlg._dispatch = lambda name, extra=None: called.append(name)
+    menu = QMenu(dlg.repo_tree)
+    dlg._populate_tortoisegit_menu(menu, str(repo), shift=False)
+    label_to_cmd = {
+        tr("menu_cmd_tag", "Tag…"): "tag",
+        tr("menu_cmd_browserefs", "Browse References…"): "refbrowse",
+        tr("repo_menu_cleanup", "Clean Up…"): "cleanup",
+    }
+    for act in menu.actions():
+        if act.text() in label_to_cmd:
+            act.trigger()
+    assert set(label_to_cmd.values()) <= set(called)
+    dlg.reject()
+
+
 def test_content_folder_icons_untracked_plain(tmp_path_factory, qapp):
     """内容区目录图标：仅仓库根显示 git 绿勾，未受版本管理的子目录为普通图标。"""
     import os

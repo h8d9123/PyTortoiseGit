@@ -1,24 +1,24 @@
-"""commands/cleanup.py —— /command:cleanup 执行 git gc 清理。"""
+"""commands/cleanup.py —— /command:cleanup（清理未跟踪/忽略的文件）。
 
-from ..dialogs.progress import ProgressDialog
-from ..res.strings import tr
-from ._util import repo_from_cl
+对齐原版 TortoiseGit：Cleanup 打开 IDD_CLEAN 对话框（见 CleanDlg），
+递归删除未纳入版本控制或被忽略的文件，而非执行 git gc。
+"""
+
+from __future__ import annotations
+
+from PySide6.QtWidgets import QDialog
+
+from ..dialogs.cleandlg import CleanDlg
+from ._util import repo_from_cl_optional
 from .dispatcher import CommandContext, register
 
 
 @register("cleanup")
 def cleanup(ctx: CommandContext):
-    repo = repo_from_cl(ctx.cl)
-    dlg = ProgressDialog(title=tr("cleanup_title", "Repository Cleanup"), parent=None)
-    dlg.set_label("git gc --auto")
-    def _bg():
-        r = repo.runner.run("gc", "--auto")
-        if r.stdout: dlg.log(r.stdout)
-        if r.stderr: dlg.log(r.stderr)
-        return r.returncode == 0
-    dlg.run(_bg)
+    repo = repo_from_cl_optional(ctx.cl)
+    dlg = CleanDlg(repo, parent=None)
     dlg.exec()
-    return "ok"
+    return "ok" if dlg.result() == QDialog.DialogCode.Accepted else "cancel"
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
 # Copyright (C) 2026  PyTortoiseGit contributors

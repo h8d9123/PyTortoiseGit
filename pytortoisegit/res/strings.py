@@ -486,6 +486,7 @@ STRINGS: Dict[str, str] = {
     "menu_cmd_svnfetch": "SVN 抓取…",
     "menu_cmd_logsubmodule": "显示子模块日志",
     "menu_cmd_browserefs": "浏览引用…",
+    "menu_cmd_refbrowse": "浏览引用…",
     "menu_cmd_bisectgood": "二分定位 - 正常",
     "menu_cmd_bisectbad": "二分定位 - 问题",
     "menu_cmd_bisectskip": "二分跳过",

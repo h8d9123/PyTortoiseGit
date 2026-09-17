@@ -43,6 +43,7 @@ DIALOG_CMDS = {
     "tag": "CreateTagDlg",
     "changed": "ChangedDlg",
     "clean": "CleanDlg",
+    "cleanup": "CleanDlg",
     "commit": "CommitDlg",
     "conflicteditor": "ConflictEditorDlg",
     "export": "ExportDlg",
@@ -92,7 +93,7 @@ def test_command_opens_dialog(qapp, git_repo, auto_progress, monkeypatch, cmd, a
 
 # ---- 进度类命令 ----
 
-@pytest.mark.parametrize("cmd", ["cleanup", "svnignore", "svndcommit",
+@pytest.mark.parametrize("cmd", ["svnignore", "svndcommit",
                                  "svnfetch", "svnrebase"])
 def test_command_progress(qapp, git_repo, auto_progress, cmd):
     mod = importlib.import_module(f"pytortoisegit.commands.{cmd}")

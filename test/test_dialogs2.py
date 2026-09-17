@@ -1761,6 +1761,91 @@ def test_revgraph_f5_refreshes(rg, tmp_path):
     assert dlg.canvas.node_count() == before
 
 
+def test_revgraph_save_formats_are_writable(rg, tmp_path):
+    """另存为：位图格式以 Qt 实际可写为准，且过滤器里只出现可用格式。"""
+    from pytortoisegit.dialogs.revisiongraphdlg import RevisionGraphDlg
+
+    formats = RevisionGraphDlg.save_formats()
+    assert ".png" in formats, "PNG 必须可用"
+    assert all(f.startswith(".") for f in formats)
+
+    repo = _rg_branchy_repo(tmp_path)
+    dlg = rg(repo)
+    filt = dlg._save_filter()
+    assert "*.svg" in filt and "*.gv" in filt
+    for ext in formats:
+        assert f"*{ext}" in filt, f"{ext} 未出现在过滤器里: {filt}"
+
+
+def test_revgraph_export_png_svg_and_gv(rg, tmp_path):
+    """导出 PNG/SVG/.gv 都应产出非空且内容正确的文件。"""
+    import os
+
+    repo = _rg_branchy_repo(tmp_path)
+    dlg = rg(repo)
+    out = tmp_path / "out"
+    out.mkdir()
+
+    for ext in (".png", ".svg", ".gv"):
+        path = out / f"graph{ext}"
+        dlg._write_graph(str(path), ext)
+        assert path.exists() and path.stat().st_size > 0, ext
+
+    gv = (out / "graph.gv").read_text(encoding="utf-8")
+    assert gv.startswith("digraph revisiongraph {")
+    assert gv.rstrip().endswith("}")
+    assert "->" in gv, "应包含父子连线"
+    assert len([ln for ln in gv.splitlines() if "[label=" in ln]) >= 1
+
+    svg = (out / "graph.svg").read_text(encoding="utf-8", errors="replace")
+    assert "<svg" in svg
+
+    if os.name == "nt":
+        from PySide6.QtGui import QImage
+        img = QImage(str(out / "graph.png"))
+        assert not img.isNull() and img.width() > 0
+
+
+def test_revgraph_export_rejects_unsupported_format(rg, tmp_path):
+    """WMF/EMF 不受支持：应抛异常（由调用方提示），而不是静默写出空文件。"""
+    repo = _rg_branchy_repo(tmp_path)
+    dlg = rg(repo)
+    target = tmp_path / "graph.wmf"
+    with pytest.raises(RuntimeError):
+        dlg._write_graph(str(target), ".wmf")
+    assert not target.exists()
+
+
+def test_revgraph_overview_toggle_and_hit(rg, tmp_path):
+    """概览图：默认关闭、可切换、命中后可换算出滚动目标。"""
+    from PySide6.QtCore import QPoint
+
+    repo = _rg_branchy_repo(tmp_path)
+    dlg = rg(repo)
+    assert dlg.canvas.show_overview() is False
+
+    dlg.btn_overview.setChecked(True)
+    dlg._toggle_overview()
+    assert dlg.canvas.show_overview() is True
+
+    box, view = dlg.canvas._preview_rect()
+    assert box is not None and view is not None
+    assert box.width() > 0 and view.width() > 0
+    # 缩略图位于视口右下角附近
+    assert box.right() <= view.right() + 1
+    assert box.bottom() <= view.bottom() + 1
+
+    target = dlg.canvas._overview_hit(QPoint(int(box.center().x()),
+                                              int(box.center().y())))
+    assert target is not None
+    # 缩略图外不应命中
+    assert dlg.canvas._overview_hit(QPoint(0, 0)) is None
+
+    dlg.btn_overview.setChecked(False)
+    dlg._toggle_overview()
+    assert dlg.canvas.show_overview() is False
+
+
 
 def test_statgraph_dialog(qapp, repo):
     from pytortoisegit.dialogs.statgraphdlg import StatGraphDlg

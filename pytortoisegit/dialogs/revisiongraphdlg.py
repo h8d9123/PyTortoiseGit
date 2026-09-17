@@ -44,7 +44,7 @@ from __future__ import annotations
 import math
 import re
 
-from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -239,6 +239,8 @@ class _GraphCanvas(QWidget):
         self._pan_scroll = (0, 0)
         self._scroll = None            # QScrollArea，由对话框注入
         self._tooltip_provider = None  # callable(hash) -> str
+        self._show_overview = False
+        self._overview_drag = False
         self.setMouseTracking(True)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(
@@ -315,6 +317,14 @@ class _GraphCanvas(QWidget):
         if event.button() != Qt.MouseButton.LeftButton:
             return
         pos = event.position().toPoint()
+        # 概览图内点击/拖动 => 按比例跳转滚动
+        if self._show_overview:
+            target = self._overview_hit(pos)
+            if target is not None and self._scroll is not None:
+                self._overview_drag = True
+                self._scroll.horizontalScrollBar().setValue(int(target[0]))
+                self._scroll.verticalScrollBar().setValue(int(target[1]))
+                return
         key = self.node_at(pos)
         if key is not None:
             additive = bool(event.modifiers()
@@ -331,15 +341,24 @@ class _GraphCanvas(QWidget):
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def mouseMoveEvent(self, event):  # noqa: N802
+        pos = event.position().toPoint()
+        if self._overview_drag and self._show_overview:
+            target = self._overview_hit(pos)
+            if target is not None and self._scroll is not None:
+                self._scroll.horizontalScrollBar().setValue(int(target[0]))
+                self._scroll.verticalScrollBar().setValue(int(target[1]))
+            return
         if not self._panning or self._scroll is None:
             return
-        pos = event.position().toPoint()
         dx = pos.x() - self._pan_origin.x()
         dy = pos.y() - self._pan_origin.y()
         self._scroll.horizontalScrollBar().setValue(self._pan_scroll[0] - dx)
         self._scroll.verticalScrollBar().setValue(self._pan_scroll[1] - dy)
 
     def mouseReleaseEvent(self, event):  # noqa: N802
+        if self._overview_drag:
+            self._overview_drag = False
+            return
         if self._panning:
             self._panning = False
             self.unsetCursor()
@@ -423,11 +442,91 @@ class _GraphCanvas(QWidget):
         p.fillRect(self.rect(), self.palette().base().color())
         if self._layout is None:
             return
+        self.render(p, self._zoom)
+        if self._show_overview:
+            self._draw_overview(p)
+
+    def render(self, p: QPainter, zoom: float) -> None:
+        """在给定画笔上按 zoom 绘制整张图（供屏幕绘制与导出复用）。"""
+        if self._layout is None:
+            return
         p.save()
-        p.scale(self._zoom, self._zoom)
+        p.scale(zoom, zoom)
         self._draw_edges(p)
         self._draw_nodes(p)
         p.restore()
+
+    # ---- 概览缩略图（对齐原版 BuildPreview / 右下角预览 + 视口矩形）----
+    def _preview_rect(self):
+        """缩略图矩形与当前视口矩形（均为画布坐标）。"""
+        if self._scroll is None or self._layout is None:
+            return None, None
+        vp = self._scroll.viewport()
+        hx = self._scroll.horizontalScrollBar().value()
+        hy = self._scroll.verticalScrollBar().value()
+        view = QRectF(hx, hy, vp.width(), vp.height())
+        size = max(120.0, min(vp.width(), vp.height()) / 4.0)
+        pad = 10.0
+        box = QRectF(hx + vp.width() - size - pad,
+                     hy + vp.height() - size - pad, size, size)
+        return box, view
+
+    def _draw_overview(self, p: QPainter):
+        box, view = self._preview_rect()
+        if box is None:
+            return
+        layout = self._layout
+        gw = max(1.0, layout.width)
+        gh = max(1.0, layout.height)
+        scale = min(box.width() / gw, box.height() / gh)
+        off_x = box.x() + (box.width() - gw * scale) / 2.0
+        off_y = box.y() + (box.height() - gh * scale) / 2.0
+
+        p.save()
+        p.setPen(QPen(QColor(0, 0, 0, 160)))
+        p.setBrush(QBrush(QColor(255, 255, 255, 200)))
+        p.drawRect(box)
+        # 缩略图：只画节点小方块，够看清拓扑即可
+        p.setPen(Qt.PenStyle.NoPen)
+        for key in layout.order:
+            node = layout.nodes.get(key)
+            if node is None:
+                continue
+            p.setBrush(QBrush(self._ref_color(node.lines[0][0], node.lines[0][1])
+                              if node.lines else _COLORS["commit"]))
+            p.drawRect(QRectF(off_x + (node.x - node.width / 2) * scale,
+                              off_y + (node.y - node.height / 2) * scale,
+                              max(1.0, node.width * scale),
+                              max(1.0, node.height * scale)))
+        # 视口矩形
+        p.setBrush(QBrush(QColor(0, 0, 0, 64)))
+        p.setPen(QPen(QColor(0, 0, 0, 200)))
+        p.drawRect(QRectF(off_x + view.x() * scale, off_y + view.y() * scale,
+                          view.width() * scale, view.height() * scale))
+        p.restore()
+
+    def _overview_hit(self, pos):
+        """点击是否落在缩略图内；是则返回目标滚动位置。"""
+        box, _view = self._preview_rect()
+        if box is None or not box.contains(QPointF(pos)):
+            return None
+        layout = self._layout
+        gw = max(1.0, layout.width)
+        gh = max(1.0, layout.height)
+        scale = min(box.width() / gw, box.height() / gh)
+        off_x = box.x() + (box.width() - gw * scale) / 2.0
+        off_y = box.y() + (box.height() - gh * scale) / 2.0
+        gx = (pos.x() - off_x) / scale
+        gy = (pos.y() - off_y) / scale
+        vp = self._scroll.viewport()
+        return (gx - vp.width() / 2.0, gy - vp.height() / 2.0)
+
+    def set_show_overview(self, on: bool) -> None:
+        self._show_overview = bool(on)
+        self.update()
+
+    def show_overview(self) -> bool:
+        return self._show_overview
 
     def _draw_edges(self, p: QPainter):
         assert self._layout is not None
@@ -626,8 +725,148 @@ class RevisionGraphDlg(QDialog):
         self.btn_find.clicked.connect(self._open_find)
         row.addWidget(self.btn_find)
 
+        self.btn_overview = QToolButton(bar)
+        self.btn_overview.setText(tr("revgraph_overview", "Overview"))
+        self.btn_overview.setToolTip(
+            tr("revgraph_overview_tip", "Show the overview map"))
+        self.btn_overview.setAutoRaise(True)
+        self.btn_overview.setCheckable(True)
+        self.btn_overview.clicked.connect(self._toggle_overview)
+        row.addWidget(self.btn_overview)
+
+        self.btn_save = QToolButton(bar)
+        self.btn_save.setText(tr("revgraph_save", "Save"))
+        self.btn_save.setToolTip(
+            tr("revgraph_save_tip", "Save graph as…"))
+        self.btn_save.setAutoRaise(True)
+        self.btn_save.clicked.connect(self._save_graph)
+        row.addWidget(self.btn_save)
+
         row.addStretch(1)
         return bar
+
+    # ---- 概览 ----
+    def _toggle_overview(self):
+        self.canvas.set_show_overview(self.btn_overview.isChecked())
+
+    # ---- 另存为（对齐 OnFileSavegraphas / SaveGraphAs）----
+    @staticmethod
+    def save_formats() -> list:
+        """可用的位图扩展名：以 Qt 实际支持写入的格式为准。
+
+        原版过滤器是固定的 svg/wmf/jpg/png/bmp/gif；这里按运行时能力裁剪，
+        避免用户选完路径才报"不支持"（例如某些 Qt 构建没有 GIF 写入插件）。
+        """
+        from PySide6.QtGui import QImageWriter
+        supported = {bytes(f).decode().lower()
+                     for f in QImageWriter.supportedImageFormats()}
+        return [e for e in (".png", ".jpg", ".jpeg", ".bmp", ".gif")
+                if e.lstrip(".") in supported]
+
+    def _save_filter(self) -> str:
+        patterns = " ".join(["*.svg"] + [f"*{e}" for e in self.save_formats()])
+        return ";;".join([
+            format_string(tr("revgraph_save_filter_pictures", "Pictures ({patterns})"),
+                          patterns=patterns),
+            tr("revgraph_save_filter_graphviz", "Graphs (*.gv)"),
+            tr("revgraph_save_filter_all", "All Files (*)"),
+        ])
+
+    def _save_graph(self):
+        import os
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        if self.canvas.layout() is None:
+            QMessageBox.information(
+                self, tr("revgraph_save", "Save graph as…"),
+                tr("revgraph_nograph", "No graph available"))
+            return
+        filters = self._save_filter()
+        start = os.path.join(self.repo.root, f"{self.repo.name}-revgraph.png")
+        path, chosen = QFileDialog.getSaveFileName(
+            self, tr("revgraph_save", "Save graph as…"), start, filters)
+        if not path:
+            return
+        ext = os.path.splitext(path)[1].lower()
+        if not ext:
+            # 原版按过滤器索引补默认扩展名：Pictures -> .svg，Graphs -> .gv
+            ext = ".gv" if "gv" in (chosen or "") else ".svg"
+            path += ext
+        try:
+            self._write_graph(path, ext)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(
+                self, tr("error"),
+                format_string(tr("revgraph_save_failed", "Could not save: {message}"),
+                              message=str(exc)))
+            return
+        self.status_label.setText(
+            format_string(tr("revgraph_saved", "Saved to {path}"), path=path))
+
+    def _write_graph(self, path: str, ext: str) -> None:
+        """把当前图形写入 path（按扩展名分派）。不支持时抛异常由调用方提示。"""
+        from PySide6.QtGui import QImage, QPainter
+
+        layout = self.canvas.layout()
+        if layout is None:
+            raise RuntimeError(tr("revgraph_nograph", "No graph available"))
+        zoom = self.canvas.zoom()
+        width = max(1, int(layout.width * zoom) + 2)
+        height = max(1, int(layout.height * zoom) + 2)
+
+        if ext == ".gv":
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(self._graphviz_text())
+            return
+
+        if ext == ".svg":
+            from PySide6.QtSvg import QSvgGenerator
+            gen = QSvgGenerator()
+            gen.setFileName(path)
+            gen.setSize(QSize(width, height))
+            gen.setViewBox(QRect(0, 0, width, height))
+            gen.setTitle(tr("revgraph_title", "Revision Graph"))
+            painter = QPainter(gen)
+            painter.fillRect(0, 0, width, height,
+                             self.canvas.palette().base().color())
+            self.canvas.render(painter, zoom)
+            painter.end()
+            return
+
+        if ext in (".wmf", ".emf"):
+            raise RuntimeError(tr(
+                "revgraph_save_nowmf",
+                "Windows metafile export is not supported; "
+                "use SVG, PNG or .gv instead."))
+
+        image = QImage(width, height, QImage.Format.Format_ARGB32)
+        image.fill(self.canvas.palette().base().color())
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        self.canvas.render(painter, zoom)
+        painter.end()
+        fmt = {".jpg": "JPG", ".jpeg": "JPG", ".bmp": "BMP",
+               ".gif": "GIF"}.get(ext, "PNG")
+        if not image.save(path, fmt):
+            raise RuntimeError(
+                f"{ext} is not supported by this Qt build; "
+                f"available: {', '.join(self.save_formats())}")
+
+    def _graphviz_text(self) -> str:
+        """导出 GraphViz DOT（对齐原版的 .gv 输出）。"""
+        layout = self.canvas.layout()
+        assert layout is not None
+        lines = ["digraph revisiongraph {", "  rankdir=TB;"]
+        for key in layout.order:
+            node = layout.nodes.get(key)
+            if node is None:
+                continue
+            label = "\\n".join(text for text, _t in (node.lines or [])) or key[:8]
+            lines.append(f'  "{key}" [label="{label}"];')
+        for edge in layout.edges:
+            lines.append(f'  "{edge.source}" -> "{edge.target}";')
+        lines.append("}")
+        return "\n".join(lines) + "\n"
 
     # ---- 缩放 ----
     def _sync_zoom_box(self):

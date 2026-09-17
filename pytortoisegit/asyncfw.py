@@ -28,9 +28,25 @@ from __future__ import annotations
 
 import traceback
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Set
 
 from PySide6.QtCore import QObject, QThread, Signal
+
+
+# 正在运行的任务的强引用集合。
+#
+# 不能把 QThread 挂到 widget 父对象上：调用方习惯写 run_async(..., parent=self)
+# 传入对话框，一旦对话框在后台任务还没跑完时被关闭/销毁，Qt 会连带销毁仍在
+# 运行的 QThread，进程直接 fail-fast（Windows 上表现为 0xC0000409
+# "QThread: Destroyed while thread is still running" 之后的应用崩溃）。
+# 这里改为由模块持有引用，线程结束后自动释放；parent 参数保留只为兼容调用方，
+# 槽连接的自动断开仍然生效（接收者是 QObject 的绑定方法时由 Qt 负责）。
+_live_tasks: Set["_Task"] = set()
+
+
+def _track(task: "_Task") -> None:
+    _live_tasks.add(task)
+    task.finished.connect(lambda: _live_tasks.discard(task))
 
 
 class _Task(QThread):
@@ -73,10 +89,12 @@ class TaskManager:
     _on_finished: Optional[Callable] = None
 
     def submit(self, func, args=(), kwargs=None, on_done=None, on_error=None) -> _Task:
-        task = _Task(func, args=args, kwargs=kwargs, parent=self.parent)
+        # 见 _live_tasks 的说明：不把 QThread 挂到 widget 父对象上
+        task = _Task(func, args=args, kwargs=kwargs, parent=None)
         task.on_done(on_done)
         task.on_error(on_error)
         task.finished.connect(self._check_all)
+        _track(task)
         self.tasks.append(task)
         task.start()
         return task
@@ -100,9 +118,14 @@ class TaskManager:
 
 
 def run_async(bg_func, args=(), kwargs=None, on_done=None, on_error=None, parent=None) -> _Task:
-    """便捷函数。"""
-    task = _Task(bg_func, args=args, kwargs=kwargs, parent=parent)
+    """便捷函数。
+
+    parent 仅为接口兼容保留：**不会**作为 QThread 的父对象（原因见 _live_tasks）。
+    接收者是 QObject 的绑定方法时，Qt 仍会在该对象销毁后自动断开槽连接。
+    """
+    task = _Task(bg_func, args=args, kwargs=kwargs, parent=None)
     task.on_done(on_done)
     task.on_error(on_error)
+    _track(task)
     task.start()
     return task

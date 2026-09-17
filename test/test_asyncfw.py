@@ -24,6 +24,11 @@ def test_run_async_survives_parent_destruction(qapp):
     """任务运行中销毁 parent，不能连带销毁 QThread。
 
     若退回旧行为，整个 pytest 进程会崩掉——这正是它能防住回归的原因。
+
+    注意：宿主已销毁时回调会被防护丢弃（见 _guard_callback），所以这里只断言
+    "任务跑完并从运行集合释放、进程没崩"，不断言回调被调用；
+    "宿主存活时回调照常执行"由 test_run_async_callback_still_runs_while_parent_alive
+    覆盖。
     """
     import time
 
@@ -31,22 +36,22 @@ def test_run_async_survives_parent_destruction(qapp):
     from PySide6.QtWidgets import QWidget
     from pytortoisegit.asyncfw import _live_tasks, run_async
 
-    seen = {}
+    finished = {}
 
     def slow():
         time.sleep(0.6)
         return 42
 
     parent_widget = QWidget()
-    run_async(slow, on_done=lambda r: seen.setdefault("r", r),
-              parent=parent_widget)
+    task = run_async(slow, parent=parent_widget)
+    task.finished.connect(lambda: finished.setdefault("done", True))
     parent_widget.deleteLater()
 
     loop = QEventLoop()
     QTimer.singleShot(2500, loop.quit)
     loop.exec()
 
-    assert seen.get("r") == 42, "任务应正常跑完并回调"
+    assert finished.get("done") is True, "任务本身应正常跑完"
     assert not _live_tasks, "任务结束后不应再留在运行集合里"
 
 
@@ -74,3 +79,68 @@ def test_run_async_error_callback_and_release(qapp):
     assert "done" not in seen, "失败任务不应走 on_done"
     assert "expected failure" in seen.get("err", ("", ""))[0]
     assert not _live_tasks
+
+
+def test_run_async_callback_still_runs_while_parent_alive(qapp):
+    """宿主还活着时回调必须照常执行（防护不能误伤正常路径）。"""
+    import time
+
+    from PySide6.QtCore import QEventLoop, QTimer
+    from PySide6.QtWidgets import QWidget
+    from pytortoisegit.asyncfw import run_async
+
+    seen = {}
+
+    def slow():
+        time.sleep(0.2)
+        return "ok"
+
+    parent = QWidget()
+    run_async(slow, on_done=lambda r: seen.setdefault("r", r), parent=parent)
+    loop = QEventLoop()
+    QTimer.singleShot(1500, loop.quit)
+    loop.exec()
+    assert seen.get("r") == "ok"
+
+
+def test_run_async_lambda_callback_skipped_after_parent_destroyed(qapp):
+    """宿主销毁后，lambda 回调不得再去碰已析构的 C++ 控件。
+
+    Qt 只能对绑定方法/QObject 槽做销毁时自动断连，lambda 做不到；旧行为是
+    回调照常执行并抛 "Internal C++ object already deleted"（在某些路径下会
+    直接踩到已释放内存）。防护后应静默丢弃该次回调。
+    """
+    import time
+
+    from PySide6.QtCore import QEventLoop, QTimer
+    from PySide6.QtWidgets import QLabel, QWidget
+    from pytortoisegit.asyncfw import run_async
+
+    class Dlg(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.label = QLabel("alive", self)
+            self.touched = False
+            # 故意用 lambda 捕获 self —— 这正是问题写法
+            run_async(self._bg, on_error=lambda m, tb: self._touch(m),
+                      parent=self)
+
+        def _bg(self):
+            time.sleep(0.4)
+            raise RuntimeError("boom")
+
+        def _touch(self, message):
+            self.touched = True
+            self.label.setText(message)   # 宿主已销毁时这里会炸
+
+    dlg = Dlg()
+    dlg.show()
+    dlg.close()
+    dlg.deleteLater()
+    qapp.processEvents()                 # 让 deleteLater 生效
+
+    loop = QEventLoop()
+    QTimer.singleShot(1500, loop.quit)
+    loop.exec()                          # 任务在此期间失败并尝试回调
+
+    assert dlg.touched is False, "宿主已销毁，回调不应被执行"

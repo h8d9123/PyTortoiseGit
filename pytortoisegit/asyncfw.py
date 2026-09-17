@@ -49,6 +49,34 @@ def _track(task: "_Task") -> None:
     task.finished.connect(lambda: _live_tasks.discard(task))
 
 
+def _guard_callback(parent, callback):
+    """把回调包一层"宿主还活着吗"的检查。
+
+    Qt 只能对**绑定方法/QObject 槽**做销毁时自动断连；对 lambda 这类普通
+    Python 可调用对象做不到。于是像
+        run_async(bg, on_error=lambda m, tb: self.label.setText(m), parent=self)
+    这种写法，在对话框已销毁后仍会被调用，去碰已经析构的 C++ 控件——
+    轻则抛 "Internal C++ object already deleted"，重则踩到已释放内存。
+
+    这里用 shiboken6.isValid(parent) 在真正回调前挡一道：宿主 C++ 对象没了就
+    静默丢弃该次回调。对绑定方法同样适用（行为等价于 Qt 的自动断连）。
+    """
+    if parent is None or callback is None:
+        return callback
+
+    try:
+        import shiboken6
+    except ImportError:      # 非 PySide 环境不额外拦截
+        return callback
+
+    def guarded(*args, **kwargs):
+        if not shiboken6.isValid(parent):
+            return None
+        return callback(*args, **kwargs)
+
+    return guarded
+
+
 class _Task(QThread):
     _done = Signal(object)
     _error = Signal(str, str)      # (error_message, traceback_text)
@@ -91,8 +119,8 @@ class TaskManager:
     def submit(self, func, args=(), kwargs=None, on_done=None, on_error=None) -> _Task:
         # 见 _live_tasks 的说明：不把 QThread 挂到 widget 父对象上
         task = _Task(func, args=args, kwargs=kwargs, parent=None)
-        task.on_done(on_done)
-        task.on_error(on_error)
+        task.on_done(_guard_callback(self.parent, on_done))
+        task.on_error(_guard_callback(self.parent, on_error))
         task.finished.connect(self._check_all)
         _track(task)
         self.tasks.append(task)
@@ -120,12 +148,13 @@ class TaskManager:
 def run_async(bg_func, args=(), kwargs=None, on_done=None, on_error=None, parent=None) -> _Task:
     """便捷函数。
 
-    parent 仅为接口兼容保留：**不会**作为 QThread 的父对象（原因见 _live_tasks）。
-    接收者是 QObject 的绑定方法时，Qt 仍会在该对象销毁后自动断开槽连接。
+    parent 不作为 QThread 的父对象（原因见 _live_tasks），但它会被用来给回调
+    加一道"宿主是否已销毁"的保护（见 _guard_callback）——所以传 parent 仍然
+    是必要的，尤其是 on_done/on_error 写成 lambda 的时候。
     """
     task = _Task(bg_func, args=args, kwargs=kwargs, parent=None)
-    task.on_done(on_done)
-    task.on_error(on_error)
+    task.on_done(_guard_callback(parent, on_done))
+    task.on_error(_guard_callback(parent, on_error))
     _track(task)
     task.start()
     return task

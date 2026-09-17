@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Tuple
 
@@ -383,32 +384,92 @@ def _prune_separators(entries: List[MenuEntry]) -> List[MenuEntry]:
 
 
 # ------------------------------------------------------- 状态计算
+# 右键菜单每次都要判定仓库状态；原先每个判定都是一次 git 子进程（stash/merge/
+# rebase/bisect/svn/submodule/bare…），在 Windows 上累计数百毫秒。改为直接读
+# .git 下的文件/配置，并做短时缓存，避免弹菜单卡顿。
+_FACTS_TTL = 2.0
+_facts_cache: dict = {}
+
+
+def _resolve_git_dir(path: str) -> Optional[str]:
+    """定位 .git 目录（处理 gitfile / linked worktree 的 gitdir: 指向）。"""
+    from .git.admin import GitAdminDir
+    try:
+        d = GitAdminDir(path).git_dir
+    except Exception:  # noqa: BLE001
+        return None
+    if not d:
+        return None
+    if os.path.isdir(d):
+        return d
+    try:
+        with open(d, "r", encoding="utf-8", errors="replace") as fh:
+            content = fh.read().strip()
+    except OSError:
+        return None
+    if content.startswith("gitdir:"):
+        target = content[7:].strip()
+        if not os.path.isabs(target):
+            target = os.path.join(os.path.dirname(d), target)
+        return os.path.normpath(target)
+    return None
+
+
+def _config_has(git_dir: str, needle: str) -> bool:
+    try:
+        with open(os.path.join(git_dir, "config"), "r",
+                  encoding="utf-8", errors="replace") as fh:
+            return needle in fh.read()
+    except OSError:
+        return False
+
+
+def repo_facts(root: str) -> dict:
+    """仓库级状态（无子进程，带 2 秒缓存）。"""
+    key = os.path.normcase(os.path.abspath(root))
+    now = time.monotonic()
+    hit = _facts_cache.get(key)
+    if hit is not None and now - hit[0] <= _FACTS_TTL:
+        return hit[1]
+    git_dir = _resolve_git_dir(root) or ""
+
+    def _exists(rel: str) -> bool:
+        return bool(git_dir) and os.path.exists(os.path.join(git_dir, rel))
+
+    facts = {
+        "git_dir": git_dir,
+        "bare": bool(git_dir) and os.path.normcase(git_dir) == key,
+        "submodules": os.path.isfile(os.path.join(root, ".gitmodules")),
+        "gitsvn": bool(git_dir) and _config_has(git_dir, "svn-remote"),
+        "stash": _exists("refs/stash") or _exists("logs/refs/stash"),
+        "bisect": _exists("BISECT_START") or _exists("BISECT_LOG"),
+        "merge": _exists("MERGE_HEAD"),
+        "rebase": bool(git_dir) and (
+            os.path.isdir(os.path.join(git_dir, "rebase-merge"))
+            or os.path.isdir(os.path.join(git_dir, "rebase-apply"))),
+    }
+    _facts_cache[key] = (now, facts)
+    return facts
+
+
 def has_stash(repo: Repository) -> bool:
-    r = repo.runner.run("stash", "list")
-    return bool(r.stdout and r.stdout.strip())
+    return repo_facts(repo.root)["stash"]
 
 
 def has_gitsvn(repo: Repository) -> bool:
-    r = repo.runner.run("config", "--get", "svn-remote.svn.url")
-    return r.returncode == 0 and bool(r.stdout and r.stdout.strip())
+    return repo_facts(repo.root)["gitsvn"]
 
 
 def is_bisect_active(repo: Repository) -> bool:
-    r = repo.runner.run("rev-parse", "--verify", "-q", "BISECT_HEAD")
-    if r.returncode == 0:
-        return True
-    r = repo.runner.run("rev-parse", "--git-path", "BISECT_START")
-    return r.returncode == 0 and bool(r.stdout and os.path.exists(r.stdout.strip()))
+    return repo_facts(repo.root)["bisect"]
 
 
 def is_merge_active(repo: Repository) -> bool:
-    r = repo.runner.run("rev-parse", "--verify", "-q", "MERGE_HEAD")
-    return r.returncode == 0
+    return repo_facts(repo.root)["merge"]
 
 
 def is_rebase_active(repo: Repository) -> bool:
-    from .git.mergeop import is_rebase_active as _impl
-    return _impl(repo)
+    return repo_facts(repo.root)["rebase"]
 
 
 def path_status(repo: Repository, path: str) -> int:
@@ -430,11 +491,18 @@ def path_status(repo: Repository, path: str) -> int:
 
     entry = None
     try:
-        for e in GitStatus(repo).get_status():
-            if e.path.replace("\\", "/") == rel or e.orig_path.replace("\\", "/") == rel:
+        # 只对目标路径做 status，避免整仓库扫描（大仓库右键明显变慢）
+        result = repo.runner.run(
+            "status", "--porcelain=v1", "-z", "--untracked-files=all",
+            "--", rel)
+        entries = GitStatus._parse_z(result.stdout) \
+            if result.returncode == 0 else []
+        for e in entries:
+            if (e.path.replace("\\", "/") == rel
+                    or e.orig_path.replace("\\", "/") == rel):
                 entry = e
                 break
-    except Exception:
+    except Exception:  # noqa: BLE001
         entry = None
 
     if entry is None:
@@ -532,17 +600,18 @@ def _repo_context_states(path: str, root: str, is_dir: bool) -> int:
         flags |= path_status(repo, abs_path)
 
     if repo:
-        if _repo_has_submodules(repo):
+        facts = repo_facts(abs_root)
+        if facts["submodules"]:
             flags |= ITEMIS_SUBMODULECONTAINER
-        if has_gitsvn(repo):
+        if facts["gitsvn"]:
             flags |= ITEMIS_GITSVN
-        if has_stash(repo):
+        if facts["stash"]:
             flags |= ITEMIS_STASH
-        if is_bisect_active(repo):
+        if facts["bisect"]:
             flags |= ITEMIS_BISECT
-        if is_merge_active(repo) or is_rebase_active(repo):
+        if facts["merge"] or facts["rebase"]:
             flags |= ITEMIS_MERGEACTIVE
-        if repo.is_bare():
+        if facts["bare"]:
             flags |= ITEMIS_BAREREPO | ITEMIS_INGIT
     return flags
 
@@ -555,23 +624,18 @@ def _inside_worktree(path: str, root: str) -> bool:
 
 
 def _is_submodule_root(repo: Repository | None, path: str, root: str) -> bool:
-    if repo is None:
-        return False
+    """子模块工作区根：该目录有 .git 文件，且父仓库有 .gitmodules。"""
     try:
-        rel = os.path.relpath(path, root).replace("\\", "/").strip("/")
-        if not rel:
-            return False
-        r = repo.runner.run("config", "--get", f"submodule.{rel}.url")
-        return r.returncode == 0
-    except Exception:
+        return (os.path.isfile(os.path.join(path, ".git"))
+                and os.path.isfile(os.path.join(root, ".gitmodules")))
+    except Exception:  # noqa: BLE001
         return False
 
 
 def _repo_has_submodules(repo: Repository) -> bool:
     try:
-        r = repo.runner.run("config", "--get-regexp", r"^submodule\..*\.path$")
-        return r.returncode == 0 and bool(r.stdout and r.stdout.strip())
-    except Exception:
+        return os.path.isfile(os.path.join(repo.root, ".gitmodules"))
+    except Exception:  # noqa: BLE001
         return False
 
 

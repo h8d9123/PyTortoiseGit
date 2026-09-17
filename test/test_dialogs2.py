@@ -2289,6 +2289,17 @@ def test_mainmenu_repo_list_persists(qapp, repo, isolated_settings):
     dlg2.reject()
 
 
+def test_mainmenu_repo_details_async(qapp, ui, repo, isolated_settings):
+    """仓库行先同步出现，分支/最近提交随后台补齐。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    dlg = MainMenuDlg(repo_path=str(repo.root))
+    assert dlg.repo_tree.topLevelItemCount() == 1
+    top = dlg.repo_tree.topLevelItem(0)
+    assert ui.wait_until(lambda: top.text(1) == "main", timeout_ms=8000)
+    assert top.text(2), "最近提交信息应后台补齐"
+    dlg.reject()
+
+
 def test_mainmenu_removes_repo(qapp, repo, isolated_settings):
     from pytortoisegit.dialogs.mainmenu import MainMenuDlg
     dlg = MainMenuDlg(repo_path=str(repo.root))

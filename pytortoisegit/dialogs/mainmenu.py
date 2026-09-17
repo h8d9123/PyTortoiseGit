@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..cmdline import CommandLine
-from ..git.admin import find_repo_root
+from ..git.admin import find_repo_root, GitAdminDir
 from ..git.repo import Repository
 from ..res.strings import format_string, tr
 from .widgets import RepoPickerRow
@@ -1063,8 +1063,11 @@ class MainMenuDlg(QMainWindow):
         self._refresh_repo_tree()
 
     def _refresh_repo_tree(self):
-        """重建仓库管理树（保留展开状态）。"""
-        # 记录当前展开状态
+        """重建仓库管理树（保留展开状态）。
+
+        先**同步**放行（只做纯文件系统查找，不跑 git），窗口立即可见；分支与
+        提交信息随后在后台线程补齐，避免启动时几十次 git 调用把界面卡住。
+        """
         expanded_paths: set[str] = set()
         for i in range(self.repo_tree.topLevelItemCount()):
             it = self.repo_tree.topLevelItem(i)
@@ -1073,17 +1076,17 @@ class MainMenuDlg(QMainWindow):
                 if p:
                     expanded_paths.add(p)
         self.repo_tree.clear()
+        valid_paths: list[str] = []
         for path in self._repo_list:
-            # 路径失效则静默清理
+            # 路径失效则静默清理（find_repo_root 为纯文件系统查找，很快）
             try:
                 repo = Repository.open(path)
             except Exception:
                 continue
-            subject = self._commit_subject(path)
-            item = QTreeWidgetItem([
-                repo.name, repo.current_branch(), subject, path])
-            for col, text in enumerate(
-                    (repo.name, repo.current_branch(), subject, path)):
+            valid_paths.append(path)
+            name = repo.name
+            item = QTreeWidgetItem([name, "", "", path])
+            for col, text in enumerate((name, "", "", path)):
                 item.setToolTip(col, text)
             item.setData(0, ROLE_PATH, path)
             item.setData(0, ROLE_KIND, "repo")
@@ -1097,10 +1100,73 @@ class MainMenuDlg(QMainWindow):
                 it = self.repo_tree.topLevelItem(i)
                 if os.path.normcase(it.data(0, ROLE_PATH)) == cur_path:
                     self.repo_tree.setCurrentItem(it)
-                    # 确保子模块已加载（触发展开）
                     if not it.isExpanded():
                         it.setExpanded(True)
                     break
+        # 后台补齐分支/最近提交（用代数号丢弃过期结果）
+        self._repo_gen = getattr(self, "_repo_gen", 0) + 1
+        gen = self._repo_gen
+        if valid_paths:
+            from ..asyncfw import run_async
+            run_async(self._repo_details_bg, args=(valid_paths,),
+                      on_done=lambda rows: self._apply_repo_details(gen, rows),
+                      parent=self)
+
+    def _repo_details_bg(self, paths: list) -> list:
+        """后台线程：读取每个仓库的当前分支与最近提交（不碰 UI）。"""
+        out = []
+        for path in paths:
+            out.append((path, self._branch_of(path),
+                        self._commit_subject(path)))
+        return out
+
+    def _apply_repo_details(self, gen: int, rows: list):
+        if gen != getattr(self, "_repo_gen", 0):
+            return
+        info = {os.path.normcase(p): (b, s) for p, b, s in rows}
+        for i in range(self.repo_tree.topLevelItemCount()):
+            it = self.repo_tree.topLevelItem(i)
+            data = info.get(os.path.normcase(it.data(0, ROLE_PATH)))
+            if not data:
+                continue
+            branch, subject = data
+            it.setText(1, branch)
+            it.setText(2, subject)
+            it.setToolTip(1, branch)
+            it.setToolTip(2, subject)
+
+    @staticmethod
+    def _branch_of(path: str) -> str:
+        """读 .git/HEAD 得到当前分支（无子进程）。"""
+        try:
+            git_dir = GitAdminDir(path).git_dir
+        except Exception:  # noqa: BLE001
+            return ""
+        if not git_dir:
+            return ""
+        if not os.path.isdir(git_dir):
+            try:
+                with open(git_dir, "r", encoding="utf-8",
+                          errors="replace") as fh:
+                    content = fh.read().strip()
+            except OSError:
+                return ""
+            if content.startswith("gitdir:"):
+                target = content[7:].strip()
+                if not os.path.isabs(target):
+                    target = os.path.join(os.path.dirname(git_dir), target)
+                git_dir = os.path.normpath(target)
+            else:
+                return ""
+        try:
+            with open(os.path.join(git_dir, "HEAD"), "r", encoding="utf-8",
+                      errors="replace") as fh:
+                ref = fh.read().strip()
+        except OSError:
+            return ""
+        if ref.startswith("ref: refs/heads/"):
+            return ref[len("ref: refs/heads/"):]
+        return ""
 
     # ---- 树控件行为 ----
     def _on_item_expanded(self, item):

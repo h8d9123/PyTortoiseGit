@@ -11,13 +11,12 @@
 与原版 ``LOG_INFO_SIMPILFY_BY_DECORATION`` 一致。
 
 外壳对齐 RevisionGraphDlg.cpp：
-  * 工具栏：放大/缩小/100%/适合高度/适合宽度/适合全部 + 缩放下拉框 + 过滤；
+  * 菜单栏 File / View / Git / Help（对齐 IDR_REVISIONGRAPH），Git 菜单随选中数启用；
+  * 工具栏直接使用原版 ``res/revgraph/revgraphbar.bmp``（20px/格）：放大/缩小/
+    100%/适合高度/适合宽度/适合全部 + 缩放下拉框 + 过滤/概览/查找；
   * 缩放 1%–200%、步进 0.9，Ctrl+滚轮可缩放；
   * 「重置过滤」与过滤对话框改条件后都会**重新拉取**（原版走 StartWorkerThread）；
   * 加载中显示 "Loading…"，无数据时显示 "No graph available"。
-
-注：原版工具栏位图（revgraphbar.bmp）与「概览图 / 查找」尚未移植，故本轮
-工具栏先用文字按钮；概览与查找留待后续阶段。
 """
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
@@ -46,13 +45,18 @@ import re
 
 from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
+    QAction,
     QBrush,
     QColor,
     QFont,
     QFontMetricsF,
+    QIcon,
+    QImage,
+    QKeySequence,
     QPainter,
     QPainterPath,
     QPen,
+    QPixmap,
 )
 from PySide6.QtWidgets import (
     QComboBox,
@@ -60,8 +64,10 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenu,
+    QMenuBar,
     QPushButton,
     QScrollArea,
+    QToolBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -102,6 +108,39 @@ _DEFAULT_COLORS = {
 }
 
 _COLORS = {k: QColor(v) for k, v in _DEFAULT_COLORS.items()}
+
+# 工具栏位图：原版 revgraphbar.bmp（20px/格）。索引对应 IDR_REVGRAPHBAR：
+# 0 放大 1 缩小 2 100% 3 适合高度 4 适合宽度 5 适合全部
+# 6 缩放框占位 7 过滤 8 概览 9 查找
+_BAR_ICON = 20
+_toolbar_icons_cache: list | None = None
+
+
+def _toolbar_icons() -> list:
+    """把原版 revgraphbar.bmp 切成 20×20 图标（浅灰底转为透明）。"""
+    global _toolbar_icons_cache
+    if _toolbar_icons_cache is not None:
+        return _toolbar_icons_cache
+    from pathlib import Path
+    icons: list = []
+    path = (Path(__file__).resolve().parent.parent
+            / "res" / "revgraph" / "revgraphbar.bmp")
+    if path.is_file():
+        img = QImage(str(path))
+        if not img.isNull():
+            mask = img.pixelColor(0, 0)
+            for i in range(img.width() // _BAR_ICON):
+                tile = img.copy(i * _BAR_ICON, 0, _BAR_ICON, _BAR_ICON)
+                tile = tile.convertToFormat(QImage.Format.Format_ARGB32)
+                for y in range(tile.height()):
+                    for x in range(tile.width()):
+                        if tile.pixelColor(x, y) == mask:
+                            tile.setPixelColor(x, y, QColor(0, 0, 0, 0))
+                icons.append(QIcon(QPixmap.fromImage(tile)))
+    while len(icons) < 10:
+        icons.append(QIcon())
+    _toolbar_icons_cache = icons
+    return icons
 
 
 def invalidate() -> None:
@@ -703,6 +742,7 @@ class RevisionGraphDlg(QDialog):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
+        lay.addWidget(self._build_menubar())
         lay.addWidget(self._build_toolbar())
 
         self.scroll = QScrollArea(self)
@@ -728,38 +768,106 @@ class RevisionGraphDlg(QDialog):
         self._sync_zoom_box()
         self._load()
 
-    # ---- 工具栏（对齐 IDR_REVGRAPHBAR，先做缩放与过滤）----
-    def _build_toolbar(self) -> QWidget:
-        bar = QWidget(self)
-        row = QHBoxLayout(bar)
-        row.setContentsMargins(4, 2, 4, 2)
-        row.setSpacing(2)
+    # ---- 菜单栏（对齐 IDR_REVISIONGRAPH：File / View / Git / Help）----
+    def _build_menubar(self) -> QMenuBar:
+        bar = QMenuBar(self)
+        self.menu_file = bar.addMenu(tr("revgraph_menu_file", "&File"))
+        self.act_save = self.menu_file.addAction(
+            tr("revgraph_save_graphas", "&Save graph as..."))
+        self.act_save.triggered.connect(self._save_graph)
+        self.menu_file.addSeparator()
+        act_exit = self.menu_file.addAction(tr("revgraph_menu_exit", "E&xit"))
+        act_exit.triggered.connect(self.close)
 
-        def add_button(key: str, default: str, tip_key: str, tip_default: str,
-                       slot):
-            b = QToolButton(bar)
-            b.setText(tr(key, default))
-            b.setToolTip(tr(tip_key, tip_default))
-            b.setAutoRaise(True)
-            b.clicked.connect(slot)
-            row.addWidget(b)
-            return b
+        self.menu_view = bar.addMenu(tr("revgraph_menu_view", "&View"))
+        self.act_zoom_in = self.menu_view.addAction(
+            tr("revgraph_menu_zoomin", "Zoom &in"))
+        self.act_zoom_out = self.menu_view.addAction(
+            tr("revgraph_menu_zoomout", "Zoom &out"))
+        self.act_zoom_100 = self.menu_view.addAction(
+            tr("revgraph_menu_zoom100", "Zoom to &100%"))
+        self.act_fit_height = self.menu_view.addAction(
+            tr("revgraph_menu_fitheight", "Fit height"))
+        self.act_fit_width = self.menu_view.addAction(
+            tr("revgraph_menu_fitwidth", "Fit width"))
+        self.act_fit_all = self.menu_view.addAction(
+            tr("revgraph_menu_fitall", "Fit graph"))
+        self.act_zoom_in.triggered.connect(
+            lambda: self._zoom_by(1.0 / _ZOOM_STEP))
+        self.act_zoom_out.triggered.connect(lambda: self._zoom_by(_ZOOM_STEP))
+        self.act_zoom_100.triggered.connect(
+            lambda: self._set_zoom(_DEFAULT_ZOOM))
+        self.act_fit_height.triggered.connect(lambda: self._zoom_fit("height"))
+        self.act_fit_width.triggered.connect(lambda: self._zoom_fit("width"))
+        self.act_fit_all.triggered.connect(lambda: self._zoom_fit("all"))
+        self.act_zoom_in.setShortcut(QKeySequence("Ctrl++"))
+        self.act_zoom_out.setShortcut(QKeySequence("Ctrl+-"))
+        self.menu_view.addSeparator()
+        self.act_filter = self.menu_view.addAction(
+            tr("revgraph_filter", "Filter"))
+        self.act_filter.setCheckable(True)
+        self.act_filter.triggered.connect(self._open_filter)
+        self.menu_view.addSeparator()
+        self.act_overview = self.menu_view.addAction(
+            tr("revgraph_overview", "Overview"))
+        self.act_overview.setCheckable(True)
+        self.act_overview.toggled.connect(self._on_overview_toggled)
+        self.act_branchings = self.menu_view.addAction(
+            tr("revgraph_show_branchings", "Show branchings and merges"))
+        self.act_branchings.setCheckable(True)
+        self.act_branchings.setChecked(self._show_branchings_merges)
+        self.act_branchings.toggled.connect(self._on_show_branchings)
+        self.act_all_tags = self.menu_view.addAction(
+            tr("revgraph_show_all_tags", "Show all tags"))
+        self.act_all_tags.setCheckable(True)
+        self.act_all_tags.setChecked(self._show_all_tags)
+        self.act_all_tags.toggled.connect(self._on_show_all_tags)
+        self.act_arrow = self.menu_view.addAction(
+            tr("revgraph_arrow_to_merges", "Arrows point towards merges"))
+        self.act_arrow.setCheckable(True)
+        self.act_arrow.setChecked(self._arrow_to_merges)
+        self.act_arrow.toggled.connect(self._on_arrow_to_merges)
 
-        add_button("revgraph_zoom_in", "+", "revgraph_zoom_in_tip", "Zoom in",
-                   lambda: self._zoom_by(1.0 / _ZOOM_STEP))
-        add_button("revgraph_zoom_out", "−", "revgraph_zoom_out_tip", "Zoom out",
-                   lambda: self._zoom_by(_ZOOM_STEP))
-        add_button("revgraph_zoom_100", "100%", "revgraph_zoom_100_tip",
-                   "Zoom 100%", lambda: self._set_zoom(_DEFAULT_ZOOM))
-        add_button("revgraph_zoom_height", tr("revgraph_fit_height", "Height"),
-                   "revgraph_zoom_height_tip", "Fit height",
-                   lambda: self._zoom_fit("height"))
-        add_button("revgraph_zoom_width", tr("revgraph_fit_width", "Width"),
-                   "revgraph_zoom_width_tip", "Fit width",
-                   lambda: self._zoom_fit("width"))
-        add_button("revgraph_zoom_all", tr("revgraph_fit_all", "All"),
-                   "revgraph_zoom_all_tip", "Fit whole graph",
-                   lambda: self._zoom_fit("all"))
+        self.menu_git = bar.addMenu(tr("revgraph_menu_git", "&Git"))
+        self.act_cmp = self.menu_git.addAction(
+            tr("revgraph_popup_comparerevs", "Compare revisions"))
+        self.act_cmp_heads = self.menu_git.addAction(
+            tr("revgraph_popup_compareheads", "Compare HEAD revisions"))
+        self.act_udiff = self.menu_git.addAction(
+            tr("revgraph_popup_unidiffrevs", "Unified diff"))
+        self.act_udiff_heads = self.menu_git.addAction(
+            tr("revgraph_popup_unidiffheads", "Unified diff of HEAD revisions"))
+        self.act_cmp.triggered.connect(lambda: self._menu_compare(False))
+        self.act_udiff.triggered.connect(lambda: self._menu_compare(True))
+
+        self.menu_help = bar.addMenu(tr("revgraph_menu_help", "&Help"))
+        self.act_help = self.menu_help.addAction(tr("help", "Help"))
+        self.act_help.triggered.connect(self._on_help)
+        return bar
+
+    # ---- 工具栏（对齐 IDR_REVGRAPHBAR 的按钮顺序与原版位图）----
+    def _build_toolbar(self) -> QToolBar:
+        icons = _toolbar_icons()
+        bar = QToolBar(self)
+        bar.setMovable(False)
+        bar.setFloatable(False)
+        bar.setIconSize(QSize(_BAR_ICON, _BAR_ICON))
+        bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+
+        def add(act: QAction, icon: int, tip_key: str, tip_default: str):
+            act.setIcon(icons[icon])
+            act.setToolTip(tr(tip_key, tip_default))
+            bar.addAction(act)
+            return act
+
+        # 菜单动作与工具栏共用同一批 QAction（勾选状态自然同步）
+        add(self.act_zoom_in, 0, "revgraph_zoom_in_tip", "Zoom in")
+        add(self.act_zoom_out, 1, "revgraph_zoom_out_tip", "Zoom out")
+        add(self.act_zoom_100, 2, "revgraph_zoom_100_tip", "Zoom 100%")
+        add(self.act_fit_height, 3, "revgraph_zoom_height_tip", "Fit height")
+        add(self.act_fit_width, 4, "revgraph_zoom_width_tip", "Fit width")
+        add(self.act_fit_all, 5, "revgraph_zoom_all_tip", "Fit whole graph")
+        bar.addSeparator()
 
         self.zoom_box = QComboBox(bar)
         self.zoom_box.setEditable(True)
@@ -769,72 +877,46 @@ class RevisionGraphDlg(QDialog):
         self.zoom_box.activated.connect(self._on_zoom_box)
         self.zoom_box.lineEdit().editingFinished.connect(
             lambda: self._on_zoom_box(None))
-        row.addWidget(self.zoom_box)
+        bar.addWidget(self.zoom_box)
+        bar.addSeparator()
 
-        self.btn_filter = QToolButton(bar)
-        self.btn_filter.setText(tr("revgraph_filter", "Filter"))
-        self.btn_filter.setToolTip(
-            tr("revgraph_filter_tip", "Filter the revision graph"))
-        self.btn_filter.setAutoRaise(True)
-        self.btn_filter.setCheckable(True)
-        self.btn_filter.clicked.connect(self._open_filter)
-        row.addWidget(self.btn_filter)
+        add(self.act_filter, 7, "revgraph_filter_tip",
+            "Filter the revision graph")
+        bar.addSeparator()
+        add(self.act_overview, 8, "revgraph_overview_tip",
+            "Show the overview map")
+        bar.addSeparator()
 
-        self.btn_find = QToolButton(bar)
-        self.btn_find.setText(tr("revgraph_find", "Find"))
-        self.btn_find.setToolTip(tr("revgraph_find_tip", "Find in graph (Ctrl+F)"))
-        self.btn_find.setAutoRaise(True)
-        self.btn_find.clicked.connect(self._open_find)
-        row.addWidget(self.btn_find)
+        self.act_find = QAction(self)
+        self.act_find.setShortcut(QKeySequence("Ctrl+F"))
+        self.act_find.triggered.connect(self._open_find)
+        add(self.act_find, 9, "revgraph_find_tip", "Find in graph (Ctrl+F)")
 
-        self.btn_overview = QToolButton(bar)
-        self.btn_overview.setText(tr("revgraph_overview", "Overview"))
-        self.btn_overview.setToolTip(
-            tr("revgraph_overview_tip", "Show the overview map"))
-        self.btn_overview.setAutoRaise(True)
-        self.btn_overview.setCheckable(True)
-        self.btn_overview.clicked.connect(self._toggle_overview)
-        row.addWidget(self.btn_overview)
-
-        self.btn_save = QToolButton(bar)
-        self.btn_save.setText(tr("revgraph_save", "Save"))
-        self.btn_save.setToolTip(
-            tr("revgraph_save_tip", "Save graph as…"))
-        self.btn_save.setAutoRaise(True)
-        self.btn_save.clicked.connect(self._save_graph)
-        row.addWidget(self.btn_save)
-
-        # 视图菜单：三个显示开关（对齐原版 View 菜单的对应项）
-        self.btn_view = QToolButton(bar)
-        self.btn_view.setText(tr("revgraph_view", "View"))
-        self.btn_view.setAutoRaise(True)
-        self.btn_view.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        view_menu = QMenu(self.btn_view)
-        self.act_all_tags = view_menu.addAction(
-            tr("revgraph_show_all_tags", "Show all &tags"))
-        self.act_all_tags.setCheckable(True)
-        self.act_all_tags.setChecked(self._show_all_tags)
-        self.act_all_tags.toggled.connect(self._on_show_all_tags)
-        self.act_branchings = view_menu.addAction(
-            tr("revgraph_show_branchings", "Show branchings and merges"))
-        self.act_branchings.setCheckable(True)
-        self.act_branchings.setChecked(self._show_branchings_merges)
-        self.act_branchings.toggled.connect(self._on_show_branchings)
-        self.act_arrow = view_menu.addAction(
-            tr("revgraph_arrow_to_merges", "Arrows point towards merges"))
-        self.act_arrow.setCheckable(True)
-        self.act_arrow.setChecked(self._arrow_to_merges)
-        self.act_arrow.toggled.connect(self._on_arrow_to_merges)
-        view_menu.addSeparator()
-        self.act_overview = view_menu.addAction(
-            tr("revgraph_overview", "Overview"))
-        self.act_overview.setCheckable(True)
-        self.act_overview.toggled.connect(self._toggle_overview_from_menu)
-        self.btn_view.setMenu(view_menu)
-        row.addWidget(self.btn_view)
-
-        row.addStretch(1)
+        # 兼容旧属性名（测试/外部引用）
+        self.btn_filter = self.act_filter
+        self.btn_find = self.act_find
+        self.btn_overview = self.act_overview
         return bar
+
+    def _menu_compare(self, unified: bool):
+        selected = self.canvas.selected()
+        if len(selected) == 2:
+            r1 = self._friend_ref_name(selected[0])
+            r2 = self._friend_ref_name(selected[1])
+        elif len(selected) == 1:
+            r1 = self._friend_ref_name(selected[0])
+            r2 = "HEAD"
+        else:
+            return
+        if unified:
+            self._do_unified(r1, r2)
+        else:
+            self._do_compare(r1, r2)
+
+    def _on_help(self):
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(self, tr("help", "Help"),
+                                tr("revgraph_help", "Revision graph"))
 
     # ---- 显示开关（对齐 InitialSetMenu / UpdateFullHistory）----
     def _on_show_all_tags(self, on: bool):
@@ -856,19 +938,15 @@ class RevisionGraphDlg(QDialog):
             canvas._arrow_to_merges = bool(on)
             canvas.update()
 
-    def _toggle_overview_from_menu(self, on: bool):
-        self.btn_overview.setChecked(bool(on))
+    def _on_overview_toggled(self, on: bool):
         canvas = getattr(self, "canvas", None)
         if canvas is not None:
             canvas.set_show_overview(bool(on))
 
     # ---- 概览 ----
     def _toggle_overview(self):
-        on = self.btn_overview.isChecked()
-        self.canvas.set_show_overview(on)
-        act = getattr(self, "act_overview", None)
-        if act is not None and act.isChecked() != on:
-            act.setChecked(on)
+        """把概览对齐到当前勾选状态（act_overview 与工具栏共用同一 QAction）。"""
+        self._on_overview_toggled(self.act_overview.isChecked())
 
     # ---- 另存为（对齐 OnFileSavegraphas / SaveGraphAs）----
     @staticmethod
@@ -1163,6 +1241,17 @@ class RevisionGraphDlg(QDialog):
 
     def _on_selection_changed(self):
         self._update_status()
+        self._update_menu_state()
+
+    def _update_menu_state(self):
+        """Git 菜单项按选中数启用（对齐原版 GRAYED 条件）。"""
+        n = len(self.canvas.selected())
+        one = n == 1
+        two = n == 2
+        self.act_cmp.setEnabled(two)
+        self.act_udiff.setEnabled(two)
+        self.act_cmp_heads.setEnabled(one)
+        self.act_udiff_heads.setEnabled(one)
 
     def _tooltip_for(self, key: str) -> str:
         """节点悬停提示（对齐 TooltipText：hash/作者/日期/标题/正文）。"""

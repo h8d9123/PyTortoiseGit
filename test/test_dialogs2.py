@@ -1947,8 +1947,10 @@ def test_revgraph_view_menu_toggles(rg, tmp_path, monkeypatch):
     assert dlg.act_all_tags.isChecked() is True      # 原版默认 TRUE
     assert dlg.act_branchings.isChecked() is False   # 原版默认 FALSE
     assert dlg.act_arrow.isChecked() is False        # 原版默认 FALSE
-    labels = [a.text() for a in dlg.btn_view.menu().actions() if a.text()]
-    assert len(labels) == 4, labels                  # 三个开关 + 概览
+    labels = [a.text() for a in dlg.menu_view.actions() if a.text()]
+    for act in (dlg.act_overview, dlg.act_branchings, dlg.act_all_tags,
+                dlg.act_arrow):
+        assert act.text() in labels, labels
 
     # 切换显示开关应触发重新拉取（对齐 UpdateFullHistory）
     calls = []

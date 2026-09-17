@@ -9,6 +9,15 @@
 
 默认使用 ``--simplify-by-decoration`` 只保留被引用标注的提交与分叉/合并点，
 与原版 ``LOG_INFO_SIMPILFY_BY_DECORATION`` 一致。
+
+外壳对齐 RevisionGraphDlg.cpp：
+  * 工具栏：放大/缩小/100%/适合高度/适合宽度/适合全部 + 缩放下拉框 + 过滤；
+  * 缩放 1%–200%、步进 0.9，Ctrl+滚轮可缩放；
+  * 「重置过滤」与过滤对话框改条件后都会**重新拉取**（原版走 StartWorkerThread）；
+  * 加载中显示 "Loading…"，无数据时显示 "No graph available"。
+
+注：原版工具栏位图（revgraphbar.bmp）与「概览图 / 查找」尚未移植，故本轮
+工具栏先用文字按钮；概览与查找留待后续阶段。
 """
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
@@ -33,8 +42,9 @@
 from __future__ import annotations
 
 import math
+import re
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -45,10 +55,13 @@ from PySide6.QtGui import (
     QPen,
 )
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QScrollArea,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -57,7 +70,7 @@ from ..asyncfw import run_async
 from ..git.repo import Repository
 from ..git.rev import GitRevLoglist
 from ..git.revgraph import GraphLayout, build_layout
-from ..res.strings import tr
+from ..res.strings import format_string, tr
 from .statgraphdlg import StatGraphDlg
 
 # C++：默认缩放字体 9；左上/右下内边距 20 / 5
@@ -68,6 +81,13 @@ _CORNER = 12.0
 _ARROW_SIZE = 8.0
 _ARROW_COS = math.cos(math.pi / 8)
 _ARROW_SIN = math.sin(math.pi / 8)
+
+# 缩放常量（对齐 RevisionGraphWnd.h: MIN_ZOOM/MAX_ZOOM/DEFAULT_ZOOM/ZOOM_STEP）
+_MIN_ZOOM = 0.01
+_MAX_ZOOM = 2.0
+_DEFAULT_ZOOM = 1.0
+_ZOOM_STEP = 0.9
+_ZOOM_PRESETS = ("5%", "10%", "20%", "40%", "50%", "75%", "100%", "200%")
 
 # 颜色默认值（#RRGGBB，与设置页 Colors2 默认一致）；渲染时从 QSettings 读取，
 # 未设置回退这些默认值。stash / commit 无对应设置键，保持硬编码。
@@ -161,28 +181,223 @@ def _cut_point(cx: float, cy: float, w: float, h: float, lw: float,
     return pt
 
 
+def _split_revs(text: str) -> list:
+    return [t for t in re.split(r"\s+", (text or "").strip()) if t]
+
+
+def build_load_args(filter_state: dict) -> dict:
+    """把过滤条件翻译成 ``GitRevLoglist.load`` 的关键字参数。
+
+    对齐 RevisionGraphDlgFunc.cpp:193-235：
+      * 仅当前分支   -> range 加 "HEAD"（不加 --all/--branches）
+      * 仅本地分支   -> --branches
+      * 都未勾选     -> --all
+      * From 非空    -> 每个 token 变成排除项 "^token"（任何模式下都生效）
+      * To 非空      -> 仅在两个勾选框都未勾选时作为包含项加入
+    """
+    state = filter_state or {}
+    from_rev = _split_revs(state.get("from_rev", ""))
+    to_rev = _split_revs(state.get("to_rev", ""))
+    current = bool(state.get("current_branch"))
+    local = bool(state.get("local_branches"))
+
+    revisions = ["^" + t for t in from_rev]
+    if current:
+        revisions.append("HEAD")
+    elif local:
+        pass
+    else:
+        revisions.extend(to_rev)
+
+    return {
+        "limit": 0,
+        "all_branches": not (current or local),
+        "local_branches": local and not current,
+        "simplify": True,
+        "revisions": revisions,
+    }
+
+
 class _GraphCanvas(QWidget):
     """绘制提交节点图（x=lane/层坐标，y=层）。"""
+
+    zoomRequested = Signal(float)
+    selectionChanged = Signal()
+    contextMenuRequested = Signal(QPointF)
 
     def __init__(self, layout: GraphLayout | None = None,
                  current_branch: str | None = None, parent=None):
         super().__init__(parent)
         self._layout = layout
         self._current_branch = current_branch or ""
+        self._zoom = _DEFAULT_ZOOM
+        # 选择：与原版一致，最多两个（m_SelectedEntry1 / m_SelectedEntry2）
+        self._sel1: str | None = None
+        self._sel2: str | None = None
+        self._panning = False
+        self._pan_origin = None
+        self._pan_scroll = (0, 0)
+        self._scroll = None            # QScrollArea，由对话框注入
+        self._tooltip_provider = None  # callable(hash) -> str
+        self.setMouseTracking(True)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(
+            lambda pos: self.contextMenuRequested.emit(QPointF(pos)))
         if layout is not None:
-            self.setMinimumSize(int(layout.width) + 2,
-                                int(layout.height) + 2)
+            self._apply_min_size()
 
     def node_count(self) -> int:
         return len(self._layout.order) if self._layout is not None else 0
+
+    def layout(self) -> GraphLayout | None:
+        """当前布局（未加载时为 None）。"""
+        return self._layout
+
+    # ---- 选择 ----
+    def selected(self) -> list:
+        return [h for h in (self._sel1, self._sel2) if h]
+
+    def node_at(self, pos) -> str | None:
+        """按当前缩放命中节点（返回 hash）。"""
+        if self._layout is None:
+            return None
+        x, y = pos.x(), pos.y()
+        for key in reversed(self._layout.order):   # 后画的在上层
+            node = self._layout.nodes.get(key)
+            if node is None:
+                continue
+            if (abs(x - node.x * self._zoom) <= node.width * self._zoom / 2
+                    and abs(y - node.y * self._zoom)
+                    <= node.height * self._zoom / 2):
+                return key
+        return None
+
+    def select(self, key: str | None, additive: bool = False) -> None:
+        """选择逻辑对齐 OnLButtonDown：最多两个，Ctrl 多选。"""
+        if key is None:
+            self._sel1 = self._sel2 = None
+        elif not additive:
+            if self._sel1 == key:
+                self._sel1 = self._sel2 = None       # 再点一次取消选择
+            else:
+                self._sel1, self._sel2 = key, None
+        elif self._sel1 == key:
+            if self._sel2 is not None:
+                self._sel1, self._sel2 = self._sel2, None
+            else:
+                self._sel1 = None
+        elif self._sel2 == key:
+            self._sel2 = None
+        elif self._sel1 is None:
+            self._sel1 = key
+        elif self._sel2 is None:
+            self._sel2 = key
+        else:
+            self._sel1, self._sel2 = self._sel2, key
+        self.update()
+        self.selectionChanged.emit()
+
+    def scroll_to(self, key: str) -> None:
+        """把节点滚动到视口中央（对齐 ScrollTo）。"""
+        if self._layout is None or self._scroll is None:
+            return
+        node = self._layout.nodes.get(key)
+        if node is None:
+            return
+        vp = self._scroll.viewport()
+        self._scroll.horizontalScrollBar().setValue(
+            int(node.x * self._zoom - vp.width() / 2))
+        self._scroll.verticalScrollBar().setValue(
+            int(node.y * self._zoom - vp.height() / 2))
+
+    # ---- 鼠标 / 提示 ----
+    def mousePressEvent(self, event):  # noqa: N802
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        pos = event.position().toPoint()
+        key = self.node_at(pos)
+        if key is not None:
+            additive = bool(event.modifiers()
+                            & Qt.KeyboardModifier.ControlModifier)
+            self.select(key, additive)
+            return
+        # 空白处：清空选择并开始平移
+        self.select(None)
+        if self._scroll is not None:
+            self._panning = True
+            self._pan_origin = pos
+            self._pan_scroll = (self._scroll.horizontalScrollBar().value(),
+                                self._scroll.verticalScrollBar().value())
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+
+    def mouseMoveEvent(self, event):  # noqa: N802
+        if not self._panning or self._scroll is None:
+            return
+        pos = event.position().toPoint()
+        dx = pos.x() - self._pan_origin.x()
+        dy = pos.y() - self._pan_origin.y()
+        self._scroll.horizontalScrollBar().setValue(self._pan_scroll[0] - dx)
+        self._scroll.verticalScrollBar().setValue(self._pan_scroll[1] - dy)
+
+    def mouseReleaseEvent(self, event):  # noqa: N802
+        if self._panning:
+            self._panning = False
+            self.unsetCursor()
+
+    def event(self, event):
+        if event.type() == QEvent.Type.ToolTip:
+            # 用 setToolTip 让 Qt 自己显示，避免手工 QToolTip.showText：
+            # 后者在某些平台（含 offscreen）会尝试 grab 键盘/raise 窗口并阻塞。
+            if self._tooltip_provider:
+                key = self.node_at(event.pos())
+                self.setToolTip(self._tooltip_provider(key) if key else "")
+            return super().event(event)
+        return super().event(event)
 
     def set_layout(self, layout: GraphLayout, current_branch: str | None,
                    font: QFont):
         self._layout = layout
         self._current_branch = current_branch or ""
         self.setFont(font)
-        self.setMinimumSize(int(layout.width) + 2, int(layout.height) + 2)
+        self._apply_min_size()
         self.update()
+
+    def clear_layout(self) -> None:
+        """清空图形（加载失败或无可显示内容时）。"""
+        self._layout = None
+        self.setMinimumSize(0, 0)
+        self.update()
+
+    # ---- 缩放 ----
+    def zoom(self) -> float:
+        return self._zoom
+
+    def set_zoom(self, zoom: float) -> None:
+        zoom = max(_MIN_ZOOM, min(_MAX_ZOOM, float(zoom)))
+        if abs(zoom - self._zoom) < 1e-9:
+            return
+        self._zoom = zoom
+        self._apply_min_size()
+        self.update()
+
+    def _apply_min_size(self):
+        if self._layout is None:
+            return
+        self.setMinimumSize(
+            max(1, int(self._layout.width * self._zoom) + 2),
+            max(1, int(self._layout.height * self._zoom) + 2))
+
+    def wheelEvent(self, event):  # noqa: N802
+        """Ctrl+滚轮缩放；其余交给滚动区域滚动（对齐 OnMouseWheel）。"""
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            dy = event.angleDelta().y()
+            if dy == 0:
+                return
+            factor = (1.0 / _ZOOM_STEP) if dy > 0 else _ZOOM_STEP
+            self.zoomRequested.emit(self._zoom * factor)
+            event.accept()
+            return
+        event.ignore()
 
     # ---- 颜色 ----
     def _ref_color(self, text: str, ref_type: str) -> QColor:
@@ -204,11 +419,15 @@ class _GraphCanvas(QWidget):
     def paintEvent(self, _event):  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        p.fillRect(self.rect(), QColor(255, 255, 255))
+        # 画布底色跟随主题（原版用 COLOR_WINDOW），不再硬编码白色
+        p.fillRect(self.rect(), self.palette().base().color())
         if self._layout is None:
             return
+        p.save()
+        p.scale(self._zoom, self._zoom)
         self._draw_edges(p)
         self._draw_nodes(p)
+        p.restore()
 
     def _draw_edges(self, p: QPainter):
         assert self._layout is not None
@@ -285,6 +504,23 @@ class _GraphCanvas(QWidget):
                            int(Qt.AlignmentFlag.AlignLeft
                                | Qt.AlignmentFlag.AlignVCenter),
                            text)
+            # 选中标记：I / II（对齐 DrawSelectedEntry 的 I、II 罗马数字）
+            marker = ("I" if key == self._sel1
+                      else "II" if key == self._sel2 else "")
+            if marker:
+                box = QRectF(left, top, node.width, node.height)
+                pen = QPen(QColor(0, 0, 0), 2)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                p.setPen(pen)
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawRoundedRect(box.adjusted(-3, -3, 3, 3), _CORNER, _CORNER)
+                p.setPen(QPen(QColor(0, 0, 0)))
+                p.setFont(self.font())
+                p.drawText(
+                    QRectF(box.x() - 16, box.y(), 14, box.height()),
+                    int(Qt.AlignmentFlag.AlignRight
+                        | Qt.AlignmentFlag.AlignVCenter),
+                    marker)
 
 
 class RevisionGraphDlg(QDialog):
@@ -295,31 +531,183 @@ class RevisionGraphDlg(QDialog):
             f"{repo.name} — {tr('revgraph_title', 'Revision Graph')}")
         self.resize(900, 640)
 
+        self._filter: dict = {}
+        self._filter_active = False
+        self._loading = False
+        self._error = ""
+        self._node_count = 0
+        self._commits: dict = {}
+        self._find_dlg = None
+
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(self._build_toolbar())
+
         self.scroll = QScrollArea(self)
         self.scroll.setWidgetResizable(True)
         self.canvas = _GraphCanvas(None, None, self.scroll)
+        self.canvas.zoomRequested.connect(self._on_zoom_requested)
+        self.canvas.selectionChanged.connect(self._on_selection_changed)
+        self.canvas.contextMenuRequested.connect(self._on_canvas_menu)
+        self.canvas._scroll = self.scroll
+        self.canvas._tooltip_provider = self._tooltip_for
         self.scroll.setWidget(self.canvas)
         lay.addWidget(self.scroll, 1)
 
-        row = QHBoxLayout()
-        row.addStretch(1)
+        bottom = QHBoxLayout()
+        bottom.setContentsMargins(4, 2, 4, 2)
+        self.status_label = QLabel("", self)
+        bottom.addWidget(self.status_label, 1)
         self.btn_stats = QPushButton(tr("revgraph_stats", "Statistics"), self)
         self.btn_stats.clicked.connect(self._open_stats)
-        row.addWidget(self.btn_stats)
-        lay.addLayout(row)
+        bottom.addWidget(self.btn_stats)
+        lay.addLayout(bottom)
 
+        self._sync_zoom_box()
+        self._load()
+
+    # ---- 工具栏（对齐 IDR_REVGRAPHBAR，先做缩放与过滤）----
+    def _build_toolbar(self) -> QWidget:
+        bar = QWidget(self)
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(4, 2, 4, 2)
+        row.setSpacing(2)
+
+        def add_button(key: str, default: str, tip_key: str, tip_default: str,
+                       slot):
+            b = QToolButton(bar)
+            b.setText(tr(key, default))
+            b.setToolTip(tr(tip_key, tip_default))
+            b.setAutoRaise(True)
+            b.clicked.connect(slot)
+            row.addWidget(b)
+            return b
+
+        add_button("revgraph_zoom_in", "+", "revgraph_zoom_in_tip", "Zoom in",
+                   lambda: self._zoom_by(1.0 / _ZOOM_STEP))
+        add_button("revgraph_zoom_out", "−", "revgraph_zoom_out_tip", "Zoom out",
+                   lambda: self._zoom_by(_ZOOM_STEP))
+        add_button("revgraph_zoom_100", "100%", "revgraph_zoom_100_tip",
+                   "Zoom 100%", lambda: self._set_zoom(_DEFAULT_ZOOM))
+        add_button("revgraph_zoom_height", tr("revgraph_fit_height", "Height"),
+                   "revgraph_zoom_height_tip", "Fit height",
+                   lambda: self._zoom_fit("height"))
+        add_button("revgraph_zoom_width", tr("revgraph_fit_width", "Width"),
+                   "revgraph_zoom_width_tip", "Fit width",
+                   lambda: self._zoom_fit("width"))
+        add_button("revgraph_zoom_all", tr("revgraph_fit_all", "All"),
+                   "revgraph_zoom_all_tip", "Fit whole graph",
+                   lambda: self._zoom_fit("all"))
+
+        self.zoom_box = QComboBox(bar)
+        self.zoom_box.setEditable(True)
+        self.zoom_box.addItems(_ZOOM_PRESETS)
+        self.zoom_box.setFixedWidth(80)
+        self.zoom_box.setToolTip(tr("revgraph_zoom_tip", "Zoom factor"))
+        self.zoom_box.activated.connect(self._on_zoom_box)
+        self.zoom_box.lineEdit().editingFinished.connect(
+            lambda: self._on_zoom_box(None))
+        row.addWidget(self.zoom_box)
+
+        self.btn_filter = QToolButton(bar)
+        self.btn_filter.setText(tr("revgraph_filter", "Filter"))
+        self.btn_filter.setToolTip(
+            tr("revgraph_filter_tip", "Filter the revision graph"))
+        self.btn_filter.setAutoRaise(True)
+        self.btn_filter.setCheckable(True)
+        self.btn_filter.clicked.connect(self._open_filter)
+        row.addWidget(self.btn_filter)
+
+        self.btn_find = QToolButton(bar)
+        self.btn_find.setText(tr("revgraph_find", "Find"))
+        self.btn_find.setToolTip(tr("revgraph_find_tip", "Find in graph (Ctrl+F)"))
+        self.btn_find.setAutoRaise(True)
+        self.btn_find.clicked.connect(self._open_find)
+        row.addWidget(self.btn_find)
+
+        row.addStretch(1)
+        return bar
+
+    # ---- 缩放 ----
+    def _sync_zoom_box(self):
+        from PySide6.QtCore import QSignalBlocker
+        with QSignalBlocker(self.zoom_box):
+            self.zoom_box.setEditText(f"{self.canvas.zoom() * 100:.0f}%")
+
+    def _set_zoom(self, zoom: float):
+        self.canvas.set_zoom(zoom)
+        self._sync_zoom_box()
+
+    def _zoom_by(self, factor: float):
+        self._set_zoom(self.canvas.zoom() * factor)
+
+    def _on_zoom_requested(self, zoom: float):
+        self._set_zoom(zoom)
+
+    def _on_zoom_box(self, _index):
+        text = self.zoom_box.currentText().strip().rstrip("%").strip()
+        try:
+            value = float(text)
+        except ValueError:
+            self._sync_zoom_box()
+            return
+        if value <= 0:
+            self._sync_zoom_box()
+            return
+        self._set_zoom(value / 100.0)
+
+    def _zoom_fit(self, mode: str):
+        """适合高度/宽度/全部（对齐 OnViewZoomheight/Width/All）。"""
+        layout = self.canvas.layout()
+        if layout is None or layout.width <= 0 or layout.height <= 0:
+            return
+        vp = self.scroll.viewport().size()
+        fx = (vp.width() - 4) / (layout.width + 4)
+        fy = (vp.height() - 4) / (layout.height + 4)
+        if mode == "height":
+            zoom = fy
+        elif mode == "width":
+            zoom = fx
+        else:
+            zoom = min(fx, fy)
+        self._set_zoom(zoom)
+
+    # ---- 过滤（对齐 OnViewFilter：改条件后重新拉取）----
+    def _open_filter(self):
+        from .revgraphfilterdlg import RevGraphFilterDlg
+        dlg = RevGraphFilterDlg(self.repo, parent=self, state=self._filter)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            self.btn_filter.setChecked(self._filter_active)
+            return
+        self._filter = dlg.state()
+        self._filter_active = any((
+            self._filter.get("from_rev"), self._filter.get("to_rev"),
+            self._filter.get("current_branch"),
+            self._filter.get("local_branches")))
+        self.btn_filter.setChecked(self._filter_active)
+        self.refresh()
+
+    # ---- 加载 ----
+    def refresh(self):
+        """重新拉取并重排（原版 StartWorkerThread）。"""
+        self._loading = True
+        self._error = ""
+        self._update_status()
         self._load()
 
     def _load(self):
-        run_async(self._load_bg, on_done=self._on_loaded, parent=self)
+        run_async(self._load_bg, on_done=self._on_loaded,
+                  on_error=self._on_load_error, parent=self)
 
     def _load_bg(self) -> list:
         log = GitRevLoglist(self.repo)
-        log.load(limit=0, all_branches=True, simplify=True)
+        log.load(**build_load_args(self._filter))
         return list(log)
 
     def _on_loaded(self, commits):
+        self._loading = False
+        self._error = ""
         font = QFont()
         font.setPointSize(_FONT_SIZE)
         fm = QFontMetricsF(font)
@@ -328,8 +716,361 @@ class RevisionGraphDlg(QDialog):
             return float(fm.horizontalAdvance(text)), float(fm.height())
 
         layout = build_layout(commits, measure)
+        self._node_count = len(layout.order)
+        self._commits = {c.hash: c for c in commits}
         self.canvas.set_layout(layout, self.repo.current_branch(), font)
+        self._sync_zoom_box()
+        self._update_status()
+
+    def _on_load_error(self, message: str, _traceback: str = ""):
+        self._loading = False
+        self._error = str(message or "")
+        self._node_count = 0
+        self.canvas.clear_layout()
+        self._update_status()
+
+    def _update_status(self):
+        """状态栏（原版状态栏内容被注释掉，这里给出节点数与过滤状态）。"""
+        if self._loading:
+            self.status_label.setText(tr("revgraph_loading", "Loading…"))
+            return
+        if self._error:
+            self.status_label.setText(
+                format_string(tr("revgraph_status_error", "Error: {message}"),
+                              message=self._error))
+            return
+        if self._node_count == 0:
+            self.status_label.setText(
+                tr("revgraph_nograph", "No graph available"))
+            return
+        text = format_string(tr("revgraph_status_nodes", "{count} nodes"),
+                             count=self._node_count)
+        if self._filter_active:
+            text += " · " + tr("revgraph_status_filtered", "filtered")
+        self.status_label.setText(text)
 
     def _open_stats(self):
         from .modeless import show_modeless
         show_modeless(StatGraphDlg(self.repo, parent=self))
+
+    # ------------------------------------------------------------------
+    # P1：选择 / 提示 / 键盘 / 查找 / 右键菜单
+    # ------------------------------------------------------------------
+    def _commit(self, key: str):
+        return self._commits.get(key) if key else None
+
+    def _refs_of(self, key: str) -> list:
+        """该提交上的完整引用名（refs/heads/xxx 形式）。"""
+        commit = self._commit(key)
+        if commit is None:
+            return []
+        out = []
+        for info in getattr(commit, "ref_infos", []) or []:
+            if info.fullname:
+                out.append(info.fullname)
+        return out
+
+    def _friend_ref_name(self, key: str) -> str:
+        """对齐 GetFriendRefName：优先第一个引用名，无引用时退回完整 hash。"""
+        refs = self._refs_of(key)
+        return refs[0] if refs else key
+
+    def _local_branches_of(self, key: str) -> list:
+        commit = self._commit(key)
+        if commit is None:
+            return []
+        cur = self.repo.current_branch()
+        out = []
+        for info in getattr(commit, "ref_infos", []) or []:
+            if getattr(info, "ref_type", "") != "branch":
+                continue
+            name = info.shortname
+            if name and name != cur:
+                out.append(name)
+        return out
+
+    def _deleteable_refs(self, key: str) -> list:
+        """除当前分支外的全部引用（对齐 GetFriendRefNames(..., &currentBranch)）。"""
+        cur = "refs/heads/" + self.repo.current_branch()
+        return [r for r in self._refs_of(key) if r != cur]
+
+    def _on_selection_changed(self):
+        self._update_status()
+
+    def _tooltip_for(self, key: str) -> str:
+        """节点悬停提示（对齐 TooltipText：hash/作者/日期/标题/正文）。"""
+        commit = self._commit(key)
+        if commit is None:
+            return ""
+        lines = [commit.hash]
+        author = (f"{commit.author_name} <{commit.author_email}>"
+                  if getattr(commit, "author_email", "") else commit.author_name)
+        date = ""
+        dt = getattr(commit, "author_date_dt", None)
+        if dt is not None:
+            date = dt.strftime("%Y-%m-%d %H:%M")
+        elif getattr(commit, "author_date", ""):
+            date = str(commit.author_date)[:16]
+        lines.append(f"{author}  {date}".rstrip())
+        lines.append("")
+        lines.append(getattr(commit, "subject", "") or "")
+        body = getattr(commit, "body", "") or ""
+        if body:
+            lines.append(body)
+        text = "\n".join(lines).strip()
+        return text[:8000] + ("..." if len(text) > 8000 else "")
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key == Qt.Key.Key_F5:
+            self.refresh()
+            return
+        if (key == Qt.Key.Key_F
+                and event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            self._open_find()
+            return
+        super().keyPressEvent(event)
+
+    def _find_items(self):
+        out = []
+        for key in (self.canvas.layout().order
+                    if self.canvas.layout() is not None else []):
+            commit = self._commit(key)
+            refs = " ".join(r.split("/")[-1] for r in self._refs_of(key))
+            subject = getattr(commit, "subject", "") if commit else ""
+            out.append((key, refs, subject or ""))
+        return out
+
+    def _open_find(self):
+        from .revgraphfinddlg import RevGraphFindDlg
+        if getattr(self, "_find_dlg", None) is None:
+            self._find_dlg = RevGraphFindDlg(self._find_items(), parent=self)
+            self._find_dlg.activated.connect(self._goto_node)
+            self._find_dlg.finished.connect(
+                lambda *_: setattr(self, "_find_dlg", None))
+            self._find_dlg.show()
+        else:
+            self._find_dlg.set_items(self._find_items())
+            self._find_dlg.raise_()
+            self._find_dlg.activateWindow()
+
+    def _goto_node(self, key: str):
+        self.canvas.select(key)
+        self.canvas.scroll_to(key)
+
+    # ---- 右键菜单（对齐 OnContextMenu / ShowContextMenu）----
+    def _on_canvas_menu(self, pos: QPointF):
+        key = self.canvas.node_at(pos.toPoint())
+        if key is None:
+            # 原版在空白处不弹菜单
+            return
+        selected = self.canvas.selected()
+        if key not in selected:
+            self.canvas.select(key)
+            selected = [key]
+        self._show_node_menu(pos.toPoint(), selected)
+
+    def _show_node_menu(self, pos, selected):
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        actions = self._build_node_menu(menu, selected)
+        chosen = menu.exec(self.canvas.mapToGlobal(pos))
+        if chosen is None:
+            return
+        self._dispatch_node_menu(chosen, actions, selected)
+
+    def _build_node_menu(self, menu, selected) -> dict:
+        """按选择数构建菜单（对齐 ShowContextMenu 的条件分支）。
+
+        返回 {动作名: QAction 或子菜单}，供 _dispatch_node_menu 分派；
+        单独拆出来是为了不依赖 menu.exec 就能测试菜单内容。
+        """
+        one = len(selected) == 1
+        two = len(selected) == 2
+        key1 = selected[0]
+        actions: dict = {}
+
+        actions["showlog"] = menu.addAction(
+            _icon("IDI_LOG"), tr("revgraph_popup_showlog", "Show &log"))
+        if one:
+            actions["browserepo"] = menu.addAction(
+                _icon("IDI_REPOBROWSE"),
+                tr("revgraph_popup_browserepo", "&Browse repository"))
+            menu.addSeparator()
+            branches = self._local_branches_of(key1)
+            if len(branches) == 1:
+                act = menu.addAction(format_string(
+                    tr("revgraph_popup_switch_one",
+                       '&Switch/Checkout to "{name}"'), name=branches[0]))
+                act.setData([branches[0]])
+                actions["switch"] = act
+            elif len(branches) > 1:
+                sub = menu.addMenu(tr("revgraph_popup_switch",
+                                      "&Switch/Checkout to"))
+                for name in branches:
+                    sub.addAction(name).setData([name])
+                actions["switch"] = sub
+            elif self._refs_of(key1):
+                actions["switch_rev"] = menu.addAction(
+                    tr("revgraph_popup_switch_this", "Sw&itch/Checkout to this…"))
+            menu.addSeparator()
+            actions["copyrefs"] = menu.addAction(
+                _icon("IDI_COPYCLIP"),
+                tr("revgraph_popup_copyrefs", "Copy ref names"))
+            refs = self._deleteable_refs(key1)
+            if len(refs) == 1:
+                act = menu.addAction(_icon("IDI_DELETE"), format_string(
+                    tr("revgraph_popup_delete_one", "&Delete {name}"),
+                    name=refs[0]))
+                act.setData(refs)
+                actions["delete"] = act
+            elif len(refs) > 1:
+                sub = menu.addMenu(tr("revgraph_popup_delete",
+                                      "&Delete branch/tag"))
+                for name in refs:
+                    sub.addAction(name).setData([name])
+                sub.addAction(tr("revgraph_popup_delete_all", "All")).setData(
+                    list(refs))
+                actions["delete"] = sub
+            menu.addSeparator()
+            actions["cmp_heads"] = menu.addAction(
+                _icon("IDI_DIFF"),
+                tr("revgraph_popup_compareheads", "Compare &HEAD revisions"))
+            actions["udiff_heads"] = menu.addAction(
+                _icon("IDI_DIFF"),
+                tr("revgraph_popup_unidiffheads",
+                   "Unified &diff of HEAD revisions"))
+            actions["cmp_wt"] = menu.addAction(
+                _icon("IDI_DIFF"),
+                tr("revgraph_popup_comparewt", "Compare with &working tree"))
+        if two:
+            actions["cmp"] = menu.addAction(
+                _icon("IDI_DIFF"),
+                tr("revgraph_popup_comparerevs", "&Compare revisions"))
+            actions["udiff"] = menu.addAction(
+                _icon("IDI_DIFF"),
+                tr("revgraph_popup_unidiffrevs", "&Unified diff"))
+        return actions
+
+    def _dispatch_node_menu(self, chosen, actions, selected):
+        key1 = selected[0]
+        matched = False
+        for name, act in actions.items():
+            if chosen is act:
+                matched = name
+                break
+            # 子菜单项：QAction.parent() 指向所在子菜单
+            sub = act
+            if hasattr(sub, "menu") or sub.__class__.__name__ == "QMenu":
+                if chosen.parent() is sub:
+                    data = chosen.data()
+                    if data:
+                        if name == "switch":
+                            self._do_switch(str(data[0]))
+                        elif name == "delete":
+                            self._do_delete_refs(list(data))
+                    return
+        if not matched:
+            return
+        if matched == "showlog":
+            self._do_show_log(selected)
+        elif matched == "browserepo":
+            self._do_browse_repo(key1)
+        elif matched == "switch_rev":
+            self._do_switch_dialog(self._friend_ref_name(key1))
+        elif matched == "copyrefs":
+            self._do_copy_refs(key1)
+        elif matched == "cmp_heads":
+            self._do_compare(self._friend_ref_name(key1), "HEAD")
+        elif matched == "udiff_heads":
+            self._do_unified(self._friend_ref_name(key1), "HEAD")
+        elif matched == "cmp_wt":
+            self._do_compare(self._friend_ref_name(key1), None)
+        elif matched == "cmp":
+            self._do_compare(self._friend_ref_name(selected[0]),
+                             self._friend_ref_name(selected[1]))
+        elif matched == "udiff":
+            self._do_unified(self._friend_ref_name(selected[0]),
+                             self._friend_ref_name(selected[1]))
+
+    # ---- 菜单动作实现 ----
+    def _do_show_log(self, selected):
+        from .logdlg import LogDlg
+        from .modeless import show_modeless
+        dlg = LogDlg(self.repo, rev=selected[0], parent=self)
+        show_modeless(dlg)
+
+    def _do_browse_repo(self, key):
+        from .repobrowserdlg import RepositoryBrowserDlg
+        from .modeless import show_modeless
+        show_modeless(RepositoryBrowserDlg(
+            self.repo, rev=self._friend_ref_name(key), parent=self))
+
+    def _do_switch(self, ref):
+        result = self.repo.runner.run("checkout", ref)
+        if result.returncode != 0:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, tr("error"), result.stderr or result.stdout)
+        self.refresh()
+
+    def _do_switch_dialog(self, ref):
+        from .gitswitchdlg import GitSwitchDlg
+        dlg = GitSwitchDlg(self.repo, parent=self, commit=ref)
+        if dlg.exec():
+            self.refresh()
+
+    def _do_copy_refs(self, key):
+        from ..utils.clipboard import ClipboardHelper
+        refs = self._refs_of(key)
+        ClipboardHelper().copy_text("\n".join(refs) if refs else key)
+
+    def _do_delete_refs(self, refs):
+        from PySide6.QtWidgets import QMessageBox
+        names = ", ".join(r.split("/")[-1] for r in refs)
+        resp = QMessageBox.question(
+            self, tr("confirm"),
+            format_string(tr("revgraph_delete_confirm", 'Delete "{names}"?'),
+                          names=names),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        for ref in refs:
+            if ref.startswith("refs/heads/"):
+                args = ["branch", "-D", ref[len("refs/heads/"):]]
+            elif ref.startswith("refs/tags/"):
+                args = ["tag", "-d", ref[len("refs/tags/"):]]
+            elif ref.startswith("refs/remotes/"):
+                args = ["branch", "-dr", ref[len("refs/remotes/"):]]
+            else:
+                args = ["update-ref", "-d", ref]
+            result = self.repo.runner.run(*args)
+            if result.returncode != 0:
+                QMessageBox.warning(
+                    self, tr("error"), result.stderr or result.stdout)
+                break
+        self.refresh()
+
+    def _do_compare(self, rev1: str, rev2: str | None):
+        from .diffdlg import DiffDlg
+        from .modeless import show_modeless
+        show_modeless(DiffDlg(self.repo, rev1=rev1, rev2=rev2, parent=self))
+
+    def _do_unified(self, rev1: str, rev2: str | None):
+        from .modeless import show_modeless
+        from .patchviewdlg import PatchViewDlg
+        args = ["diff", rev1]
+        if rev2:
+            args.append(rev2)
+        result = self.repo.runner.run(*args)
+        show_modeless(PatchViewDlg(
+            result.stdout or result.stderr or "",
+            title=f"{rev1[:8]}..{(rev2 or 'worktree')[:8]}", parent=self))
+
+
+def _icon(name: str):
+    try:
+        from ..res import icons
+        return icons.icon(name)
+    except Exception:  # noqa: BLE001
+        from PySide6.QtGui import QIcon
+        return QIcon()

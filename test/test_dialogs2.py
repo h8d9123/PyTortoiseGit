@@ -1369,6 +1369,399 @@ def test_revisiongraph_dialog(qapp, repo):
     assert dlg.canvas.node_count() >= 1
 
 
+def test_revgraph_load_args_matches_original_filter_semantics():
+    """build_load_args 对齐 RevisionGraphDlgFunc.cpp:193-235 的范围拼接规则。"""
+    from pytortoisegit.dialogs.revisiongraphdlg import build_load_args
+
+    # 都不勾选 => --all
+    assert build_load_args({})["all_branches"] is True
+    assert build_load_args({})["revisions"] == []
+    # 仅当前分支 => 范围加 HEAD，不加 --all/--branches
+    cur = build_load_args({"current_branch": True})
+    assert cur["all_branches"] is False and cur["revisions"] == ["HEAD"]
+    # 仅本地分支 => --branches
+    loc = build_load_args({"local_branches": True})
+    assert loc["all_branches"] is False and loc["local_branches"] is True
+    # From => 排除项，任何模式下都生效
+    assert build_load_args({"from_rev": "topic"})["revisions"] == ["^topic"]
+    assert build_load_args(
+        {"from_rev": "a b", "current_branch": True})["revisions"] == ["^a", "^b", "HEAD"]
+    # To => 仅在两个勾选框都未勾选时作为包含项
+    assert build_load_args({"to_rev": "v1.0"})["revisions"] == ["v1.0"]
+    assert build_load_args(
+        {"to_rev": "v1.0", "current_branch": True})["revisions"] == ["HEAD"]
+    assert build_load_args(
+        {"to_rev": "v1.0", "local_branches": True})["revisions"] == []
+    # 恒开 simplify-by-decoration
+    assert build_load_args({})["simplify"] is True
+
+
+def test_revgraph_toolbar_and_zoom(qapp, repo):
+    """工具栏按钮、缩放下拉框与缩放范围（对齐 IDR_REVGRAPHBAR / MIN-MAX_ZOOM）。"""
+    from pytortoisegit.dialogs.revisiongraphdlg import (
+        RevisionGraphDlg, _MAX_ZOOM, _MIN_ZOOM, _ZOOM_PRESETS)
+    from PySide6.QtWidgets import QToolButton
+
+    dlg = _smoke(qapp, lambda: RevisionGraphDlg(repo))
+    labels = [b.text() for b in dlg.findChildren(QToolButton)]
+    assert "过滤" in labels
+    assert len(labels) >= 7, labels
+    assert [dlg.zoom_box.itemText(i) for i in range(dlg.zoom_box.count())] \
+        == list(_ZOOM_PRESETS)
+    assert dlg.zoom_box.currentText() == "100%"
+
+    # 缩放会改变画布尺寸（即真的影响渲染范围）
+    dlg._set_zoom(1.0)
+    full = dlg.canvas.minimumSize()
+    dlg._set_zoom(0.5)
+    assert dlg.canvas.minimumSize().width() < full.width()
+    assert dlg.zoom_box.currentText() == "50%"
+    # 越界被夹紧到 [MIN_ZOOM, MAX_ZOOM]
+    dlg._set_zoom(99.0)
+    assert dlg.canvas.zoom() == _MAX_ZOOM
+    dlg._set_zoom(0.0)
+    assert dlg.canvas.zoom() == _MIN_ZOOM
+
+
+def test_revgraph_zoom_box_accepts_typed_value(qapp, repo):
+    from pytortoisegit.dialogs.revisiongraphdlg import RevisionGraphDlg
+
+    dlg = _smoke(qapp, lambda: RevisionGraphDlg(repo))
+    dlg.zoom_box.setEditText("40%")
+    dlg._on_zoom_box(None)
+    assert abs(dlg.canvas.zoom() - 0.4) < 1e-6
+    # 非法输入回退到当前缩放，不应抛异常
+    dlg.zoom_box.setEditText("abc")
+    dlg._on_zoom_box(None)
+    assert dlg.zoom_box.currentText() == "40%"
+
+
+def test_revgraph_filter_dialog_exclusive_and_reset(qapp, git_repo):
+    """对齐 RevGraphFilterDlg：两勾选框互斥、To 被禁用清空、Reset 立即接受。"""
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs.revgraphfilterdlg import RevGraphFilterDlg
+
+    dlg = RevGraphFilterDlg(git_repo)
+    assert dlg.state() == {"from_rev": "", "to_rev": "",
+                           "current_branch": False, "local_branches": False}
+
+    dlg.to_edit.setText("stale-value")
+    dlg.chk_current.setChecked(True)
+    assert dlg.chk_local.isEnabled() is False
+    assert dlg.to_edit.isEnabled() is False
+    # 勾选分支选项时 To 会被清空（原版 OnBnClickedCurrentBranch 的行为）
+    assert dlg.to_edit.text() == ""
+
+    dlg.chk_current.setChecked(False)
+    assert dlg.chk_local.isEnabled() is True
+    assert dlg.to_edit.isEnabled() is True
+
+    dlg.chk_local.setChecked(True)
+    assert dlg.chk_current.isEnabled() is False
+    assert dlg.state()["local_branches"] is True
+
+    # set_state 应能回填（供再次打开过滤框时保持条件）
+    dlg.set_state({"from_rev": "topic", "to_rev": "v1"})
+    assert dlg.state()["from_rev"] == "topic"
+    assert dlg.state()["to_rev"] == "v1"
+
+    # Reset：清空并立即接受，使过滤马上生效
+    dlg._reset()
+    assert dlg.state() == {"from_rev": "", "to_rev": "",
+                           "current_branch": False, "local_branches": False}
+    assert dlg.result() == QDialog.DialogCode.Accepted
+
+
+def test_revgraph_filter_changes_fetched_commits(qapp, tmp_path):
+    """过滤条件必须真正走到 git：From 作为排除项应当减少提交数。"""
+    from pathlib import Path
+    from pytortoisegit.dialogs.revisiongraphdlg import build_load_args
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.git.repo import Repository
+    from pytortoisegit.git.rev import GitRevLoglist
+
+    root = tmp_path / "rgfilter"
+    root.mkdir()
+    runner = GitRunner(cwd=str(root))
+    runner.init(str(root), initial_branch="main")
+    repo = Repository.open(str(root))
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    Path(root / "f.txt").write_text("1\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "c1").returncode == 0
+    runner.run("branch", "feature")          # feature 指向 c1
+    Path(root / "f.txt").write_text("2\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "c2").returncode == 0
+
+    def subjects(state):
+        log = GitRevLoglist(repo)
+        log.load(**build_load_args(state))
+        return sorted(c.subject for c in log.commits)
+
+    # --all --simplify-by-decoration：c2 被 main 标注、c1 被 feature 标注
+    assert subjects({}) == ["c1", "c2"]
+    # 排除 feature 后只剩 c2 —— 证明过滤真的进了 git 参数
+    assert subjects({"from_rev": "feature"}) == ["c2"]
+
+
+def test_revgraph_close_during_load_is_safe(qapp, repo):
+    """回归：加载途中关闭修订图窗口不应崩溃。"""
+    from PySide6.QtCore import QEventLoop, QTimer
+    from pytortoisegit.dialogs.revisiongraphdlg import RevisionGraphDlg
+
+    dlg = RevisionGraphDlg(repo)
+    dlg.show()
+    # 初始加载仍在后台线程运行时立刻关闭并销毁
+    dlg.close()
+    dlg.deleteLater()
+
+    loop = QEventLoop()
+    QTimer.singleShot(2000, loop.quit)
+    loop.exec()
+    # 能走到这里即说明进程没有因 QThread 被销毁而崩溃
+    assert True
+
+
+@pytest.fixture
+def rg(qapp):
+    """打开修订图窗口的工厂，并在用例结束后关闭所有窗口。
+
+    修订图是非模态窗口且自带后台加载线程，若用例结束不关闭，窗口会一直累积，
+    在整份测试文件里跑时会拖垮后续用例（表现为进程阻塞）。
+    """
+    from PySide6.QtCore import QEventLoop, QTimer
+    from PySide6.QtWidgets import QApplication
+    from pytortoisegit.dialogs.revisiongraphdlg import RevisionGraphDlg
+
+    made = []
+
+    def make(repo, wait_ms=2500):
+        dlg = RevisionGraphDlg(repo)
+        dlg.show()
+        loop = QEventLoop()
+        QTimer.singleShot(wait_ms, loop.quit)
+        loop.exec()
+        made.append(dlg)
+        return dlg
+
+    yield make
+
+    for dlg in made:
+        try:
+            dlg.close()
+            dlg.deleteLater()
+        except RuntimeError:
+            pass
+    app = QApplication.instance()
+    if app is not None:
+        app.processEvents()
+
+
+def _rg_branchy_repo(tmp_path):
+    """建一个有 3 个可见节点的仓库（--simplify-by-decoration 只留有引用标注的提交）。"""
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.git.repo import Repository
+
+    root = tmp_path / "rgsel"
+    root.mkdir()
+    runner = GitRunner(cwd=str(root))
+    runner.init(str(root), initial_branch="main")
+    repo = Repository.open(str(root))
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    for i, branch in ((1, "topic"), (2, "feature"), (3, None)):
+        (root / "a.txt").write_text(f"{i}\n", encoding="utf-8")
+        runner.run("add", "-A")
+        assert runner.run("commit", "-m", f"c{i}").returncode == 0
+        if branch:
+            runner.run("branch", branch)
+    return repo
+
+
+def test_revgraph_node_selection_semantics(rg, tmp_path):
+    """选择语义对齐 OnLButtonDown：单选可取消、Ctrl 多选最多两个。"""
+    repo = _rg_branchy_repo(tmp_path)
+    dlg = rg(repo)
+    canvas = dlg.canvas
+    order = list(canvas.layout().order)
+    assert len(order) >= 3, f"需要至少 3 个节点，实际 {len(order)}"
+    k1, k2, k3 = order[0], order[1], order[2]
+
+    canvas.select(k1)
+    assert canvas.selected() == [k1]
+    canvas.select(k1)                     # 再点一次取消
+    assert canvas.selected() == []
+
+    canvas.select(k1)
+    canvas.select(k2, additive=True)
+    assert canvas.selected() == [k1, k2]
+    canvas.select(k3, additive=True)      # 已有两个：最多保持两个
+    assert len(canvas.selected()) == 2
+
+    # 点击已选中的第二个节点会取消它（对齐 m_SelectedEntry2 = nullptr）
+    canvas.select(None)
+    canvas.select(k1)
+    canvas.select(k2, additive=True)
+    canvas.select(k2, additive=True)
+    assert canvas.selected() == [k1]
+
+    canvas.select(None)                   # 空白处点击清空
+    assert canvas.selected() == []
+
+
+def test_revgraph_hit_test_respects_zoom(rg, tmp_path):
+    """命中测试要按当前缩放换算。"""
+    from PySide6.QtCore import QPointF
+    repo = _rg_branchy_repo(tmp_path)
+    dlg = rg(repo)
+    canvas = dlg.canvas
+    key = canvas.layout().order[0]
+    node = canvas.layout().nodes[key]
+    for zoom in (1.0, 0.5, 1.5):
+        canvas.set_zoom(zoom)
+        assert canvas.node_at(QPointF(node.x * zoom, node.y * zoom)) == key
+    assert canvas.node_at(QPointF(99999, 99999)) is None
+
+
+def test_revgraph_tooltip_has_commit_details(rg, tmp_path):
+    repo = _rg_branchy_repo(tmp_path)
+    dlg = rg(repo)
+    key = dlg.canvas.layout().order[0]
+    text = dlg._tooltip_for(key)
+    lines = text.splitlines()
+    assert lines[0] == key, "首行应为完整 hash"
+    assert "@" in lines[1], "第二行应含作者与邮箱"
+    assert any(line.strip() for line in lines[2:]), "应包含标题等正文"
+    # 未知节点不应抛异常
+    assert dlg._tooltip_for("deadbeef") == ""
+
+
+def test_revgraph_context_menu_one_vs_two_nodes(rg, tmp_path):
+    """右键菜单按选择数分支：1 个节点给 7 项，2 个节点只给比较/统一差异。"""
+    from PySide6.QtWidgets import QMenu
+    repo = _rg_branchy_repo(tmp_path)
+    dlg = rg(repo)
+    order = list(dlg.canvas.layout().order)
+    k1, k2 = order[0], order[1]
+
+    menu = QMenu(dlg)
+    acts = dlg._build_node_menu(menu, [k1])
+    assert set(acts) >= {"showlog", "browserepo", "copyrefs",
+                         "cmp_heads", "udiff_heads", "cmp_wt"}
+    # 两个节点时不出现单节点专属项
+    menu2 = QMenu(dlg)
+    acts2 = dlg._build_node_menu(menu2, [k1, k2])
+    assert {"showlog", "cmp", "udiff"} <= set(acts2)
+    assert "browserepo" not in acts2 and "copyrefs" not in acts2
+
+
+def test_revgraph_context_menu_submenus(rg, tmp_path):
+    """多引用/多本地分支时走子菜单：引用用全名、分支用短名，且带“全部”。"""
+    from PySide6.QtWidgets import QMenu
+    repo = _rg_branchy_repo(tmp_path)
+    # c1 上同时挂 topic 与标签，c2 上挂 feature
+    repo.runner.run("tag", "v1.0", "topic")
+    repo.runner.run("branch", "other", "topic")
+    dlg = rg(repo)
+
+    target = next((k for k in dlg.canvas.layout().order
+                   if len(dlg._deleteable_refs(k)) >= 2), None)
+    assert target is not None, "应存在带多个引用的提交"
+    menu = QMenu(dlg)
+    acts = dlg._build_node_menu(menu, [target])
+    delete_menu = acts.get("delete")
+    assert delete_menu is not None and hasattr(delete_menu, "actions")
+    labels = [a.text() for a in delete_menu.actions()]
+    assert any(x.startswith("refs/") for x in labels), labels
+    assert labels[-1] in ("All", "全部")
+    switch_menu = acts.get("switch")
+    if switch_menu is not None and hasattr(switch_menu, "actions"):
+        short = [a.text() for a in switch_menu.actions()]
+        assert all(not s.startswith("refs/") for s in short), short
+
+
+def test_revgraph_find_dialog_filters_and_activates(qapp):
+    from pytortoisegit.dialogs.revgraphfinddlg import RevGraphFindDlg
+
+    items = [("a" * 40, "master", "first commit"),
+             ("b" * 40, "topic", "second change")]
+    dlg = RevGraphFindDlg(items)
+    try:
+        _find_dialog_asserts(dlg)
+    finally:
+        dlg.close()
+        dlg.deleteLater()
+        app = qapp
+        if app is not None:
+            app.processEvents()
+
+
+def _find_dialog_asserts(dlg):
+    assert dlg.list.topLevelItemCount() == 0, "未输入时不应有结果"
+
+    dlg.edit.setText("second")
+    dlg.refresh_list()
+    assert dlg.list.topLevelItemCount() == 1
+
+    # 默认不区分大小写
+    dlg.edit.setText("SECOND")
+    dlg.refresh_list()
+    assert dlg.list.topLevelItemCount() == 1
+    # 勾选区分大小写后大小写不再匹配
+    dlg.chk_case.setChecked(True)
+    dlg.refresh_list()
+    assert dlg.list.topLevelItemCount() == 0
+
+    # 仅查找引用名：标题里的 second 不应再命中
+    dlg.edit.setText("second")
+    dlg.chk_case.setChecked(False)
+    dlg.chk_refs.setChecked(True)
+    dlg.refresh_list()
+    assert dlg.list.topLevelItemCount() == 0
+    dlg.edit.setText("topic")
+    dlg.refresh_list()
+    assert dlg.list.topLevelItemCount() == 1
+
+    # 正则
+    dlg.chk_refs.setChecked(False)
+    dlg.chk_regex.setChecked(True)
+    dlg.edit.setText("fir.*commit")
+    dlg.refresh_list()
+    assert dlg.list.topLevelItemCount() == 1
+    # 非法正则按字面量处理，不抛异常
+    dlg.edit.setText("([")
+    dlg.refresh_list()
+    assert dlg.list.topLevelItemCount() == 0
+
+    dlg.chk_regex.setChecked(False)
+    dlg.edit.setText("commit")
+    dlg.refresh_list()
+    got = {}
+    dlg.activated.connect(lambda h: got.setdefault("h", h))
+    dlg.find_next()
+    dlg._on_activated(dlg.list.currentItem())
+    assert got.get("h"), "激活应发出 hash"
+
+
+def test_revgraph_f5_refreshes(rg, tmp_path):
+    from PySide6.QtCore import QEventLoop, QTimer, Qt
+    from PySide6.QtGui import QKeyEvent
+
+    repo = _rg_branchy_repo(tmp_path)
+    dlg = rg(repo)
+    before = dlg.canvas.node_count()
+    assert before >= 1
+    dlg.keyPressEvent(QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_F5,
+                                Qt.KeyboardModifier.NoModifier))
+    loop = QEventLoop()
+    QTimer.singleShot(2500, loop.quit)
+    loop.exec()
+    assert dlg.canvas.node_count() == before
+
+
+
 def test_statgraph_dialog(qapp, repo):
     from pytortoisegit.dialogs.statgraphdlg import StatGraphDlg
     dlg = _smoke(qapp, lambda: StatGraphDlg(repo))

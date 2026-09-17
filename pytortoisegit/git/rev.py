@@ -157,15 +157,22 @@ class GitRevLoglist:
              pathspec: str | None = None,
              ordering: str = "default",
              all_branches: bool = False,
-             simplify: bool = False) -> None:
+             simplify: bool = False,
+             local_branches: bool = False,
+             revisions: Sequence[str] | None = None) -> None:
         """加载提交。search 非空时按 grep 过滤（作者/信息），pathspec 限定路径。
         ordering: default/topo-order/date-order/author-date-order。
         simplify: 传 --simplify-by-decoration，只保留被引用标注的提交与
         分叉/合并点（对齐 C++ 修订图的 LOG_INFO_SIMPILFY_BY_DECORATION）。
+        local_branches: 传 --branches（对齐 LOG_INFO_LOCAL_BRANCHES）。
+        revisions: 额外的修订/范围 token（如 ``["HEAD", "^topic"]``），
+        对齐原版把 From 作为排除、To 作为包含拼进 range 的做法。
         """
         args: List[str] = []
         if all_branches:
             args.append("--all")
+        elif local_branches:
+            args.append("--branches")
         if simplify:
             args.append("--simplify-by-decoration")
         if limit and limit > 0:
@@ -183,6 +190,12 @@ class GitRevLoglist:
         order = ordering if ordering in ("topo-order", "date-order",
                                          "author-date-order") else "topo-order"
         cmd = ["log", fmt, f"--{order}", "--date=iso", "--name-status", *args]
+        extra = [t for t in (revisions or ()) if t]
+        if extra:
+            # 修订 token 必须排在选项之后、"--" 之前；用 --end-of-options 防止
+            # 以 "-" 开头的内容被当成选项（对齐原版 GetLogCmd 的做法）。
+            cmd.append("--end-of-options")
+            cmd.extend(extra)
         if pathspec:
             cmd += ["--", pathspec]
         out = self.repo.runner.run_checked(*cmd)

@@ -1199,6 +1199,11 @@ STRINGS: Dict[str, str] = {
     "revgraph_save_failed": "保存失败：{message}",
     "revgraph_save_nowmf": "不支持导出 Windows 图元文件（WMF/EMF），请改用 SVG、PNG 或 .gv。",
     "revgraph_saved": "已保存到 {path}",
+    # ---- 修订图：视图菜单（显示开关）----
+    "revgraph_view": "视图",
+    "revgraph_show_all_tags": "显示所有标签(&T)",
+    "revgraph_show_branchings": "显示分支与合并(&B)",
+    "revgraph_arrow_to_merges": "箭头指向合并(&A)",
     "sel_remote": "远程：",
     "mail_to": "收件人：",
     "mail_attach": "补丁作为附件",

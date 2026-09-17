@@ -159,7 +159,8 @@ class GitRevLoglist:
              all_branches: bool = False,
              simplify: bool = False,
              local_branches: bool = False,
-             revisions: Sequence[str] | None = None) -> None:
+             revisions: Sequence[str] | None = None,
+             sparse: bool = False) -> None:
         """加载提交。search 非空时按 grep 过滤（作者/信息），pathspec 限定路径。
         ordering: default/topo-order/date-order/author-date-order。
         simplify: 传 --simplify-by-decoration，只保留被引用标注的提交与
@@ -167,6 +168,7 @@ class GitRevLoglist:
         local_branches: 传 --branches（对齐 LOG_INFO_LOCAL_BRANCHES）。
         revisions: 额外的修订/范围 token（如 ``["HEAD", "^topic"]``），
         对齐原版把 From 作为排除、To 作为包含拼进 range 的做法。
+        sparse: 传 --sparse（对齐 LOG_INFO_SPARSE，供「显示分支与合并」）。
         """
         args: List[str] = []
         if all_branches:
@@ -175,6 +177,8 @@ class GitRevLoglist:
             args.append("--branches")
         if simplify:
             args.append("--simplify-by-decoration")
+        if sparse:
+            args.append("--sparse")
         if limit and limit > 0:
             args += ["-n", str(limit)]
         if search:
@@ -214,19 +218,31 @@ class GitRevLoglist:
         assign_lanes(self.commits)
 
     def load_refs(self) -> None:
-        """用 for-each-ref 填充 refs 映射。"""
+        """用 for-each-ref 填充 refs 映射。
+
+        额外取 `%(*objectname)`（解引用后的对象）：附注标签的 `%(objectname)`
+        是**标签对象**的 sha，不等于它指向的提交，直接匹配会永远挂不到提交上。
+        轻量标签该项为空，此时回退到 `%(objectname)`。
+
+        同时纳入 refs/stash（原版经 git_reference_foreach 覆盖全部引用），
+        否则渲染里的 stash 配色永远不可达。
+        """
         sep = _IFS  # for-each-ref 不支持 %xNN，直接嵌入控制字符
         out = self.repo.runner.run_checked(
             "for-each-ref",
-            "--format=%(refname)" + sep + "%(objectname)" + sep + "%(subject)",
-            "refs/heads", "refs/remotes", "refs/tags")
+            "--format=%(refname)" + sep + "%(objectname)" + sep
+            + "%(*objectname)" + sep + "%(subject)",
+            "refs/heads", "refs/remotes", "refs/tags", "refs/stash")
         self.refs = {}
         self.refs_loaded = True
         # 注意：不能使用 str.splitlines() —— 它会把 \x1e 也当作行边界
         for line in out.split("\n"):
             if not line.strip():
                 continue
-            fullname, objname, _ = line.split("\x1e", 2)
+            parts = line.split("\x1e")
+            if len(parts) < 3:
+                continue
+            fullname, objname, peeled = parts[0], parts[1], parts[2]
             shortname = fullname
             rtype = "branch"
             for prefix, t in _REF_TYPE_PREFIX:
@@ -234,7 +250,10 @@ class GitRevLoglist:
                     shortname = fullname[len(prefix):]
                     rtype = t
                     break
-            self.refs[fullname] = RefInfo(shortname, fullname, objname, rtype)
+            # refs/stash 这类"整名即前缀"的引用剥完会得到空串，回退到末段
+            shortname = shortname or fullname.rsplit("/", 1)[-1]
+            target = peeled or objname
+            self.refs[fullname] = RefInfo(shortname, fullname, target, rtype)
 
     def _refs_for(self, hash: str) -> List[RefInfo]:
         if not self.refs_loaded:

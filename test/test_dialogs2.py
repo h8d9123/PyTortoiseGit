@@ -1846,6 +1846,162 @@ def test_revgraph_overview_toggle_and_hit(rg, tmp_path):
     assert dlg.canvas.show_overview() is False
 
 
+# ---------------------------------------------------------------------------
+# P3 数据侧：显示开关 / 引用解析
+# ---------------------------------------------------------------------------
+
+class _FakeCommit:
+    """给纯函数用的最小提交替身。"""
+
+    def __init__(self, h, parents=(), ref_types=(), subject=""):
+        from types import SimpleNamespace
+        self.hash = h
+        self.parents = list(parents)
+        self.subject = subject or h
+        self.ref_infos = [SimpleNamespace(ref_type=t) for t in ref_types]
+
+
+def test_revgraph_drop_tag_only_commits():
+    """「显示所有标签」关闭时只丢"仅剩标签标注"的提交。"""
+    from pytortoisegit.dialogs.revisiongraphdlg import drop_tag_only_commits
+
+    tag_only = _FakeCommit("a" * 40, ref_types=("tag",))
+    mixed = _FakeCommit("b" * 40, ref_types=("tag", "branch"))
+    plain = _FakeCommit("c" * 40)
+    branch_only = _FakeCommit("d" * 40, ref_types=("branch",))
+
+    got = drop_tag_only_commits([tag_only, mixed, plain, branch_only])
+    assert [c.hash for c in got] == [mixed.hash, plain.hash, branch_only.hash]
+
+
+def test_revgraph_collapse_linear_chains():
+    """无标注的线性链被折叠，并把子的父接到祖父；分叉点保留。"""
+    from pytortoisegit.dialogs.revisiongraphdlg import collapse_linear_chains
+
+    c1 = _FakeCommit("1" * 40, ref_types=("branch",))
+    c2 = _FakeCommit("2" * 40, parents=["1" * 40])
+    c3 = _FakeCommit("3" * 40, parents=["2" * 40])
+    c4 = _FakeCommit("4" * 40, parents=["3" * 40], ref_types=("branch",))
+
+    got = collapse_linear_chains([c1, c2, c3, c4])
+    assert [c.hash for c in got] == [c1.hash, c4.hash]
+    assert c4.parents == [c1.hash], "子的父应接到祖父，链不能断"
+
+    # 分叉点：c1 有两个子，不能被折叠
+    c1b = _FakeCommit("1" * 40, ref_types=("branch",))
+    c2b = _FakeCommit("2" * 40, parents=["1" * 40], ref_types=("branch",))
+    c3b = _FakeCommit("3" * 40, parents=["1" * 40], ref_types=("branch",))
+    got2 = collapse_linear_chains([c1b, c2b, c3b])
+    assert len(got2) == 3, "有分叉时不应折叠"
+    assert c1b.parents == []
+
+
+def test_revgraph_load_args_sparse_flag():
+    from pytortoisegit.dialogs.revisiongraphdlg import build_load_args
+
+    assert build_load_args({})["sparse"] is False
+    assert build_load_args({}, sparse=True)["sparse"] is True
+
+
+def test_refs_peel_annotated_tags_and_include_stash(tmp_path):
+    """附注标签需解引用才能挂到提交上；refs/stash 也要能取到且有非空短名。"""
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.git.repo import Repository
+    from pytortoisegit.git.rev import GitRevLoglist
+
+    root = tmp_path / "refsrepo"
+    root.mkdir()
+    runner = GitRunner(cwd=str(root))
+    runner.init(str(root), initial_branch="main")
+    repo = Repository.open(str(root))
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    (root / "a.txt").write_text("1\n", encoding="utf-8")
+    runner.run("add", "-A")
+    assert runner.run("commit", "-m", "c1").returncode == 0
+    runner.run("tag", "-a", "v1.0", "-m", "annotated")
+    runner.run("tag", "light")
+    head = repo.head_commit()
+
+    # 制造真实 stash（需要工作区有改动）
+    (root / "a.txt").write_text("dirty\n", encoding="utf-8")
+    assert runner.run("stash", "push", "-m", "wip").returncode == 0
+
+    log = GitRevLoglist(repo)
+    log.load(limit=0, all_branches=True, simplify=True)
+
+    # 附注标签与轻量标签都必须指向 c1 本身
+    assert log.refs["refs/tags/v1.0"].target == head
+    assert log.refs["refs/tags/light"].target == head
+    # stash 引用存在且短名非空（否则节点会渲染成空标签）
+    assert "refs/stash" in log.refs
+    assert log.refs["refs/stash"].ref_type == "stash"
+    assert log.refs["refs/stash"].shortname == "stash"
+
+
+def test_revgraph_view_menu_toggles(rg, tmp_path, monkeypatch):
+    """视图菜单三个开关的默认值与联动（对齐 InitialSetMenu 默认值）。"""
+    repo = _rg_branchy_repo(tmp_path)
+    dlg = rg(repo)
+
+    assert dlg.act_all_tags.isChecked() is True      # 原版默认 TRUE
+    assert dlg.act_branchings.isChecked() is False   # 原版默认 FALSE
+    assert dlg.act_arrow.isChecked() is False        # 原版默认 FALSE
+    labels = [a.text() for a in dlg.btn_view.menu().actions() if a.text()]
+    assert len(labels) == 4, labels                  # 三个开关 + 概览
+
+    # 切换显示开关应触发重新拉取（对齐 UpdateFullHistory）
+    calls = []
+    monkeypatch.setattr(dlg, "refresh", lambda: calls.append("refresh"))
+    dlg.act_all_tags.setChecked(False)
+    assert calls == ["refresh"]
+    dlg.act_branchings.setChecked(True)
+    assert calls == ["refresh", "refresh"]
+
+    # 箭头开关只重绘，不重新拉取
+    monkeypatch.setattr(dlg, "refresh", lambda: calls.append("refresh2"))
+    dlg.act_arrow.setChecked(True)
+    assert calls == ["refresh", "refresh"]
+    assert dlg.canvas._arrow_to_merges is True
+
+    # 概览开关与工具栏按钮保持同步
+    dlg.act_overview.setChecked(True)
+    assert dlg.btn_overview.isChecked() is True
+    assert dlg.canvas.show_overview() is True
+
+
+def test_revgraph_all_tags_toggle_changes_graph(rg, tmp_path):
+    """「显示所有标签」关闭后，仅由标签可达的提交应从图中消失。"""
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.git.repo import Repository
+
+    root = tmp_path / "tagrepo"
+    root.mkdir()
+    runner = GitRunner(cwd=str(root))
+    runner.init(str(root), initial_branch="main")
+    repo = Repository.open(str(root))
+    runner.run("config", "user.email", "t@example.com")
+    runner.run("config", "user.name", "Tester")
+    for n in (1, 2):
+        (root / "a.txt").write_text(f"{n}\n", encoding="utf-8")
+        runner.run("add", "-A")
+        assert runner.run("commit", "-m", f"c{n}").returncode == 0
+    runner.run("tag", "v2")                      # c2 打标签
+    runner.run("reset", "--hard", "HEAD~1")      # main 退回 c1 => c2 仅标签可达
+
+    dlg = rg(repo)
+    with_tag = {dlg._commits[k].subject for k in dlg.canvas.layout().order}
+    assert "c2" in with_tag, with_tag
+
+    dlg.act_all_tags.setChecked(False)
+    from PySide6.QtCore import QEventLoop, QTimer
+    loop = QEventLoop()
+    QTimer.singleShot(2500, loop.quit)
+    loop.exec()
+    without = {dlg._commits[k].subject for k in dlg.canvas.layout().order}
+    assert "c2" not in without, without
+
+
 
 def test_statgraph_dialog(qapp, repo):
     from pytortoisegit.dialogs.statgraphdlg import StatGraphDlg

@@ -59,6 +59,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QScrollArea,
     QToolButton,
@@ -185,7 +186,7 @@ def _split_revs(text: str) -> list:
     return [t for t in re.split(r"\s+", (text or "").strip()) if t]
 
 
-def build_load_args(filter_state: dict) -> dict:
+def build_load_args(filter_state: dict, sparse: bool = False) -> dict:
     """把过滤条件翻译成 ``GitRevLoglist.load`` 的关键字参数。
 
     对齐 RevisionGraphDlgFunc.cpp:193-235：
@@ -194,6 +195,8 @@ def build_load_args(filter_state: dict) -> dict:
       * 都未勾选     -> --all
       * From 非空    -> 每个 token 变成排除项 "^token"（任何模式下都生效）
       * To 非空      -> 仅在两个勾选框都未勾选时作为包含项加入
+      * sparse       -> 附加 --sparse（原版「显示分支与合并」勾选时置
+                        LOG_INFO_SPARSE）
     """
     state = filter_state or {}
     from_rev = _split_revs(state.get("from_rev", ""))
@@ -214,8 +217,58 @@ def build_load_args(filter_state: dict) -> dict:
         "all_branches": not (current or local),
         "local_branches": local and not current,
         "simplify": True,
+        "sparse": bool(sparse),
         "revisions": revisions,
     }
+
+
+def drop_tag_only_commits(commits: list) -> list:
+    """「显示所有标签」关闭时，丢掉只被标签标注的提交（对齐原版重写）。
+
+    原版逻辑（RevisionGraphDlgFunc.cpp:260-282）：ShowAllTags 打开时任意标注都
+    保留；关闭时只有非标签标注才算数，仅剩标签标注的提交被移除。
+    """
+    out = []
+    for commit in commits:
+        infos = list(getattr(commit, "ref_infos", []) or [])
+        if infos and all(i.ref_type == "tag" for i in infos):
+            continue
+        out.append(commit)
+    return out
+
+
+def collapse_linear_chains(commits: list) -> list:
+    """折叠没有标注的线性链（对齐原版「显示分支与合并」的重写）。
+
+    仅当某提交满足：无引用标注、恰好 1 个父、恰好 1 个子，且该子也恰好
+    1 个父时，才移除它并把子的父直接接到祖父（原版
+    RevisionGraphDlgFunc.cpp:284-305 的 splice），从而保证链不断。
+    """
+    by_hash = {c.hash: c for c in commits}
+    labelled = {c.hash for c in commits if getattr(c, "ref_infos", None)}
+
+    children: dict = {}
+    for commit in commits:
+        for parent in commit.parents or []:
+            children.setdefault(parent, []).append(commit.hash)
+
+    drop = set()
+    for commit in commits:
+        if commit.hash in labelled:
+            continue
+        parents = list(commit.parents or [])
+        kids = children.get(commit.hash, [])
+        if len(parents) != 1 or len(kids) != 1:
+            continue
+        child = by_hash.get(kids[0])
+        if child is None or len(list(child.parents or [])) != 1:
+            continue
+        drop.add(commit.hash)
+        child.parents = [parents[0]]      # 子的父接到祖父，链不断
+
+    if not drop:
+        return commits
+    return [c for c in commits if c.hash not in drop]
 
 
 class _GraphCanvas(QWidget):
@@ -241,6 +294,7 @@ class _GraphCanvas(QWidget):
         self._tooltip_provider = None  # callable(hash) -> str
         self._show_overview = False
         self._overview_drag = False
+        self._arrow_to_merges = False
         self.setMouseTracking(True)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(
@@ -551,7 +605,11 @@ class _GraphCanvas(QWidget):
             for q in pts[1:]:
                 path.lineTo(q)
             p.drawPath(path)
-            self._draw_arrow(p, pts[-1], pts[-2])
+            # 箭头默认指向父提交（末段）；ArrowPointToMerges 时改指首段
+            if self._arrow_to_merges:
+                self._draw_arrow(p, pts[0], pts[1])
+            else:
+                self._draw_arrow(p, pts[-1], pts[-2])
 
     def _draw_arrow(self, p: QPainter, tip: QPointF, prev: QPointF):
         dx = (prev.x() - tip.x()) * -1
@@ -637,6 +695,10 @@ class RevisionGraphDlg(QDialog):
         self._node_count = 0
         self._commits: dict = {}
         self._find_dlg = None
+        # 三个显示开关（默认值对齐原版 InitialSetMenu）
+        self._show_all_tags = True
+        self._show_branchings_merges = False
+        self._arrow_to_merges = False
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -742,12 +804,71 @@ class RevisionGraphDlg(QDialog):
         self.btn_save.clicked.connect(self._save_graph)
         row.addWidget(self.btn_save)
 
+        # 视图菜单：三个显示开关（对齐原版 View 菜单的对应项）
+        self.btn_view = QToolButton(bar)
+        self.btn_view.setText(tr("revgraph_view", "View"))
+        self.btn_view.setAutoRaise(True)
+        self.btn_view.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        view_menu = QMenu(self.btn_view)
+        self.act_all_tags = view_menu.addAction(
+            tr("revgraph_show_all_tags", "Show all &tags"))
+        self.act_all_tags.setCheckable(True)
+        self.act_all_tags.setChecked(self._show_all_tags)
+        self.act_all_tags.toggled.connect(self._on_show_all_tags)
+        self.act_branchings = view_menu.addAction(
+            tr("revgraph_show_branchings", "Show branchings and merges"))
+        self.act_branchings.setCheckable(True)
+        self.act_branchings.setChecked(self._show_branchings_merges)
+        self.act_branchings.toggled.connect(self._on_show_branchings)
+        self.act_arrow = view_menu.addAction(
+            tr("revgraph_arrow_to_merges", "Arrows point towards merges"))
+        self.act_arrow.setCheckable(True)
+        self.act_arrow.setChecked(self._arrow_to_merges)
+        self.act_arrow.toggled.connect(self._on_arrow_to_merges)
+        view_menu.addSeparator()
+        self.act_overview = view_menu.addAction(
+            tr("revgraph_overview", "Overview"))
+        self.act_overview.setCheckable(True)
+        self.act_overview.toggled.connect(self._toggle_overview_from_menu)
+        self.btn_view.setMenu(view_menu)
+        row.addWidget(self.btn_view)
+
         row.addStretch(1)
         return bar
 
+    # ---- 显示开关（对齐 InitialSetMenu / UpdateFullHistory）----
+    def _on_show_all_tags(self, on: bool):
+        if bool(on) == self._show_all_tags:
+            return
+        self._show_all_tags = bool(on)
+        self.refresh()                      # 原版：切换后重新拉取
+
+    def _on_show_branchings(self, on: bool):
+        if bool(on) == self._show_branchings_merges:
+            return
+        self._show_branchings_merges = bool(on)
+        self.refresh()
+
+    def _on_arrow_to_merges(self, on: bool):
+        self._arrow_to_merges = bool(on)
+        canvas = getattr(self, "canvas", None)
+        if canvas is not None:
+            canvas._arrow_to_merges = bool(on)
+            canvas.update()
+
+    def _toggle_overview_from_menu(self, on: bool):
+        self.btn_overview.setChecked(bool(on))
+        canvas = getattr(self, "canvas", None)
+        if canvas is not None:
+            canvas.set_show_overview(bool(on))
+
     # ---- 概览 ----
     def _toggle_overview(self):
-        self.canvas.set_show_overview(self.btn_overview.isChecked())
+        on = self.btn_overview.isChecked()
+        self.canvas.set_show_overview(on)
+        act = getattr(self, "act_overview", None)
+        if act is not None and act.isChecked() != on:
+            act.setChecked(on)
 
     # ---- 另存为（对齐 OnFileSavegraphas / SaveGraphAs）----
     @staticmethod
@@ -941,8 +1062,15 @@ class RevisionGraphDlg(QDialog):
 
     def _load_bg(self) -> list:
         log = GitRevLoglist(self.repo)
-        log.load(**build_load_args(self._filter))
-        return list(log)
+        log.load(**build_load_args(self._filter,
+                                  sparse=self._show_branchings_merges))
+        commits = list(log)
+        # 对齐原版：!ShowAllTags || ShowBranchingsMerges 时做后置重写
+        if not self._show_all_tags:
+            commits = drop_tag_only_commits(commits)
+        if self._show_branchings_merges:
+            commits = collapse_linear_chains(commits)
+        return commits
 
     def _on_loaded(self, commits):
         self._loading = False

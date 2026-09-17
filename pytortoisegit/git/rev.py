@@ -131,6 +131,9 @@ class RefInfo:
     fullname: str       # refs/heads/main
     target: str         # 指向的提交 hash
     ref_type: str       # 'branch' | 'remote' | 'tag' | 'stash'
+    author: str = ""    # 尖端提交的作者（附注标签取解引用后的提交）
+    date: str = ""      # 尖端提交的作者日期（short）
+    subject: str = ""   # 尖端提交的主题
 
 
 _REF_TYPE_PREFIX = (
@@ -228,10 +231,14 @@ class GitRevLoglist:
         否则渲染里的 stash 配色永远不可达。
         """
         sep = _IFS  # for-each-ref 不支持 %xNN，直接嵌入控制字符
+        fields = sep.join([
+            "%(refname)", "%(objectname)", "%(*objectname)",
+            "%(subject)", "%(*subject)",
+            "%(authorname)", "%(*authorname)",
+            "%(authordate:short)", "%(*authordate:short)",
+        ])
         out = self.repo.runner.run_checked(
-            "for-each-ref",
-            "--format=%(refname)" + sep + "%(objectname)" + sep
-            + "%(*objectname)" + sep + "%(subject)",
+            "for-each-ref", "--format=" + fields,
             "refs/heads", "refs/remotes", "refs/tags", "refs/stash")
         self.refs = {}
         self.refs_loaded = True
@@ -243,6 +250,10 @@ class GitRevLoglist:
             if len(parts) < 3:
                 continue
             fullname, objname, peeled = parts[0], parts[1], parts[2]
+            rest = (parts[3:] + [""] * 6)[:6]
+            subject, peeled_subject = rest[0], rest[1]
+            author, peeled_author = rest[2], rest[3]
+            date, peeled_date = rest[4], rest[5]
             shortname = fullname
             rtype = "branch"
             for prefix, t in _REF_TYPE_PREFIX:
@@ -253,7 +264,11 @@ class GitRevLoglist:
             # refs/stash 这类"整名即前缀"的引用剥完会得到空串，回退到末段
             shortname = shortname or fullname.rsplit("/", 1)[-1]
             target = peeled or objname
-            self.refs[fullname] = RefInfo(shortname, fullname, target, rtype)
+            self.refs[fullname] = RefInfo(
+                shortname, fullname, target, rtype,
+                author=peeled_author or author,
+                date=peeled_date or date,
+                subject=peeled_subject or subject)
 
     def _refs_for(self, hash: str) -> List[RefInfo]:
         if not self.refs_loaded:

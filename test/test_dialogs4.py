@@ -49,6 +49,62 @@ def test_commitisonrefs_dialog(qapp, repo):
     assert dlg.subject_edit is not None
 
 
+def test_merge_dialog_browse_ref_and_show_commit(qapp, repo, monkeypatch):
+    """合并对话框：分支右侧“...”用引用浏览选分支；提交右侧“...”选 commit id。"""
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs import logdlg
+    from pytortoisegit.dialogs import browserefs
+    from pytortoisegit.dialogs.mergedlg import MergeDlg
+
+    repo.runner.run("branch", "feature")
+    dlg = MergeDlg(repo)
+
+    monkeypatch.setattr(browserefs.BrowseRefsDlg, "pick",
+                        staticmethod(lambda *a, **k: "refs/heads/feature"))
+    dlg._on_browse_ref()
+    assert dlg.rd_branch.isChecked()
+    assert dlg.branch_combo.currentText() == "feature"
+
+    head = repo.runner.run("rev-parse", "HEAD").stdout.strip()
+
+    class _FakeLog:
+        selected_hash = head
+
+        def __init__(self, *a, **k):
+            pass
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(logdlg, "LogDlg", _FakeLog)
+    dlg._on_show()
+    assert dlg.rd_version.isChecked()
+    assert dlg.version_combo.currentText() == head
+
+
+def test_commitisonrefs_pick_commit(qapp, repo, monkeypatch):
+    """“提交所在引用”对话框：提交右侧“...”用日志选 commit id 并回填。"""
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs import logdlg
+    from pytortoisegit.dialogs.commitisonrefsdlg import CommitIsOnRefsDlg
+
+    head = repo.runner.run("rev-parse", "HEAD").stdout.strip()
+
+    class _FakeLog:
+        selected_hash = head
+
+        def __init__(self, *a, **k):
+            pass
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(logdlg, "LogDlg", _FakeLog)
+    dlg = CommitIsOnRefsDlg(repo, "HEAD")
+    dlg._pick_commit()
+    assert dlg.commit_edit.text() == head
+
+
 def test_cat_dialog(qapp, repo):
     from pytortoisegit.dialogs.catdlg import CatDlg
     dlg = _smoke(qapp, lambda: CatDlg(repo, "HEAD:a.txt"), wait_ms=1200)

@@ -236,12 +236,12 @@ def test_TC_SWITCH_006_create_new_branch(qapp, ui, git_repo, auto_progress):
 
 def test_TC_SWITCH_007_browse_ref_button(qapp, ui, git_repo, monkeypatch):
     """浏览引用按钮 → 回填所选引用。"""
+    from pytortoisegit.dialogs.browserefs import BrowseRefsDlg
     from pytortoisegit.dialogs.gitswitchdlg import GitSwitchDlg
     git_repo.runner.run("branch", "picked")
     dlg = GitSwitchDlg(git_repo)
-    # 模拟用户在引用选择框中选中 picked
-    monkeypatch.setattr(QInputDialog, "getItem",
-                        staticmethod(lambda *a, **k: ("branch: picked", True)))
+    monkeypatch.setattr(BrowseRefsDlg, "pick",
+                        staticmethod(lambda *a, **k: "refs/heads/picked"))
     ui.click(dlg.btn_browse_ref)
     assert dlg.branch_combo.currentText() == "picked"
 

@@ -110,6 +110,9 @@ class MergeDlg(QDialog):
         self.btn_cancel.clicked.connect(self.reject)
         self.btn_help = QPushButton(tr("help"), self)
         self.btn_help.clicked.connect(self._on_help)
+        # 分支/标签右侧“...”选择引用；提交右侧“...”选择 commit id
+        self.btn_browse_ref.clicked.connect(self._on_browse_ref)
+        self.btn_show.clicked.connect(self._on_show)
 
         # 冲突解决控件：默认不显示，冲突时弹窗
         self.conflicts = ConflictsWidget(self.repo, self)
@@ -214,6 +217,47 @@ class MergeDlg(QDialog):
         if self.rd_version.isChecked():
             return self.version_combo.currentText()
         return self.branch_combo.currentText()
+
+    # ---- 引用 / 提交选择（对齐 CChooseVersion）----
+    def _on_browse_ref(self):
+        """IDC_BUTTON_BROWSE_REF：打开引用浏览对话框选择分支/标签并回填。"""
+        from .browserefs import BrowseRefsDlg
+        ref = BrowseRefsDlg.pick(self.repo, parent=self)
+        if not ref:
+            return
+        if ref.startswith("refs/tags/"):
+            self.rd_tags.setChecked(True)
+            self.tags_combo.setCurrentText(ref[len("refs/tags/"):])
+        elif ref.startswith("refs/heads/"):
+            name = ref[len("refs/heads/"):]
+            self.rd_branch.setChecked(True)
+            if self.branch_combo.findText(name) < 0:
+                self.branch_combo.addItem(name)
+            self.branch_combo.setCurrentText(name)
+        elif ref.startswith("refs/remotes/"):
+            name = ref[len("refs/remotes/"):]
+            self.rd_branch.setChecked(True)
+            if self.branch_combo.findText(name) < 0:
+                self.branch_combo.addItem(name)
+            self.branch_combo.setCurrentText(name)
+        else:
+            self.rd_version.setChecked(True)
+            if self.version_combo.findText(ref) < 0:
+                self.version_combo.addItem(ref)
+            self.version_combo.setCurrentText(ref)
+
+    def _on_show(self):
+        """IDC_BUTTON_SHOW：打开日志选择提交，回填到 Commit 下拉。"""
+        from PySide6.QtWidgets import QDialog
+        from .logdlg import LogDlg
+        dlg = LogDlg(self.repo, parent=self, select=True)
+        if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.selected_hash:
+            return
+        chosen = dlg.selected_hash
+        if self.version_combo.findText(chosen) < 0:
+            self.version_combo.addItem(chosen)
+        self.rd_version.setChecked(True)
+        self.version_combo.setCurrentText(chosen)
 
     def _prefill_message(self, *_a):
         branch = self.branch_combo.currentText().strip()

@@ -85,6 +85,8 @@ def test_browse_refs_load_and_checkout(qapp, git_repo):
     dlg._checkout_selected()
     assert dlg.current_branch
     # 未选中 → (None, None)，不会崩溃
+    dlg.list.clearSelection()
+    dlg.list.setCurrentItem(None)
     dlg.tree.setCurrentItem(None)
     assert dlg._selected() == (None, None)
 

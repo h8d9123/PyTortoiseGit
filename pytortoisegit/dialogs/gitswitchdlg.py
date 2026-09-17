@@ -158,22 +158,19 @@ class GitSwitchDlg(QDialog):
         self.btn_show.setEnabled(self.rd_version.isChecked())
 
     def _on_browse_ref(self):
-        """IDC_BUTTON_BROWSE_REF：选一个引用（分支/标签）填入对应下拉。"""
-        from PySide6.QtWidgets import QInputDialog
-        if not self._refs:
+        """IDC_BUTTON_BROWSE_REF：打开引用浏览对话框选择分支/标签并回填。"""
+        from .browserefs import BrowseRefsDlg
+        ref = BrowseRefsDlg.pick(self.repo, parent=self)
+        if not ref:
             return
-        items = [f"{t}: {n}" for t, n in self._refs]
-        choice, ok = QInputDialog.getItem(
-            self, tr("switch_browse_ref", "Browse refs"),
-            tr("switch_browse_ref_prompt", "Select a ref:"), items, 0, False)
-        if not ok:
-            return
-        rtype, name = self._refs[items.index(choice)]
-        if rtype == "tag":
+        if ref.startswith("refs/tags/"):
             self.rd_tags.setChecked(True)
-            self.tags_combo.setCurrentText(name)
+            self.tags_combo.setCurrentText(ref[len("refs/tags/"):])
         else:
             self.rd_branch.setChecked(True)
+            name = ref.split("refs/heads/")[-1].split("refs/remotes/")[-1]
+            if self.branch_combo.findText(name) < 0:
+                self.branch_combo.addItem(name)
             self.branch_combo.setCurrentText(name)
 
     def _on_show(self):

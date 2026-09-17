@@ -51,6 +51,7 @@ class CommitIsOnRefsDlg(QDialog):
         self.commit_edit = QLineEdit(self)
         self.commit_edit.setText(commit)
         self.btn_sel_ref = QPushButton("...", self)
+        self.btn_sel_ref.clicked.connect(self._pick_commit)
         self.subject_edit = QLineEdit(self)
         self.subject_edit.setReadOnly(True)
         self.btn_log = QPushButton(tr("showlog", "Show log"), self)
@@ -104,6 +105,16 @@ class CommitIsOnRefsDlg(QDialog):
         from .modeless import show_modeless
         ref = self.commit_edit.text().strip()
         show_modeless(LogDlg(self.repo, pathspec=None, rev=ref, parent=self))
+
+    def _pick_commit(self):
+        """IDC_SELREF：打开日志选择提交，回填到提交框并刷新引用列表。"""
+        from PySide6.QtWidgets import QDialog
+        from .logdlg import LogDlg
+        dlg = LogDlg(self.repo, parent=self, select=True)
+        if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.selected_hash:
+            return
+        self.commit_edit.setText(dlg.selected_hash)
+        self._load()
 
     def _load(self):
         canonical = self._canon()

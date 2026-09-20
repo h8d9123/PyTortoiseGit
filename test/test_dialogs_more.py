@@ -139,15 +139,31 @@ def test_submodule_dlg_loaded_and_menu(qapp, git_repo, monkeypatch):
 
 
 def test_submodule_dlg_add(qapp, git_repo, monkeypatch):
-    from PySide6.QtWidgets import QInputDialog
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs import submoduleadddlg
     from pytortoisegit.dialogs.submoduledlg import SubmoduleDlg
-    replies = iter([("https://x/y.git", True), ("y", True)])
-    monkeypatch.setattr(QInputDialog, "getText",
-                        staticmethod(lambda *a, **k: next(replies)))
+
+    class _FakeAdd:
+        repository = "https://x/y.git"
+        path = "y"
+        branch = ""
+        force = False
+        putty_key = ""
+
+        def __init__(self, *a, **k):
+            pass
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(submoduleadddlg, "SubmoduleAddDlg", _FakeAdd)
+
     dlg = SubmoduleDlg(git_repo)
     added = {}
-    monkeypatch.setattr(dlg.sub, "add",
-                        lambda path, url: (added.setdefault("v", (path, url)), True)[1])
+    monkeypatch.setattr(
+        dlg.sub, "add",
+        lambda path, url, force=False, branch=None:
+        (added.setdefault("v", (path, url)), True)[1])
     dlg._on_add()
     assert added["v"] == ("y", "https://x/y.git")
 

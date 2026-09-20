@@ -81,6 +81,74 @@ def _url_of(path):
     return path.replace("\\", "/")
 
 
+def test_add_with_branch(repo, subrepo):
+    """git submodule add -b <branch> 写入 .gitmodules 的 branch。"""
+    GitRunner(cwd=subrepo["root"]).run("branch", "devel", check=True)
+    sub = GitSubmodule(repo["repo"])
+    assert sub.add("vendor/lib", _url_of(subrepo["root"]), branch="devel")
+    modules = open(os.path.join(repo["root"], ".gitmodules"),
+                   encoding="utf-8").read()
+    assert "branch = devel" in modules
+
+
+def test_submodule_add_dialog_ok(qapp, repo):
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs.submoduleadddlg import SubmoduleAddDlg
+
+    dlg = SubmoduleAddDlg(repo["repo"])
+    dlg.repo_combo.setEditText("/path/to/lib.git")
+    dlg.path_combo.setEditText("vendor/lib")
+    dlg._on_ok()
+    assert dlg.result() == QDialog.DialogCode.Accepted
+    assert dlg.repository == "/path/to/lib.git"
+    assert dlg.path == "vendor/lib"
+    assert dlg.branch == "" and dlg.force is False
+
+
+def test_submodule_add_dialog_requires_fields(qapp, repo, monkeypatch):
+    from PySide6.QtWidgets import QDialog, QMessageBox
+    from pytortoisegit.dialogs.submoduleadddlg import SubmoduleAddDlg
+
+    warned = {}
+    monkeypatch.setattr(
+        QMessageBox, "warning",
+        staticmethod(lambda *a, **k: warned.setdefault("shown", True)))
+    dlg = SubmoduleAddDlg(repo["repo"])
+    dlg._on_ok()                       # 仓库/路径均为空
+    assert warned.get("shown")
+    assert dlg.result() != QDialog.DialogCode.Accepted
+
+
+def test_submodule_dlg_add_uses_dialog(qapp, repo, subrepo, monkeypatch):
+    """SubmoduleDlg 的“添加子模块”走新对话框并按结果执行 git submodule add。"""
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs import submoduleadddlg
+    from pytortoisegit.dialogs.submoduledlg import SubmoduleDlg
+
+    url = _url_of(subrepo["root"])
+
+    class _FakeAdd:
+        def __init__(self, repo_, parent=None, initial_path=""):
+            self.repository = url
+            self.path = "vendor/lib"
+            self.branch = ""
+            self.force = False
+            self.putty_key = ""
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(submoduleadddlg, "SubmoduleAddDlg", _FakeAdd)
+    dlg = SubmoduleDlg(repo["repo"])
+    dlg._on_add()
+
+    assert (repo["root"] and os.path.isdir(
+        os.path.join(repo["root"], "vendor", "lib")))
+    modules = open(os.path.join(repo["root"], ".gitmodules"),
+                   encoding="utf-8").read()
+    assert "vendor/lib" in modules
+
+
 def test_add_list_update_sync(repo, subrepo):
     root = repo["root"]
     url = _url_of(subrepo["root"])

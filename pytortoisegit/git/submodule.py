@@ -111,12 +111,14 @@ class GitSubmodule:
                 e.description = urls[e.path]
         return entries
 
-    def add(self, path: str, url: str, force: bool = False) -> bool:
+    def add(self, path: str, url: str, force: bool = False,
+            branch: str | None = None) -> bool:
         args = ["submodule", "add"]
+        if branch:
+            args += ["-b", branch]
         if force:
             args.append("--force")
-        args.append(url)
-        args.append(path)
+        args += ["--", url, path]
         return self.repo.runner.run(*args).returncode == 0
 
     def update(self, init: bool = False, recursive: bool = False,

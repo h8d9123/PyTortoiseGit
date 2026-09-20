@@ -122,20 +122,22 @@ class SubmoduleDlg(QDialog):
 
     # ---- 动作 ----
     def _on_add(self):
-        url, ok = QInputDialog.getText(self, tr("submodule_add"), tr("submodule_url"))
-        if not ok or not url.strip():
+        from .submoduleadddlg import SubmoduleAddDlg
+        dlg = SubmoduleAddDlg(self.repo, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        path = url.strip().rstrip("/").rsplit("/", 1)[-1]
-        if path.endswith(".git"):
-            path = path[:-4]
-        path2, ok2 = QInputDialog.getText(
-            self, tr("submodule_add"), tr("submodule_path"), text=path)
-        if not ok2 or not path2.strip():
-            return
-        if self.sub.add(path2.strip(), url.strip()):
-            self.refresh()
-        else:
+        if not self.sub.add(dlg.path, dlg.repository,
+                            force=dlg.force, branch=dlg.branch or None):
             QMessageBox.warning(self, tr("error"), tr("submodule_added"))
+            return
+        if dlg.putty_key:
+            # 添加成功后写入子模块的 remote.origin.puttykeyfile（对齐原版）
+            import os
+            from ..git.git import GitRunner
+            sub_root = os.path.join(self.repo.root, dlg.path)
+            GitRunner(cwd=sub_root).run(
+                "config", "remote.origin.puttykeyfile", dlg.putty_key)
+        self.refresh()
 
     def _on_update(self):
         dlg = ProgressDialog(title="git submodule update", parent=self)

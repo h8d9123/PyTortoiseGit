@@ -168,6 +168,17 @@ STRINGS: Dict[str, str] = {
     "submodule_added": "已添加子模块",
     "submodule_updated": "子模块已更新",
     "submodule_deinited": "子模块已取消初始化",
+    # ---- 添加子模块对话框（submoduleadddlg）----
+    "submodule_repository": "仓库：",
+    "submodule_path_label": "路径：",
+    "submodule_branch": "分支",
+    "submodule_force": "强制(&F)",
+    "submodule_putty": "加载 PuTTY 密钥(&K)",
+    "submodule_add_group": "子模块所属项目：",
+    "submodule_repository_empty": "仓库不能为空。",
+    "submodule_path_empty": "路径不能为空。",
+    "submodule_branch_empty": "分支不能为空。",
+    "submodule_add_help": "添加子模块",
 
     # ---- 外部工具 ----
     "xtool_diffcmd": "外部 diff 工具命令",

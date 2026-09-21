@@ -149,6 +149,32 @@ def test_submodule_dlg_add_uses_dialog(qapp, repo, subrepo, monkeypatch):
     assert "vendor/lib" in modules
 
 
+def test_submodule_update_dialog(qapp, ui, repo, subrepo):
+    """Submodule Update 对话框：列出子模块、默认全选，OK 收集选项。"""
+    from pytortoisegit.dialogs.submoduleupdatedlg import SubmoduleUpdateDlg
+
+    sub = GitSubmodule(repo["repo"])
+    assert sub.add("vendor/lib", _url_of(subrepo["root"]))
+
+    dlg = SubmoduleUpdateDlg(repo["repo"], init=True)
+    dlg.show()
+    assert ui.wait_until(lambda: dlg.list.count() == 1, timeout_ms=8000)
+    assert dlg.list.item(0).text() == "vendor/lib"
+    assert dlg.list.item(0).isSelected()
+    assert dlg.chk_init.isChecked()
+    assert dlg.btn_ok.isEnabled()
+
+    # 取消全选 → OK 置灰
+    dlg.chk_selectall.setChecked(False)
+    assert not dlg.btn_ok.isEnabled()
+    dlg.chk_selectall.setChecked(True)
+
+    dlg._on_ok()
+    assert dlg.paths == ["vendor/lib"]
+    assert dlg.all_selected is True
+    assert dlg.init is True and dlg.recursive is False
+
+
 def test_add_list_update_sync(repo, subrepo):
     root = repo["root"]
     url = _url_of(subrepo["root"])

@@ -169,9 +169,30 @@ def test_submodule_dlg_add(qapp, git_repo, monkeypatch):
 
 
 def test_submodule_dlg_update_sync(qapp, git_repo, auto_progress, monkeypatch):
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.dialogs import submoduleupdatedlg
     from pytortoisegit.dialogs.submoduledlg import SubmoduleDlg
+
+    class _FakeUpdate:
+        init = True
+        recursive = True
+        force = False
+        no_fetch = False
+        merge = False
+        rebase = False
+        remote = False
+        paths = []
+        all_selected = True
+
+        def __init__(self, *a, **k):
+            pass
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(submoduleupdatedlg, "SubmoduleUpdateDlg", _FakeUpdate)
+
     dlg = SubmoduleDlg(git_repo)
-    monkeypatch.setattr(dlg.sub, "update", lambda *a, **k: True)
     monkeypatch.setattr(dlg.sub, "sync", lambda *a, **k: True)
     dlg.init_box.setChecked(True)
     dlg.recursive_box.setChecked(True)

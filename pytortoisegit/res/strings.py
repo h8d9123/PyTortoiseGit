@@ -168,6 +168,16 @@ STRINGS: Dict[str, str] = {
     "submodule_added": "已添加子模块",
     "submodule_updated": "子模块已更新",
     "submodule_deinited": "子模块已取消初始化",
+    # ---- 子模块更新对话框（submoduleupdatedlg）----
+    "submodule_update_path": "路径：",
+    "submodule_update_selectall": "全选/取消全选(&A)",
+    "submodule_update_whole": "整个项目(&W)",
+    "submodule_update_options": "子模块更新选项",
+    "submodule_update_force": "强制(&F)",
+    "submodule_update_nofetch": "不抓取(&N)",
+    "submodule_update_merge": "合并(&M)",
+    "submodule_update_rebase": "变基(&B)",
+    "submodule_update_remote": "远程跟踪分支(&T)",
     # ---- 添加子模块对话框（submoduleadddlg）----
     "submodule_repository": "仓库：",
     "submodule_path_label": "路径：",

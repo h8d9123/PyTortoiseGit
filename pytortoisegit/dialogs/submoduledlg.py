@@ -140,19 +140,36 @@ class SubmoduleDlg(QDialog):
         self.refresh()
 
     def _on_update(self):
-        dlg = ProgressDialog(title="git submodule update", parent=self)
-        dlg.set_label("git submodule update")
+        from .submoduleupdatedlg import SubmoduleUpdateDlg
+        dlg = SubmoduleUpdateDlg(
+            self.repo, parent=self,
+            init=self.init_box.isChecked(),
+            recursive=self.recursive_box.isChecked())
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        args = ["submodule", "update"]
+        for flag, on in (("--init", dlg.init), ("--recursive", dlg.recursive),
+                         ("--force", dlg.force), ("--no-fetch", dlg.no_fetch),
+                         ("--merge", dlg.merge), ("--rebase", dlg.rebase),
+                         ("--remote", dlg.remote)):
+            if on:
+                args.append(flag)
+        if not dlg.all_selected:
+            args += ["--", *dlg.paths]
+        dlg_prog = ProgressDialog(title="git submodule update", parent=self)
+        dlg_prog.set_label("git " + " ".join(args))
 
         def _bg() -> bool:
-            okflag = self.sub.update(init=self.init_box.isChecked(),
-                                     recursive=self.recursive_box.isChecked())
-            if not okflag:
-                dlg.log(tr("sync_failed", "Update failed"))
-            return okflag
+            result = self.repo.runner.run(*args)
+            if result.stdout:
+                dlg_prog.log(result.stdout)
+            if result.stderr:
+                dlg_prog.log(result.stderr)
+            return result.returncode == 0
 
-        dlg.run(_bg)
-        dlg.on_finish(lambda _ok: self.refresh())
-        dlg.exec()
+        dlg_prog.run(_bg)
+        dlg_prog.on_finish(lambda _ok: self.refresh())
+        dlg_prog.exec()
 
     def _on_sync(self):
         dlg = ProgressDialog(title="git submodule sync", parent=self)

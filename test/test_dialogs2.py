@@ -2941,6 +2941,45 @@ def test_mainmenu_content_delete_key(
     dlg.reject()
 
 
+def test_mainmenu_commit_label_for_submodule(
+        qapp, isolated_settings, tmp_path, monkeypatch):
+    """右击子模块时提交菜单显示「提交子模块…」（对齐 IDS_MENUCOMMITSUBMODULE）。"""
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.git.git import GitRunner
+    from pytortoisegit.git.repo import Repository
+    from pytortoisegit.git.submodule import GitSubmodule
+
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")
+    sup = tmp_path / "sup"
+    lib = tmp_path / "lib"
+    sup.mkdir()
+    lib.mkdir()
+    r = GitRunner(cwd=str(sup))
+    r.init(str(sup), initial_branch="main")
+    for key, val in (("user.email", "a@b"), ("user.name", "A"),
+                     ("protocol.file.allow", "always")):
+        r.run("config", key, val)
+    (sup / "f.txt").write_text("x\n", encoding="utf-8")
+    r.run("add", "--", "f.txt")
+    r.run("commit", "-m", "base")
+    s = GitRunner(cwd=str(lib))
+    s.init(str(lib), initial_branch="main")
+    s.run("config", "user.email", "a@b")
+    s.run("config", "user.name", "A")
+    (lib / "l.txt").write_text("l\n", encoding="utf-8")
+    s.run("add", ".")
+    s.run("commit", "-m", "lib")
+    repo = Repository.open(str(sup))
+    assert GitSubmodule(repo).add("vendor/lib", str(lib).replace("\\", "/"))
+
+    dlg = MainMenuDlg()
+    sub_path = str(sup / "vendor" / "lib")
+    menu = dlg._build_tortoisegit_menu(sub_path, dlg.content_list)
+    labels = [a.text() for a in menu.actions()]
+    assert any("提交子模块" in t for t in labels), labels
+    dlg.reject()
+
+
 def test_menuitems_state_driven_entries(tmp_path_factory):
     """状态引擎：不同文件/目录状态显示不同菜单项（镜像 MenuInfo.cpp）。"""
     from pytortoisegit.git.git import GitRunner

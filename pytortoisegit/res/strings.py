@@ -399,6 +399,7 @@ STRINGS: Dict[str, str] = {
     "fs_col_date": "日期",
     "repo_manager_hint": "双击仓库切换；展开可查看子模块",
     "repo_menu_commit": "提交…",
+    "menu_cmd_commitsubmodule": "提交子模块…",
     "repo_menu_log": "显示日志",
     "repo_menu_pull": "拉取…",
     "repo_menu_push": "推送…",

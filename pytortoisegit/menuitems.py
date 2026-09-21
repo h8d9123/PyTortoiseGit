@@ -276,9 +276,9 @@ MENU_INFO: List[MenuEntry] = [
     MenuEntry("separator", _M_SEPARATOR, "", "", ""),
     _e("worktreelist", _M_WORKTREE, "IDI_COPY", "menu_cmd_worktreelist", "Worktrees…",
        (ITEMIS_FOLDERINGIT | ITEMIS_ONLYONE, 0), (ITEMIS_BAREREPO, 0)),
-    _e("submodule", _M_SUBMODULEADD, "IDI_ADD", "menu_cmd_submoduleadd", "Add submodule…",
+    _e("subadd", _M_SUBMODULEADD, "IDI_ADD", "menu_cmd_submoduleadd", "Add submodule…",
        (ITEMIS_FOLDERINGIT | ITEMIS_ONLYONE, 0)),
-    _e("submodule", _M_SUBMODULEUPDATE, "IDI_UPDATE", "menu_cmd_submoduleupdate", "Submodule Update…",
+    _e("subupdate", _M_SUBMODULEUPDATE, "IDI_UPDATE", "menu_cmd_submoduleupdate", "Submodule Update…",
        (ITEMIS_FOLDERINGIT | ITEMIS_SUBMODULECONTAINER, 0)),
     _e("subsync", _M_SUBMODULESYNC, "IDI_MENUSYNC", "menu_cmd_subsync", "Submodule Sync…",
        (ITEMIS_FOLDERINGIT | ITEMIS_SUBMODULECONTAINER, 0)),
@@ -592,12 +592,13 @@ def _repo_context_states(path: str, root: str, is_dir: bool) -> int:
         else:
             # 仓库内子目录：保守视为版本化文件夹
             flags |= ITEMIS_FOLDERINGIT | ITEMIS_INGIT
-            # 若子目录是子模块根则加 SUBMODULE
-            if _is_submodule_root(repo, abs_path, abs_root):
-                flags |= ITEMIS_SUBMODULE
     else:
         # 文件
         flags |= path_status(repo, abs_path)
+
+    # 路径位于子模块工作树内（根或子项）→ SUBMODULE（对齐原版 libgit2 判定）
+    if repo and _is_submodule_root(abs_path, abs_root):
+        flags |= ITEMIS_SUBMODULE
 
     if repo:
         facts = repo_facts(abs_root)
@@ -623,13 +624,24 @@ def _inside_worktree(path: str, root: str) -> bool:
         return False
 
 
-def _is_submodule_root(repo: Repository | None, path: str, root: str) -> bool:
-    """子模块工作区根：该目录有 .git 文件，且父仓库有 .gitmodules。"""
-    try:
-        return (os.path.isfile(os.path.join(path, ".git"))
-                and os.path.isfile(os.path.join(root, ".gitmodules")))
-    except Exception:  # noqa: BLE001
+def _is_submodule_root(path: str, root: str) -> bool:
+    """该工作树根是否为某个父仓库的子模块。
+
+    子模块的 ``.git`` 是 gitfile，且指向父仓库的 ``.git/modules/<name>``；
+    linked worktree 的 gitfile 指向 ``.git/worktrees/<name>``，据此区分。
+    """
+    gitfile = os.path.join(root, ".git")
+    if not os.path.isfile(gitfile):
         return False
+    try:
+        with open(gitfile, "r", encoding="utf-8", errors="replace") as fh:
+            content = fh.read().strip()
+    except OSError:
+        return False
+    if not content.startswith("gitdir:"):
+        return False
+    target = content[7:].strip().replace("\\", "/").lower()
+    return "/modules/" in target and "/worktrees/" not in target
 
 
 def _repo_has_submodules(repo: Repository) -> bool:

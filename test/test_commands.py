@@ -91,8 +91,64 @@ def test_command_opens_dialog(qapp, git_repo, auto_progress, monkeypatch, cmd, a
     fn(_ctx(git_repo, cmd))     # 不抛异常即可
 
 
-# ---- 进度类命令 ----
+def test_subadd_command_opens_dialog(qapp, git_repo, monkeypatch):
+    """subadd 命令：打开添加子模块对话框并按结果执行 add。"""
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.commands import submodule as submod
+    from pytortoisegit.dialogs import submoduleadddlg
+    from pytortoisegit.git.submodule import GitSubmodule
 
+    class _FakeAdd:
+        repository = "https://x/y.git"
+        path = "vendor/lib"
+        branch = ""
+        force = False
+        putty_key = ""
+
+        def __init__(self, *a, **k):
+            pass
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(submoduleadddlg, "SubmoduleAddDlg", _FakeAdd)
+    added = {}
+    monkeypatch.setattr(
+        GitSubmodule, "add",
+        lambda self, path, url, force=False, branch=None:
+        (added.setdefault("v", (path, url)), True)[1])
+    assert submod.subadd(_ctx(git_repo, "subadd")) == "ok"
+    assert added["v"] == ("vendor/lib", "https://x/y.git")
+
+
+def test_subupdate_command_opens_dialog(qapp, git_repo, monkeypatch):
+    """subupdate 命令：打开子模块更新对话框并按结果执行 update。"""
+    from PySide6.QtWidgets import QDialog
+    from pytortoisegit.commands import submodule as submod
+    from pytortoisegit.dialogs import submoduleupdatedlg
+
+    class _FakeUpd:
+        init = True
+        recursive = True
+        force = False
+        no_fetch = False
+        merge = False
+        rebase = False
+        remote = False
+        paths = []
+        all_selected = True
+
+        def __init__(self, *a, **k):
+            pass
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(submoduleupdatedlg, "SubmoduleUpdateDlg", _FakeUpd)
+    assert submod.subupdate(_ctx(git_repo, "subupdate")) == "ok"
+
+
+# ---- 进度类命令 ----
 @pytest.mark.parametrize("cmd", ["svnignore", "svndcommit",
                                  "svnfetch", "svnrebase"])
 def test_command_progress(qapp, git_repo, auto_progress, cmd):

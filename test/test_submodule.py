@@ -149,6 +149,37 @@ def test_submodule_dlg_add_uses_dialog(qapp, repo, subrepo, monkeypatch):
     assert "vendor/lib" in modules
 
 
+def test_submodule_item_states(qapp, repo, subrepo):
+    """子模块路径应解析到工作树根，并带 ITEMIS_SUBMODULE（含「显示子模块日志」入口）。"""
+    from pytortoisegit.git.admin import find_repo_root
+    from pytortoisegit import menuitems as mi
+
+    sub = GitSubmodule(repo["repo"])
+    assert sub.add("vendor/lib", _url_of(subrepo["root"]))
+    sub_path = os.path.join(repo["root"], "vendor", "lib")
+
+    # find_repo_root 必须返回子模块工作树根，而不是 .git/modules 元数据目录
+    assert os.path.normcase(find_repo_root(sub_path)) == os.path.normcase(sub_path)
+
+    states = mi.compute_item_states(sub_path)
+    assert states & mi.ITEMIS_SUBMODULE
+    keys = [e.label_key for e in mi.menu_entries(states)
+            if e.command != "separator"]
+    assert "menu_cmd_logsubmodule" in keys
+    # 子模块本身不是容器：不显示 Submodule Update / Sync
+    cmds = [e.command for e in mi.menu_entries(states, extended=True)
+            if e.command != "separator"]
+    assert "subupdate" not in cmds and "subsync" not in cmds
+
+    # 含子模块的目录：Add / Update / Sync（Sync 属扩展项）
+    container = os.path.join(repo["root"], "vendor")
+    cstates = mi.compute_item_states(container)
+    assert cstates & mi.ITEMIS_SUBMODULECONTAINER
+    ccmds = [e.command for e in mi.menu_entries(cstates, extended=True)
+             if e.command != "separator"]
+    assert "subadd" in ccmds and "subupdate" in ccmds and "subsync" in ccmds
+
+
 def test_submodule_update_dialog(qapp, ui, repo, subrepo):
     """Submodule Update 对话框：列出子模块、默认全选，OK 收集选项。"""
     from pytortoisegit.dialogs.submoduleupdatedlg import SubmoduleUpdateDlg

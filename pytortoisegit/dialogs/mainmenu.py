@@ -796,7 +796,15 @@ class MainMenuDlg(QMainWindow):
             if pending_sep:
                 menu.addSeparator()
                 pending_sep = False
-            act = menu.addAction(tr(entry.label_key, entry.label))
+            label_key, label = entry.label_key, entry.label
+            # 右击子模块时「提交」改为「提交子模块…」（对齐原版
+            # IDS_MENUCOMMITSUBMODULE / ContextMenu.cpp）
+            if (entry.command == "commit"
+                    and entry.label_key == "repo_menu_commit"
+                    and states & mi.ITEMIS_SUBMODULE):
+                label_key, label = ("menu_cmd_commitsubmodule",
+                                    "Commit submodule…")
+            act = menu.addAction(tr(label_key, label))
             icon_id = entry.icon_id or _CMD_ICON.get(entry.command)
             if icon_id:
                 self._set_action_icon(act, icon_id)

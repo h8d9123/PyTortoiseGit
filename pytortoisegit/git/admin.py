@@ -75,10 +75,10 @@ class GitAdminDir:
         except OSError:
             return os.path.dirname(git_dir)
         if content.startswith("gitdir:"):
-            target = content[7:].strip()
-            if not os.path.isabs(target):
-                target = os.path.join(os.path.dirname(git_dir), target)
-            return os.path.dirname(target)
+            # gitfile（子模块 / linked worktree）：.git 指向的是**元数据目录**
+            # （如 .git/modules/<name> 或 .git/worktrees/<name>），工作树根
+            # 其实是包含该 .git 文件的目录本身。
+            return os.path.dirname(git_dir)
         return os.path.dirname(git_dir)
 
     def is_versioned(self, path: str | os.PathLike | None = None,

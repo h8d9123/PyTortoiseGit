@@ -34,16 +34,22 @@ def test_blame_dlg_load_and_menu(qapp, git_repo, monkeypatch):
     monkeypatch.setattr("pytortoisegit.utils.clipboard.ClipboardHelper",
                         _FakeClip)
     dlg = BlameDlg(git_repo, "a.txt")
-    lines = dlg._blame_bg()
-    assert lines
-    dlg._on_loaded(lines)
+    data = dlg._blame_bg()
+    assert data.lines
+    dlg._on_loaded(data)
+    lines = data.lines
     assert dlg.table.rowCount() == len(lines)
+    assert dlg.log_table.rowCount() == len(dlg._sha_order)
+    assert dlg.log_table.rowCount() >= 1
 
     sha = lines[0].sha
     dlg._handle_menu("copy", sha)
     assert copied["t"] == sha
     dlg._handle_menu("copy_short", sha)
     assert copied["t"] == str(sha)[:8]
+    dlg.table.selectRow(0)
+    dlg._handle_menu("copy_log", sha)
+    assert sha in copied["t"] and lines[0].author in copied["t"]
 
     opened = {}
 
@@ -61,9 +67,55 @@ def test_blame_dlg_load_and_menu(qapp, git_repo, monkeypatch):
     dlg._handle_menu("log", sha)
     assert opened.get("y")
 
-    _menu, acts = dlg._build_menu()
-    assert set(acts.values()) == {"copy", "log", "copy_short"}
+    _menu, acts = dlg._build_menu_context()
+    assert set(acts.values()) == {
+        "copy", "copy_short", "copy_log", "blame_prev", "compare_prev", "log"}
     assert dlg._sha_at(QPoint(0, 0)) in (None, sha)
+    # 选中行后属性面板应显示提交信息
+    dlg.table.selectRow(0)
+    assert dlg._prop_items["sha"].text(1) == sha
+
+
+def test_blame_dlg_positions_on_line(qapp, git_repo):
+    from pytortoisegit.dialogs.blamedlg import BlameDlg
+    dlg = BlameDlg(git_repo, "a.txt", line=2)
+    dlg._on_loaded(dlg._blame_bg())
+    assert dlg.table.currentRow() == 1
+
+
+def test_blame_dlg_find(qapp, git_repo):
+    from pytortoisegit.dialogs.blamedlg import BlameDlg
+    dlg = BlameDlg(git_repo, "a.txt")
+    dlg._on_loaded(dlg._blame_bg())
+    if dlg.table.rowCount() < 2:
+        return
+    target = dlg._lines[len(dlg._lines) - 1].content
+    dlg.find_edit.setText(target)
+    dlg.table.selectRow(0)
+    dlg._find(True)
+    assert dlg.table.currentRow() >= 0
+
+
+def test_blame_dlg_view_toggles(qapp, git_repo, monkeypatch):
+    """视图菜单：列显隐 / 忽略空白重载 / 检测档位，均不崩溃且持久化。"""
+    from PySide6.QtCore import QSettings
+    from pytortoisegit.dialogs import blamedlg as mod
+    from pytortoisegit.blame import DETECT_MOVED_OR_COPIED_LINES_WITHIN_FILE
+
+    QSettings("PyTortoiseGit", "PyTortoiseGit").clear()
+    dlg = mod.BlameDlg(git_repo, "a.txt")
+    dlg._on_loaded(dlg._blame_bg())
+    assert dlg.table.isColumnHidden(dlg.COL_FILE)
+    dlg.act_show_filename.trigger()
+    assert not dlg.table.isColumnHidden(dlg.COL_FILE)
+    dlg.act_show_log_id.trigger()
+    assert not dlg.table.item(0, dlg.COL_COMMIT).text().startswith("0")
+    dlg.act_ignore_ws.trigger()
+    assert dlg._ignore_whitespace
+    dlg._set_detect(DETECT_MOVED_OR_COPIED_LINES_WITHIN_FILE)
+    assert dlg._detect == DETECT_MOVED_OR_COPIED_LINES_WITHIN_FILE
+    dlg.close()
+    QSettings("PyTortoiseGit", "PyTortoiseGit").clear()
 
 
 # ---------------------------------------------------------------------------

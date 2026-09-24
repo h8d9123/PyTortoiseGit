@@ -9,10 +9,19 @@ from ._util import repo_from_cl
 from .dispatcher import CommandContext, register
 
 
+def _as_int(value, default: int = 0) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
 @register("blame")
 def blame(ctx: CommandContext):
     repo = repo_from_cl(ctx.cl)
     filepath = ""
+    rev = None
+    line = 0
     if ctx.cl is not None:
         paths = [
             p for p in ctx.cl.all_values("path")
@@ -22,9 +31,26 @@ def blame(ctx: CommandContext):
             filepath = paths[0]
             if os.path.isfile(filepath):
                 filepath = os.path.relpath(filepath, repo.root)
-    dlg = BlameDlg(repo, filepath=filepath, parent=None)
-    dlg.exec()
+        # 对齐 BlameCommand.cpp：/endrev 是 blame 的终点修订；/line 定位行。
+        # 同时兼容直接传 /rev 的调用方（log/repobrowser 等）。
+        rev = ctx.cl.value("endrev") or ctx.cl.value("rev") or None
+        if rev == "HEAD":
+            rev = None
+        line = _as_int(ctx.cl.value("line"), 0)
+    dlg = BlameDlg(repo, filepath=filepath, rev=rev, line=line, parent=None)
+    # BlameDlg 是 QMainWindow（镜像 TortoiseGitBlame 的 SDI 主窗口），
+    # 没有 QDialog.exec()，按工具窗口非模态打开。
+    _open(dlg)
     return "ok"
+
+
+def _open(dlg):
+    """打开 BlameDlg：优先用 modeless 助手保住引用，回退到 exec/show。"""
+    from ..dialogs.modeless import show_modeless
+    if hasattr(dlg, "exec"):
+        dlg.exec()
+    else:
+        show_modeless(dlg)
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
 # Copyright (C) 2026  PyTortoiseGit contributors

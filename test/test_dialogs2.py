@@ -39,8 +39,11 @@ def _smoke(qapp, make, wait_ms=2000):
     from PySide6.QtCore import QTimer
     dlg = make()
     dlg.show()
-    QTimer.singleShot(wait_ms, dlg.reject)
-    dlg.exec()
+    close = getattr(dlg, "reject", None) or dlg.close
+    QTimer.singleShot(wait_ms, close)
+    exec_ = getattr(dlg, "exec", None)
+    if exec_ is not None:
+        exec_()
     return dlg
 
 
@@ -83,10 +86,16 @@ def test_log_dialog_date_filter_and_enter(qapp, repo):
     dlg.reject()
 
 
-def test_blame_dialog(qapp, repo):
+def test_blame_dialog(qapp, ui, repo):
     from pytortoisegit.dialogs.blamedlg import BlameDlg
-    dlg = _smoke(qapp, lambda: BlameDlg(repo, "a.txt"))
-    assert dlg.table.rowCount() >= 3
+    dlg = BlameDlg(repo, "a.txt")
+    dlg.show()
+    assert ui.wait_until(lambda: dlg.table.rowCount() >= 3, timeout_ms=15000), \
+        dlg._status_label.text()
+    # 底部提交列表与右侧属性面板已就绪
+    assert dlg.log_table.rowCount() >= 1
+    assert dlg._prop_items["subject"].columnCount() >= 1
+    dlg.close()
 
 
 def test_commit_dialog(qapp, repo):

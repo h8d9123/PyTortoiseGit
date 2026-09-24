@@ -30,9 +30,13 @@ def _ctx(repo, cmd, *extra):
 
 def _patch_exec(monkeypatch, cls):
     def fake_exec(self, *a, **k):
-        self.accept()
+        # BlameDlg 是 QMainWindow（无 accept），其余对话框是 QDialog
+        if hasattr(self, "accept"):
+            self.accept()
+        else:
+            self.close()
         return QDialog.DialogCode.Accepted
-    monkeypatch.setattr(cls, "exec", fake_exec)
+    monkeypatch.setattr(cls, "exec", fake_exec, raising=False)
 
 
 # 命令 → 其打开的对话框类属性名
@@ -89,6 +93,29 @@ def test_command_opens_dialog(qapp, git_repo, auto_progress, monkeypatch, cmd, a
     _patch_exec(monkeypatch, cls)
     fn = getattr(mod, cmd)
     fn(_ctx(git_repo, cmd))     # 不抛异常即可
+
+
+def test_command_blame_forwards_rev_and_line(qapp, git_repo, monkeypatch):
+    """blame 命令解析 /endrev 与 /line 并透传给 BlameDlg（对齐 BlameCommand.cpp）。"""
+    from pytortoisegit.commands import blame as blame_mod
+    captured = {}
+
+    class _FakeBlame:
+        def __init__(self, repo, filepath="", rev=None, line=0, parent=None):
+            captured.update(repo=repo, filepath=filepath, rev=rev, line=line)
+
+        def show(self):
+            captured["shown"] = True
+
+    monkeypatch.setattr(blame_mod, "BlameDlg", _FakeBlame)
+    monkeypatch.setattr(
+        "pytortoisegit.dialogs.modeless.show_modeless",
+        lambda dlg: dlg.show())
+    blame_mod.blame(_ctx(git_repo, "blame", "/endrev:HEAD~1", "/line:3"))
+    assert captured["rev"] == "HEAD~1"
+    assert captured["line"] == 3
+    assert captured["repo"].root == git_repo.root
+    assert captured.get("shown")
 
 
 def test_subadd_command_opens_dialog(qapp, git_repo, monkeypatch):

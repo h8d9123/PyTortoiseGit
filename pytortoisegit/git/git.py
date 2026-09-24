@@ -71,6 +71,28 @@ class RunResult:
         return self.stdout.splitlines()
 
 
+@dataclass
+class RunBytesResult:
+    """保留原始字节的 git 执行结果（见 GitRunner.run_bytes）。"""
+
+    returncode: int
+    stdout: bytes
+    stderr: bytes
+    cmd_line: List[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return self.returncode == 0
+
+    @property
+    def stdout_text(self) -> str:
+        return _decode(self.stdout)
+
+    @property
+    def stderr_text(self) -> str:
+        return _decode(self.stderr)
+
+
 def _settings_value(key: str, default: str = "") -> str:
     """读取 General 设置页保存的应用级配置（避免 GUI 依赖，用 try 包裹）。"""
     try:
@@ -177,6 +199,44 @@ class GitRunner:
         """执行并返回 stdout（失败抛出 GitError）。"""
         result = self.run(*args, **kwargs, check=True)
         return result.stdout
+
+    def run_bytes(self, *args: str, check: bool = False,
+                  cwd: str | os.PathLike | None = None,
+                  input: bytes | None = None,
+                  timeout: float | None = None,
+                  env: dict | None = None
+                  ) -> "RunBytesResult":
+        """执行 git 命令并保留原始字节输出。
+
+        用于需要自行处理编码的场景（如 blame 需按文件编码探测），
+        普通文本命令请用 run()。
+        """
+        cmd = self._build_args(list(args))
+        final_cwd = cwd or self.cwd
+        final_env = self.env if env is None else env
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=final_cwd,
+                input=input,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                env=final_env,
+                shell=False,
+                **no_window_kwargs(),
+            )
+        except OSError as exc:
+            raise GitError(cmd, 127, stderr=str(exc)) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise GitError(cmd, 124, stderr=tr("command_timeout", "Command timed out")) from exc
+
+        result = RunBytesResult(proc.returncode, proc.stdout or b"",
+                                proc.stderr or b"", cmd)
+        if check and result.returncode != 0:
+            raise GitError(cmd, result.returncode,
+                           _decode(result.stdout), _decode(result.stderr))
+        return result
 
     def run_interactive(self, *args: str, **kwargs) -> RunResult:
         """执行可能需认证的 git 命令，启用 Askpass 桥接自动弹认证框。

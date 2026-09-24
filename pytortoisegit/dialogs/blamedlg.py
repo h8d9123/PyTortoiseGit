@@ -86,16 +86,17 @@ _DETECT_ITEMS = (
     ("blame_menu_detect_existing", DETECT_MOVED_OR_COPIED_LINES_FROM_EXISTING_FILES),
 )
 
+# (翻译键, 字段名, 英文标签) —— 英文标签对齐原版 IDS_LOG_*/IDS_SUBJECT/IDS_BODY
 _PROP_ROWS = (
-    ("blame_col_commit", "sha"),
-    ("blame_col_author", "author_name"),
-    ("blame_col_date", "author_date"),
-    ("blame_col_email", "author_email"),
-    ("blame_col_committer", "committer_name"),
-    ("blame_col_committeremail", "committer_email"),
-    ("blame_col_committerdate", "committer_date"),
-    ("blame_col_subject", "subject"),
-    ("blame_col_body", "body"),
+    ("blame_prop_hash", "sha", "SHA-1"),
+    ("blame_prop_author", "author_name", "Author"),
+    ("blame_prop_date", "author_date", "Date"),
+    ("blame_prop_email", "author_email", "Email"),
+    ("blame_prop_commit_name", "committer_name", "Commit Name"),
+    ("blame_prop_commit_email", "committer_email", "Commit Email"),
+    ("blame_prop_commit_date", "committer_date", "Commit Date"),
+    ("blame_prop_subject", "subject", "Subject"),
+    ("blame_prop_body", "body", "Body"),
 )
 
 
@@ -429,23 +430,24 @@ class BlameDlg(QMainWindow):
     def _build_properties(self, parent) -> QTreeWidget:
         tree = QTreeWidget(parent)
         tree.setColumnCount(2)
-        tree.setHeaderLabels([tr("blame_prop_basicinfo", "Basic Info"),
-                              tr("blame_col_code", "Code")])
+        # 对齐原版 CMFCPropertyGridCtrl：无表头，分组名加粗，名称/值两列
+        tree.setHeaderHidden(True)
         tree.setRootIsDecorated(False)
         tree.setAlternatingRowColors(True)
         tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         group = QTreeWidgetItem([tr("blame_prop_basicinfo", "Basic Info"), ""])
-        group.setFirstColumnSpanned(True)
         group.setExpanded(True)
+        group.setFont(0, _bold_font(tree.font()))
         tree.addTopLevelItem(group)
         self._prop_items: Dict[str, QTreeWidgetItem] = {}
-        for key, field in _PROP_ROWS:
-            item = QTreeWidgetItem([tr(key, field), ""])
+        for key, field, english in _PROP_ROWS:
+            item = QTreeWidgetItem([tr(key, english), ""])
             group.addChild(item)
             self._prop_items[field] = item
         self._parent_item = QTreeWidgetItem([tr("blame_prop_parents", "Parent(s)"), ""])
         self._parent_item.setExpanded(True)
+        self._parent_item.setFont(0, _bold_font(tree.font()))
         tree.addTopLevelItem(self._parent_item)
         tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._on_prop_menu)
@@ -521,8 +523,12 @@ class BlameDlg(QMainWindow):
         self._encoding_label.setText(
             tr("blame_status_encoding", "Encoding: {enc}").format(
                 enc=(self._data.encoding if self._data else "utf-8")))
-        if self._start_line > 0 and self._lines:
-            self._select_row(min(self._start_line, len(self._lines)) - 1)
+        # 默认选中首行（或 /line 指定行），使 Commit Info 面板立即显示详细信息；
+        # 原版仅在点击某行后才填充该面板，这里做得更主动。
+        if self._lines:
+            target = (min(self._start_line, len(self._lines)) - 1
+                      if self._start_line > 0 else 0)
+            self._select_row(max(0, target))
 
     def _update_header(self):
         self._status_label.setText(
@@ -623,6 +629,7 @@ class BlameDlg(QMainWindow):
 
     def _update_properties(self, sha: str):
         info = (self._data.commits.get(sha) if self._data else None)
+        bl = next((ln for ln in self._lines if ln.sha == sha), None)
         values = {}
         if info is not None:
             values = {
@@ -636,16 +643,27 @@ class BlameDlg(QMainWindow):
                 "subject": info.subject,
                 "body": info.body,
             }
+        elif bl is not None:
+            # git show 未取到提交属性时，用 blame 行内已有信息兜底，避免面板全空
+            values = {
+                "sha": bl.sha,
+                "author_name": bl.author,
+                "author_date": bl.date_span(),
+                "author_email": bl.author_email,
+                "subject": bl.summary,
+            }
         for field, item in self._prop_items.items():
             item.setText(1, values.get(field, ""))
         self._parent_item.takeChildren()
-        if info is not None:
-            for i, parent in enumerate(info.parents):
-                pinfo = self._data.commits.get(parent)
-                text = f"{i} - {parent[:8]}"
-                if pinfo:
-                    text += f"\n{pinfo.subject}"
-                self._parent_item.addChild(QTreeWidgetItem([parent, text]))
+        parents = list(info.parents) if info is not None else []
+        if not parents and bl is not None and bl.previous_sha:
+            parents = [bl.previous_sha]
+        for i, parent in enumerate(parents):
+            pinfo = self._data.commits.get(parent) if self._data else None
+            text = f"{i} - {parent[:8]}"
+            if pinfo:
+                text += f"\n{pinfo.subject}"
+            self._parent_item.addChild(QTreeWidgetItem([parent, text]))
         self._status_label.setText(
             f"{sha}  —  {values.get('subject', '')}")
 
@@ -903,6 +921,12 @@ class BlameDlg(QMainWindow):
         copy = menu.addAction(tr("blame_menu_copy", "Copy"))
         if menu.exec(self.props.viewport().mapToGlobal(pos)) is copy:
             ClipboardHelper().copy_text(value)
+
+
+def _bold_font(base: QFont) -> QFont:
+    font = QFont(base)
+    font.setBold(True)
+    return font
 
 
 def _mk_button(text: str, slot, parent):

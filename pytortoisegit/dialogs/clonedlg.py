@@ -1,7 +1,7 @@
 """clonedlg.py —— CloneDlg：克隆仓库对话框（镜像 TortoiseGit IDD_CLONE）。
 
 严格按 IDD_CLONE 模板排版（URL/目标目录/深度/递归/裸仓库/分支/Origin、
-Putty 密钥、SVN 部分），尺寸变化时按 ResizableLib 锚点缩放。
+SVN 部分），尺寸变化时按 ResizableLib 锚点缩放。
 """
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
@@ -112,10 +112,6 @@ class CloneDlg(QDialog):
         self.chk_origin = QCheckBox(tr("clone_origin", "Origin Name"), self)
         self.origin_edit = QLineEdit(self)
         self.origin_edit.setText("origin")
-        self.chk_putty = QCheckBox(tr("clone_putty", "Load Putty &Key"), self)
-        self.putty_edit = QLineEdit(self)
-        self.btn_putty = QPushButton("...", self)
-        self.btn_putty.clicked.connect(self._browse_putty)
         self.chk_svn = QCheckBox(tr("clone_svn", "From &SVN Repository"), self)
         self.chk_svn.toggled.connect(self.chk_svn_toggled)
         self.chk_svn_trunk = QCheckBox(tr("clone_svn_trunk", "&Trunk:"), self)
@@ -159,14 +155,6 @@ class CloneDlg(QDialog):
         self.svn_branch_edit.setText("branches")
         self.svn_from_edit.setText("0")
 
-        # Load Putty Key：仅当 SSH 客户端为 PuTTY(plink) 时可用，否则灰掉（对齐 IsSSHPutty）
-        putty_ok = self._is_ssh_putty()
-        self.chk_putty.setEnabled(putty_ok)
-        if not putty_ok:
-            self.chk_putty.setChecked(False)
-        self.chk_putty.toggled.connect(self._update_putty_enabled)
-        self._update_putty_enabled()
-
         # URL 剪贴板自动填：检测剪贴板中的 `git clone <url>` 或直接 url
         if not self.url_combo.currentText().strip():
             clip_url = self._clipboard_clone_url()
@@ -190,9 +178,6 @@ class CloneDlg(QDialog):
             "IDC_EDIT_BRANCH": self.branch_edit,
             "IDC_CHECK_ORIGIN": self.chk_origin,
             "IDC_EDIT_ORIGIN": self.origin_edit,
-            "IDC_PUTTYKEY_AUTOLOAD": self.chk_putty,
-            "IDC_PUTTYKEYFILE": self.putty_edit,
-            "IDC_PUTTYKEYFILE_BROWSE": self.btn_putty,
             "IDC_CHECK_SVN": self.chk_svn,
             "IDC_CHECK_SVN_TRUNK": self.chk_svn_trunk,
             "IDC_EDIT_SVN_TRUNK": self.svn_trunk_edit,
@@ -237,16 +222,6 @@ class CloneDlg(QDialog):
         if not svn_ok:
             self.chk_svn.setChecked(False)
         self.chk_svn_toggled(False)
-
-    def _is_ssh_putty(self) -> bool:
-        """SSH 客户端是否为 PuTTY/Plink（对齐 CAppUtils::IsSSHPutty）。"""
-        from ..utils.sshkeys import is_ssh_putty
-        return is_ssh_putty()
-
-    def _update_putty_enabled(self, *_a):
-        enabled = self.chk_putty.isEnabled() and self.chk_putty.isChecked()
-        self.putty_edit.setEnabled(enabled)
-        self.btn_putty.setEnabled(enabled)
 
     def chk_svn_toggled(self, on: bool):
         """对齐 OnBnClickedCheckSvn：SVN 模式禁用 git clone 选项，启用 SVN 选项。"""
@@ -316,14 +291,6 @@ class CloneDlg(QDialog):
         if path:
             self.dir_edit.setText(path)
             self._dir_custom = True
-
-    def _browse_putty(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, tr("clone_putty", "Select PuTTY key"),
-            self.putty_edit.text() or os.path.expanduser("~"),
-            "Putty Key (*.ppk);;All Files (*.*)")
-        if path:
-            self.putty_edit.setText(path)
 
     def _url_repo_name(self, url: str) -> str:
         """从 URL 提取仓库名（去掉 .git 后缀），解析失败返回空串。"""
@@ -402,9 +369,6 @@ class CloneDlg(QDialog):
                 args.append("--no-checkout")
             if self.chk_origin.isChecked() and self.origin_edit.text().strip():
                 args += ["--origin", self.origin_edit.text().strip()]
-            if self.chk_putty.isChecked() and self.putty_edit.text().strip():
-                args += ["-c",
-                         f"core.sshCommand=ssh -i {self.putty_edit.text().strip()}"]
             args += [url, target]
             label = "git clone " + url
 
@@ -428,9 +392,6 @@ _CLONE_ANCHORS = {
     "IDOK": ("BOTTOM_RIGHT",),
     "IDCANCEL": ("BOTTOM_RIGHT",),
     "IDC_GROUP_CLONE": ("TOP_LEFT", "TOP_RIGHT"),
-    "IDC_PUTTYKEYFILE_BROWSE": ("TOP_RIGHT",),
-    "IDC_PUTTYKEY_AUTOLOAD": ("TOP_LEFT",),
-    "IDC_PUTTYKEYFILE": ("TOP_LEFT", "TOP_RIGHT"),
     "IDC_CLONE_GROUP_SVN": ("TOP_LEFT", "TOP_RIGHT"),
     "IDHELP": ("BOTTOM_RIGHT",),
 }

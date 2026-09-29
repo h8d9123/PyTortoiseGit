@@ -1,4 +1,4 @@
-"""CloneDlg 测试：Load Putty Key 置灰、From SVN 模式与 git svn clone 参数。"""
+"""CloneDlg 测试：From SVN 模式与 git svn clone 参数。"""
 
 import pytest
 from PySide6.QtWidgets import QDialog
@@ -12,26 +12,12 @@ def _english_ui():
     strings.set_language("zh")
 
 
-def test_clone_putty_grayed_without_putty(qapp, monkeypatch):
-    """非 PuTTY 客户端时 Load Putty Key 应灰掉（对齐 IsSSHPutty）。"""
+def test_clone_has_no_putty_widgets(qapp):
+    """不再支持 PuTTY/Plink：克隆对话框不提供 Load Putty Key 相关控件。"""
     from pytortoisegit.dialogs.clonedlg import CloneDlg
-    monkeypatch.setattr(CloneDlg, "_is_ssh_putty", lambda self: False)
     dlg = CloneDlg()
-    assert not dlg.chk_putty.isEnabled()
-    assert not dlg.chk_putty.isChecked()
-    assert not dlg.putty_edit.isEnabled()
-    assert not dlg.btn_putty.isEnabled()
-
-
-def test_clone_putty_enabled_links_edit(qapp, monkeypatch):
-    from pytortoisegit.dialogs.clonedlg import CloneDlg
-    monkeypatch.setattr(CloneDlg, "_is_ssh_putty", lambda self: True)
-    dlg = CloneDlg()
-    assert dlg.chk_putty.isEnabled()
-    assert not dlg.putty_edit.isEnabled()      # 未勾选 → 编辑框灰
-    dlg.chk_putty.setChecked(True)
-    assert dlg.putty_edit.isEnabled()
-    assert dlg.btn_putty.isEnabled()
+    for attr in ("chk_putty", "putty_edit", "btn_putty"):
+        assert not hasattr(dlg, attr), attr
 
 
 def test_clone_svn_grayed_without_git_svn(qapp, monkeypatch):

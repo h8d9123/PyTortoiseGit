@@ -73,10 +73,6 @@ def subadd(ctx: CommandContext):
                    force=dlg.force, branch=dlg.branch or None):
         QMessageBox.warning(None, tr("error"), tr("submodule_added"))
         return "failed"
-    if dlg.putty_key:
-        from ..git.git import GitRunner
-        GitRunner(cwd=os.path.join(repo.root, dlg.path)).run(
-            "config", "remote.origin.puttykeyfile", dlg.putty_key)
     return "ok"
 
 

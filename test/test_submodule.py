@@ -133,7 +133,6 @@ def test_submodule_dlg_add_uses_dialog(qapp, repo, subrepo, monkeypatch):
             self.path = "vendor/lib"
             self.branch = ""
             self.force = False
-            self.putty_key = ""
 
         def exec(self):
             return QDialog.DialogCode.Accepted

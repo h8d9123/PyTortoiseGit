@@ -1,7 +1,7 @@
 """pushdlg.py —— PushDlg：推送到远端（IDD_PUSH 模板）。
 
 311x277 "Push"：Ref 组（push all/本地分支/远端分支）+
-Destination 组（Remote/URL）+ Options 组（force/tags/putty/upstream/submodules/push option）。
+Destination 组（Remote/URL）+ Options 组（force/tags/upstream/submodules/push option）。
 """
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
@@ -144,10 +144,6 @@ class PushDlg(QDialog):
         self.chk_force_with_lease = QCheckBox(tr("push_force_lease", "Force &with lease"), self)
         self.chk_force = QCheckBox(tr("push_force", "&Force"), self)
         self.chk_tags = QCheckBox(tr("push_tags", "Include &Tags"), self)
-        self.chk_putty = QCheckBox(tr("push_putty", "&Autoload Putty Key"), self)
-        # 非 PuTTY 客户端时置灰（对齐 CAppUtils::IsSSHPutty）
-        from ..utils.sshkeys import is_ssh_putty as _is_putty
-        self.chk_putty.setEnabled(_is_putty())
         self.chk_set_upstream = QCheckBox(tr("push_upstream", "&Set upstream/track remote branch"), self)
         self.chk_push_remote = QCheckBox(tr("push_push_remote", "Always push to selected remote archive"), self)
         self.chk_push_branch = QCheckBox(tr("push_push_branch", "Always push to selected remote branch"), self)
@@ -192,7 +188,6 @@ class PushDlg(QDialog):
             "IDC_FORCE_WITH_LEASE": self.chk_force_with_lease,
             "IDC_FORCE": self.chk_force,
             "IDC_TAGS": self.chk_tags,
-            "IDC_PUTTYKEY_AUTOLOAD": self.chk_putty,
             "IDC_PROC_PUSH_SET_UPSTREAM": self.chk_set_upstream,
             "IDC_PROC_PUSH_SET_PUSHREMOTE": self.chk_push_remote,
             "IDC_PROC_PUSH_SET_PUSHBRANCH": self.chk_push_branch,

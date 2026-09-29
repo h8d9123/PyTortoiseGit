@@ -130,7 +130,6 @@ def test_subadd_command_opens_dialog(qapp, git_repo, monkeypatch):
         path = "vendor/lib"
         branch = ""
         force = False
-        putty_key = ""
 
         def __init__(self, *a, **k):
             pass

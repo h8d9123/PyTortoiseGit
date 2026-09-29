@@ -130,13 +130,6 @@ class SubmoduleDlg(QDialog):
                             force=dlg.force, branch=dlg.branch or None):
             QMessageBox.warning(self, tr("error"), tr("submodule_added"))
             return
-        if dlg.putty_key:
-            # 添加成功后写入子模块的 remote.origin.puttykeyfile（对齐原版）
-            import os
-            from ..git.git import GitRunner
-            sub_root = os.path.join(self.repo.root, dlg.path)
-            GitRunner(cwd=sub_root).run(
-                "config", "remote.origin.puttykeyfile", dlg.putty_key)
         self.refresh()
 
     def _on_update(self):

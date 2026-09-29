@@ -100,10 +100,6 @@ class SyncDlg(QDialog):
         self.progress.setRange(0, 0)
         self.progress.hide()
         self.prog_label = QLabel("", self)
-        self.chk_putty = QCheckBox(tr("sync_putty", "Autoload Putty &Key"), self)
-        # 非 PuTTY 客户端时置灰（对齐 CAppUtils::IsSSHPutty）
-        from ..utils.sshkeys import is_ssh_putty as _is_putty
-        self.chk_putty.setEnabled(_is_putty())
         self.chk_force = QCheckBox(tr("sync_force", "&Force"), self)
         # 当前分支适配：branch_label 保留给 UI 扩展（测试只断言文本）
         self.branch_label = QLabel(self)
@@ -180,7 +176,6 @@ class SyncDlg(QDialog):
             "IDC_BUTTON_MANAGE": self.btn_manage,
             "IDC_PROGRESS_SYNC": self.progress,
             "IDC_PROG_LABEL": self.prog_label,
-            "IDC_CHECK_PUTTY_KEY": self.chk_putty,
             "IDC_CHECK_FORCE": self.chk_force,
             "IDC_BUTTON_TABCTRL": self.tab,
             "IDC_ANIMATE_SYNC": self._animate,

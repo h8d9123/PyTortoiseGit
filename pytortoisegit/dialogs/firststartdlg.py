@@ -43,7 +43,7 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
-from ..res.strings import tr
+from ..res.strings import format_string, tr
 from ..ui import rc as rc_mod
 from ..ui.rc import DialogUnits
 from ..utils.proc import no_window_kwargs
@@ -236,10 +236,39 @@ class _UserPage(_WizardPage):
         return ""
 
 
-def _launch_puttygen(path: str) -> None:
+def _ssh_dir() -> str:
+    return os.path.join(os.path.expanduser("~"), ".ssh")
+
+
+def _legacy_ssh_client() -> str:
+    """历史配置里指向 PuTTY/Plink 的 sshClient（需迁移提示）；否则返回空串。"""
+    try:
+        from .settingsdlg import general_settings
+        client = str(general_settings().value("sshClient", "") or "")
+    except Exception:  # noqa: BLE001
+        return ""
+    return client if "plink" in os.path.basename(client).lower() else ""
+
+
+def _public_key_lines() -> list[str]:
+    """~/.ssh 下的公钥文件名（供提示用；目录不存在返回空）。"""
+    try:
+        return sorted(n for n in os.listdir(_ssh_dir())
+                      if n.endswith(".pub"))
+    except OSError:
+        return []
+
+
+def _open_ssh_dir() -> None:
+    """在资源管理器里打开 ~/.ssh（不存在则先建），让用户放/看密钥。"""
+    d = _ssh_dir()
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        pass
     import subprocess
     try:
-        subprocess.Popen([path])
+        subprocess.Popen(["explorer", d])
     except OSError:
         pass
 
@@ -266,20 +295,37 @@ class _AuthPage(_WizardPage):
                                  'SSH (URLs look like "git@example.com")',
                                  7, 7, 308, 84)
         self.ssh_hint = self._label(
-            "firststart_ssh_hint", "Choose the SSH client.",
+            "firststart_ssh_hint_openssh",
+            'SSH URLs are handled by OpenSSH (ssh.exe). Putty/Plink is not '
+            'supported. Keep your key in %HOME%/.ssh (for example '
+            'id_ed25519) or add it to the Windows ssh-agent with "ssh-add".',
             17, 17, 289, 56, wrap=True)
+        # 已存在的公钥列在提示里，方便用户确认密钥放对了位置
+        keys = _public_key_lines()
+        if keys:
+            self.ssh_hint.setToolTip(format_string(
+                tr("firststart_ssh_keys_found", "Public keys found: {keys}"),
+                keys=", ".join(keys)))
         self.ssh_combo = self._place(QComboBox(self), 17, 74, 144, 14)
-        self.ssh_combo.addItems(["PuTTY (TortoiseGitPlink)", "ssh.exe (OpenSSH)"])
+        # 只支持 OpenSSH；若历史配置指向 PuTTY/Plink，这里显式指出并改用 ssh.exe
+        self.ssh_combo.addItem("ssh.exe (OpenSSH)", "ssh.exe")
+        #: 历史配置里指向 PuTTY/Plink 的客户端（非空 → 完成时改为 ssh.exe）
+        self.legacy_ssh_client = _legacy_ssh_client()
+        if self.legacy_ssh_client:
+            self.ssh_combo.setToolTip(format_string(
+                tr("firststart_ssh_legacy",
+                   "Configured client is no longer supported and will be "
+                   "replaced with ssh.exe: {client}"),
+                client=self.legacy_ssh_client))
         self.btn_genkey = self._place(QPushButton("", self), 169, 73, 137, 14)
         self._apply_text(self.btn_genkey, "firststart_genkey",
-                         "&Generate PuTTY key pair")
-        # 未安装 puttygen 时置灰（对齐原版仅在 PuTTY 环境提供）
-        from ..utils.sshkeys import find_puttygen
-        _puttygen = find_puttygen()
-        self.btn_genkey.setEnabled(bool(_puttygen))
-        if _puttygen:
-            self.btn_genkey.clicked.connect(
-                lambda _=False, p=_puttygen: _launch_puttygen(p))
+                         "Open SSH &key folder")
+        # 密钥由 OpenSSH 自带工具管理：这里只打开 ~/.ssh 并提示命令
+        self.btn_genkey.setToolTip(tr(
+            "firststart_genkey_tip",
+            "Open %HOME%/.ssh — create a key there with:\n"
+            "ssh-keygen -t ed25519 -C \"you@example.com\""))
+        self.btn_genkey.clicked.connect(lambda _=False: _open_ssh_dir())
         gb_http = self._group_box("fs_auth_http_group",
                                   'HTTP (URLs start with "http://" or "https://")',
                                   7, 92, 308, 95)
@@ -322,6 +368,7 @@ class FirstStartWizard(QWizard):
         # 页序对齐原版 CFirstStartWizard
         self._pages = [self._language_page, self._start_page,
                        _GitPage(self), _UserPage(self), _AuthPage(self)]
+        self._pages_by_template = {p.template: p for p in self._pages}
         for p in self._pages:
             self.addPage(p)
         # 下拉框回显当前界面语言，避免「显示 English 但界面是中文」
@@ -348,6 +395,33 @@ class FirstStartWizard(QWizard):
         for page in self._pages:
             page.retranslate()
 
+    def _save_ssh_client(self):
+        """把不再支持的 PuTTY/Plink 配置换成 OpenSSH（ssh.exe）。
+
+        只处理"当前值是 plink"或"从未设置"两种情况，不动用户自己配好的
+        其它 SSH 客户端。
+        """
+        from .settingsdlg import general_settings
+        auth = self._pages_by_template.get(
+            "IDD_FIRSTSTARTWIZARD_AUTHENTICATION")
+        legacy = getattr(auth, "legacy_ssh_client", "")
+        try:
+            s = general_settings()
+            current = str(s.value("sshClient", "") or "")
+            if legacy or not current:
+                s.setValue("sshClient", "ssh.exe")
+                s.sync()
+        except Exception:  # noqa: BLE001
+            return
+        if legacy:
+            try:
+                from ..utils.logging_utils import get_logger
+                get_logger().info(
+                    "sshClient %r is no longer supported (Putty/Plink); "
+                    "switched to ssh.exe", legacy)
+            except Exception:  # noqa: BLE001
+                pass
+
     def exec_wizard(self) -> bool:
         """运行向导：接受则保存语言，取消则把界面语言回滚到打开前的状态。
 
@@ -365,6 +439,7 @@ class FirstStartWizard(QWizard):
             return False
         self.language = self._language_page.selected_language()
         set_language(self.language)
+        self._save_ssh_client()
         try:
             from .settingsdlg import general_settings
             general_settings().setValue("language", self.language)

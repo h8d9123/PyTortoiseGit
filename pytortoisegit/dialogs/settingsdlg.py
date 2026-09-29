@@ -1040,7 +1040,6 @@ class _GitRemotePage(_SettingPage):
     _LABELS = [
         (96, 47, 48, 8, "set_remote_url", "URL:"),
         (96, 64, 48, 8, "set_remote_pushurl", "Push URL:"),
-        (96, 82, 48, 8, "set_remote_puttykey", "Putty Key:"),
         (96, 103, 40, 8, "set_remote_tags", "Tags:"),
         (7, 10, 76, 8, "set_remote_label", "Remote:"),
     ]

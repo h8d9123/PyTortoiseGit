@@ -148,7 +148,6 @@ def test_submodule_dlg_add(qapp, git_repo, monkeypatch):
         path = "y"
         branch = ""
         force = False
-        putty_key = ""
 
         def __init__(self, *a, **k):
             pass

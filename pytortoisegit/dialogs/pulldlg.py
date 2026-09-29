@@ -1,7 +1,7 @@
 """pulldlg.py —— PullFetchDlg：拉取/合并远端（IDD_PULLFETCH 模板）。
 
 327x223 "Pull/Fetch"：Remote 组（Remote combo/URL/Remote Branch）+
-Options 组（squash/nofastforward/nocommit/depth/ffonly/tags/prune/putty/rebase）。
+Options 组（squash/nofastforward/nocommit/depth/ffonly/tags/prune/rebase）。
 """
 
 # PyTortoiseGit - a Python reimplementation mirroring TortoiseGit.
@@ -88,10 +88,6 @@ class PullFetchDlg(QDialog):
         self.tag_option_label = QLabel("", self)
         self.chk_prune = QCheckBox(tr("pull_prune", "Prune"), self)
         self.prune_label = QLabel("", self)
-        self.chk_putty = QCheckBox(tr("pull_putty", "AutoLoad Putty &Key"), self)
-        # 非 PuTTY 客户端时置灰（对齐 CAppUtils::IsSSHPutty）
-        from ..utils.sshkeys import is_ssh_putty as _is_putty
-        self.chk_putty.setEnabled(_is_putty())
         self.lnk_manage = QLabel(tr("pull_manage", "Manage Remotes"), self)
         self.chk_rebase = QCheckBox(tr("pull_rebase", "&Launch Rebase After Fetch"), self)
 
@@ -122,7 +118,6 @@ class PullFetchDlg(QDialog):
             "IDC_STATIC_TAGOPT": self.tag_option_label,
             "IDC_CHECK_PRUNE": self.chk_prune,
             "IDC_STATIC_PRUNE": self.prune_label,
-            "IDC_PUTTYKEY_AUTOLOAD": self.chk_putty,
             "IDC_REMOTE_MANAGE": self.lnk_manage,
             "IDC_CHECK_REBASE": self.chk_rebase,
             "IDOK": self.btn_ok,

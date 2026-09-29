@@ -3220,9 +3220,44 @@ def test_firststart_language_mapping(qapp):
     from pytortoisegit.dialogs.firststartdlg import _LanguagePage
     page = _LanguagePage()
     assert page.lang_combo.count() == 4
+    assert [page.lang_combo.itemData(i) for i in range(4)] == [
+        "English", "zh_CN", "zh_TW", "Deutsch"]
     for idx, expected in enumerate(("English", "zh_CN", "zh_TW", "Deutsch")):
         page.lang_combo.setCurrentIndex(idx)
         assert page.selected_language() == expected
+
+
+def test_firststart_language_switch_retranslates(qapp):
+    """向导里改语言立即生效：同一次向导内所有页面一起切换（原先只在结束时应用）。"""
+    from pytortoisegit.dialogs.firststartdlg import FirstStartWizard
+    from pytortoisegit.res import strings
+
+    before = strings.get_language()
+    try:
+        wiz = FirstStartWizard()
+        combo = wiz._language_page.lang_combo
+        # 打开时下拉框回显当前界面语言，而不是固定 English
+        assert combo.currentData() == before, (combo.currentData(), before)
+
+        combo.setCurrentIndex(combo.findData("English"))
+        assert combo.currentData() == "English"
+        assert strings.get_language() == "en"
+        assert wiz._start_page.title() == "Welcome to PyTortoiseGit"
+        assert wiz._pages[2].title() == "Git executable"
+        assert wiz._pages[4].title() == "Authentication"
+
+        combo.setCurrentIndex(combo.findData("zh_CN"))
+        assert strings.get_language() == "zh"
+        assert wiz._start_page.title() == "欢迎使用 PyTortoiseGit"
+        assert wiz._pages[2].title() == "Git 可执行文件"
+        assert wiz._pages[4].title() == "身份验证"
+        # 用户已填内容不因重刷而丢失
+        wiz._pages[3].name_edit.setText("tester")
+        combo.setCurrentIndex(combo.findData("English"))
+        assert wiz._pages[3].name_edit.text() == "tester"
+        wiz.reject()
+    finally:
+        strings.set_language(before)
 
 
 def test_progress_dialog_has_animation(qapp):

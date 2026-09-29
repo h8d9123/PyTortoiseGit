@@ -3230,7 +3230,7 @@ def test_firststart_language_mapping(qapp):
 
 def test_firststart_language_switch_retranslates(qapp):
     """向导里改语言立即生效：同一次向导内所有页面一起切换（原先只在结束时应用）。"""
-    from pytortoisegit.dialogs.firststartdlg import FirstStartWizard
+    from pytortoisegit.dialogs.firststartdlg import FirstStartWizard, _combo_key
     from pytortoisegit.res import strings
 
     before = strings.get_language()
@@ -3238,7 +3238,9 @@ def test_firststart_language_switch_retranslates(qapp):
         wiz = FirstStartWizard()
         combo = wiz._language_page.lang_combo
         # 打开时下拉框回显当前界面语言，而不是固定 English
-        assert combo.currentData() == before, (combo.currentData(), before)
+        # （下拉里的 data 是选项键：zh → zh_CN、en → English）
+        assert combo.currentData() == _combo_key(before), \
+            (combo.currentData(), before)
 
         combo.setCurrentIndex(combo.findData("English"))
         assert combo.currentData() == "English"

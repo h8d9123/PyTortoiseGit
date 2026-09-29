@@ -107,9 +107,11 @@ class CommitDlg(QDialog):
                 tr("rc_col_del", "Lines removed")]
 
     def __init__(self, repo: Repository, paths: Optional[List[str]] = None,
-                 parent=None):
+                 parent=None, no_post_actions: bool = False):
         super().__init__(parent, Qt.WindowType.Window)
         self.repo = repo
+        #: True 时不提供「提交后动作」（提交按钮下拉与进度框后续按钮）
+        self._no_post_actions = no_post_actions
         self.paths: List[str] = normalize_filter_paths(repo.root, paths)
         self.status = GitStatus(repo)
         self.index = GitIndex(repo)
@@ -276,14 +278,31 @@ class CommitDlg(QDialog):
         self.btn_commit.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         self.btn_commit.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         menu = QMenu(self.btn_commit)
+        # 对齐 CCommitDlg::PrepareOkButton：提交 / 提交后继续（重新提交）/
+        # 提交并推送；按钮右侧下拉里选中的项即为默认动作
         self._act_commit = menu.addAction(tr("commit", "C&ommit"))
-        self._act_commit_push = menu.addAction(tr("commit_push", "Commit and &Push"))
+        self._act_recommit = menu.addAction(
+            tr("commit_recommit", "Commit and &Restart"))
+        self._act_commit_push = menu.addAction(
+            tr("commit_push", "Commit and &Push"))
         self.btn_commit.setMenu(menu)
-        self.btn_commit.setDefaultAction(self._act_commit)
-        self._act_commit.triggered.connect(lambda *_: self._accept_commit(False))
-        self._act_commit_push.triggered.connect(lambda *_: self._accept_commit(True))
+        for act in (self._act_commit, self._act_recommit, self._act_commit_push):
+            act.setCheckable(True)
+        # 各动作的实际行为（按钮点击时由 defaultAction 触发；下拉里点选同样触发，
+        # 因此两个入口都走同一条提交路径）
+        self._act_commit.triggered.connect(
+            lambda *_: self._accept_commit(False))
+        self._act_recommit.triggered.connect(
+            lambda *_: self._accept_commit(False, recommit=True))
+        self._act_commit_push.triggered.connect(
+            lambda *_: self._accept_commit(True))
+        # 下拉里选过哪一项，就把哪一项设为按钮的默认动作（文字/勾选随之变化）。
+        # 注意：setDefaultAction 只应在选择变化时调用，重复设置会原地重触发。
+        menu.triggered.connect(self._on_menu_action)
+        self._set_commit_action(self._act_commit)
         self.btn_cancel = add(QPushButton(tr("cancel"), self), "IDCANCEL")
         self.btn_cancel.clicked.connect(self.reject)
+        self._committing = False
         self.btn_help = add(QPushButton(tr("help"), self), "IDHELP")
         self.btn_help.clicked.connect(self._on_help)
 
@@ -492,6 +511,10 @@ class CommitDlg(QDialog):
     # ---- Check 链接 ----
 
     def closeEvent(self, event):
+        # 提交进行中不允许关闭：否则调用方会在命令还没跑完时就收回对话框
+        if getattr(self, "_committing", False):
+            event.ignore()
+            return
         # 取消确认：有未提交内容时询问（对齐 TGit）
         if self.message_edit.toPlainText().strip() or self._checked_paths():
             resp = QMessageBox.question(
@@ -717,7 +740,24 @@ class CommitDlg(QDialog):
         return [p for p, ck in self._checked.items() if ck]
 
     # ---- 提交 ----
-    def _accept_commit(self, push: bool = False):
+    def _set_commit_action(self, act):
+        """把 act 设为按钮的默认动作（文字与勾选随之变化，对齐原版按钮行）。"""
+        for a in (self._act_commit, self._act_recommit, self._act_commit_push):
+            a.setChecked(a is act)
+        self._default_commit_act = act
+        if self.btn_commit.defaultAction() is not act:
+            self.btn_commit.setDefaultAction(act)
+
+    def _on_menu_action(self, act):
+        """下拉里点选某项：只更新默认动作，提交由该动作自身的槽执行。"""
+        self._set_commit_action(act)
+
+    def _accept_commit(self, push: bool = False, recommit: bool = False):
+        """提交并按需收尾。
+
+        push     —— 提交后直接推送（整条链路完成后关窗，由调用方关闭）
+        recommit —— 提交后保持对话框打开，刷新列表以便继续提交
+        """
         msg = self.message_edit.toPlainText().strip()
         paths = self._checked_paths()
         if not paths and not self.amend_box.isChecked() and not self.chk_message_only.isChecked():
@@ -743,21 +783,131 @@ class CommitDlg(QDialog):
         if paths:
             self.index.add(paths)
 
-        author = None
+        args = ["commit"]
+        if self.amend_box.isChecked():
+            args.append("--amend")
         if self.chk_set_author.isChecked():
-            author = self.author_edit.text().strip() or None
-        result = self.index.commit(
-            message=msg or None,
-            amend=self.amend_box.isChecked(),
-            author=author,
-            sign_off="Signed-off-by:" in self.message_edit.toPlainText(),
-            allow_empty=self.chk_message_only.isChecked(),
-        )
-        if result.returncode != 0:
-            QMessageBox.warning(self, tr("commit_failed", "Commit failed"), result.stderr)
+            author = self.author_edit.text().strip()
+            if author:
+                args += ["--author", author]
+        if "Signed-off-by:" in self.message_edit.toPlainText():
+            args.append("--signoff")
+        if self.chk_message_only.isChecked():
+            args.append("--allow-empty")
+        if msg:
+            args += ["-m", msg]
+
+        amend = self.amend_box.isChecked()
+        action = "recommit" if recommit else ("push" if push else "close")
+        self._run_commit_with_progress(args, action=action, amend=amend)
+
+    def _run_commit_with_progress(self, args: List[str], action: str = "close",
+                                  amend: bool = False):
+        """执行提交并显示进度；成功后提供后续动作（对齐 CCommitDlg 的进度框阶段）。
+
+        action:
+          "close"    —— 提交后关窗
+          "push"     —— 提交后推送（推送链路结束后关窗）
+          "recommit" —— 提交后保持打开并刷新，便于继续提交
+        """
+        from .progress import ProgressDialog
+
+        dlg = ProgressDialog(
+            title=tr("commit_title", "Commit"), parent=self, cancellable=False)
+        dlg.set_label(tr("commit_wait", "Committing…"))
+        # 后续动作只在提交成功后追加（对齐 CommitDlg 的 m_PostCmdCallback 时机）
+
+        def _on_finish(ok: bool):
+            if ok:
+                self._checked.clear()
+            # 失败时保留勾选与列表，便于修正后重试；成功则刷新待提交列表
+            self.refresh()
+            if ok and not self._no_post_actions and not self._autoclose_progress():
+                self._add_commit_post_actions(dlg)
+
+        def _after(ok: bool):
+            if not ok:
+                return          # 提交失败：保持对话框打开，便于修正后重试
+            if action == "recommit":
+                # 保持打开并清空列表（对齐原版 ReCommit）
+                self._on_recommit_after_success()
+                return
+            # 先关提交框：原版也是先 OnOK() 再 DoPush()，且提交框在推送期间
+            # 已销毁，用户仍能看到推送失败的错误。
+            self.accept()
+            if action == "push":
+                self._post_push()
+
+        def _run() -> bool:
+            """跑提交命令并显示进度；返回命令是否成功。
+
+            只以退出码判定成败（对齐原版 m_GitStatus）——不能看对话框是
+            被 accept 还是 reject：用户中止/关闭同样算失败，反之亦然。
+            """
+            dlg.run_git(self.repo.runner, *args)
+            dlg.exec()
+            return getattr(dlg, "_exit_code", 1) == 0
+
+        dlg.on_finish(_on_finish)
+        # 整个「命令 + 进度框」期间都不允许关闭本对话框（含模态期间）
+        self._committing = True
+        try:
+            ok = _run()
+        finally:
+            self._committing = False
+        _after(ok)
+
+    def reject(self):
+        """提交进行中忽略取消（进度对话框负责中止）。"""
+        if getattr(self, "_committing", False):
             return
-        if push:
-            from .pushdlg import do_push_after_commit
-            do_push_after_commit(
-                self.repo, parent=self, amend=self.amend_box.isChecked())
-        self.accept()
+        super().reject()
+
+    def _autoclose_progress(self) -> bool:
+        """「自动关闭 Git.exe 进度框」是否已开启。
+
+        开启时不提供后续动作（对齐原版：AutoClose 非 0 时 m_PostCmdCallback
+        直接 return），随后进度框会自行关闭。
+        """
+        try:
+            from .settingsdlg import general_settings
+            return int(general_settings().value("AutoCloseGitProgress", 0)) != 0
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _add_commit_post_actions(self, dlg):
+        """提交成功后进度框底部的后续动作（Push / Pull / 创建标签 / 继续提交）。"""
+        if self._no_post_actions:
+            return
+        dlg.add_post_action(tr("menu_push", "Push"), self._post_push)
+        dlg.add_post_action(tr("menu_pull", "Pull"), self._post_pull)
+        dlg.add_post_action(tr("menu_cmd_tag", "Tag…"), self._post_tag)
+        dlg.add_post_action(tr("commit_recommit", "Commit and Restart"),
+                            self._post_recommit)
+
+    def _post_push(self):
+        """提交后推送（对齐 CCommitDlg::DoPush）。"""
+        from .pushdlg import do_push_after_commit
+        do_push_after_commit(self.repo, parent=self,
+                             amend=self.amend_box.isChecked())
+
+    def _post_pull(self):
+        """提交后拉取：走 PullFetchDlg 的既有 OK 流程（含进度框）。"""
+        from .pulldlg import PullFetchDlg
+        dlg = PullFetchDlg(self.repo, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            dlg._on_ok()
+
+    def _post_tag(self):
+        """提交后在当前 HEAD 上创建标签。"""
+        from .createbranchdlg import CreateTagDlg
+        CreateTagDlg(self.repo, parent=self).exec()
+
+    def _post_recommit(self):
+        """对齐原版 ReCommit：保持对话框打开并清空列表，便于下一次提交。"""
+        self._on_recommit_after_success()
+
+    def _on_recommit_after_success(self):
+        self._checked.clear()
+        self.message_edit.clear()
+        self.refresh()

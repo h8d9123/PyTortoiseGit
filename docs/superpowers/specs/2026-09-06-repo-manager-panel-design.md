@@ -129,45 +129,63 @@ def _on_repo_double_clicked(self, item, _col):
 
 ### 4.3 右键菜单
 
+菜单结构与目录树的仓库节点一致（**两层**）：勾选为「第一层」的命令留在顶层，
+其余进「TortoiseGit」子菜单（`_add_tortoisegit_submenu`）。仓库已在磁盘上，
+因此仓库管理面板的第一层排除 **Git Clone…** / **创建仓库…**
+（`_REPO_MENU_EXCLUDE_TOP`）。
+
 ```python
 def _on_repo_context_menu(self, pos):
     item = self.repo_tree.itemAt(pos)
     if item is None:
         return
-    from PySide6.QtWidgets import QMenu
-    menu = QMenu(self.repo_tree)
-    if item.parent() is None:
-        # 仓库节点：经典 TortoiseGit 菜单 + 「移除」
-        for cmd, label in [
-            ("commit", "Commit…"),
-            ("log", "Show log"),
-            ("pull", "Pull…"),
-            ("push", "Push…"),
-            ("sync", "Sync"),
-            ("revert", "Revert…"),
-            ("cleanup", "Clean Up…"),
-        ]:
-            act = menu.addAction(label)
-            act.triggered.connect(lambda _=False, c=cmd, p=item.data(0, Qt.ItemDataRole.UserRole):
-                                  self._dispatch(c, extra={"path": p}))
+    # 右键未选中项 → 重置为单选；右键已选中项 → 保留整个多选集合
+    if not item.isSelected():
+        self.repo_tree.clearSelection()
+        self.repo_tree.setCurrentItem(item)
+    selected = self._selected_repo_items()
+    multi = len(selected) > 1
+    if item.data(0, ROLE_KIND) == "repo":
+        menu = QMenu(self.repo_tree)
+        # 第一层（同步/提交…）+「TortoiseGit」子菜单（其余命令）
+        self._add_tortoisegit_submenu(menu, item.data(0, ROLE_PATH),
+                                      exclude_top=_REPO_MENU_EXCLUDE_TOP)
+        if multi:
+            self._add_multi_repo_actions(menu)     # 打开 N 个仓库 / 对 N 个仓库运行…
         menu.addSeparator()
-        act_rem = menu.addAction("从列表移除")
-        act_rem.triggered.connect(lambda _=False, it=item: self._remove_repo_from_list(it))
+        act_rem = menu.addAction("从列表移除")       # 多选时为「从列表移除 N 个仓库」
+        act_rem.triggered.connect(
+            lambda _=False, its=list(selected): self._remove_repos_from_list(its))
     else:
-        # 子模块节点：仅「打开子模块」
-        sub_path = item.data(0, Qt.ItemDataRole.UserRole)  # 绝对路径
-        act = menu.addAction("打开子模块")
-        act.triggered.connect(lambda _=False, p=sub_path:
-                              self._run_async_command("submodule", extra={"path": p}))
+        # 子模块节点：仅「打开子模块」（多选时批量打开）
+        ...
     menu.exec(self.repo_tree.viewport().mapToGlobal(pos))
-
-def _remove_repo_from_list(self, item):
-    path = item.data(0, Qt.ItemDataRole.UserRole)
-    norm = os.path.normcase(os.path.abspath(path))
-    self._repo_list = [p for p in self._repo_list if os.path.normcase(os.path.abspath(p)) != norm]
-    self._save_repo_list()
-    self._refresh_repo_tree()
 ```
+
+多选（Ctrl/Shift）见 §13。
+
+### 4.4 提交菜单显示目标分支（2026-09-10 追加）
+
+对齐原版 `ContextMenu.cpp:529-587`：所有位置（仓库管理树 / 目录树 / 内容区 /
+文件）的「提交…」菜单项都追加当前分支，提示提交到哪个分支：
+
+```
+提交… -> "master"
+```
+
+- `_commit_label_with_branch(label, path)`：取不到分支名时保持原标签；
+  原名末尾的 `…` 会先去掉再拼后缀（对齐原版「先回退到 `...` 之前再拼接」）。
+- **注意 `tr(key, default)` 的语义**（`res/strings.py:1868`）：中文界面下只要
+  `STRINGS` 里有 key 就直接返回中文，**完全忽略 default**。所以动态后缀必须
+  在 `tr()` 之后拼接；把改写过的文案当 default 传进 `tr()` 会被字典覆盖掉
+  （此处踩过一次：菜单一直显示「提交…」，看不到分支）。
+- `_commit_branch_name(path)`：文件取其所在目录；`_branch_of` 直接读
+  `.git/HEAD`，不跑子进程。
+- `分离头`（HEAD 是完整 SHA1）→ `_shorten_sha1_ref` 只显示前 8 位 + `...`；
+  分支名超过 64 字符（`_COMMIT_BRANCH_MAX`）同样截断。
+- 子模块节点的「提交子模块…」不加分支后缀（与原版一致）。
+- 批量菜单（「对选中的 N 个仓库运行…」）不显示单个分支名，避免误导：各仓库
+  分支在各自打开提交对话框时才显示。
 
 ## 5. 菜单/状态栏文案
 
@@ -304,8 +322,8 @@ manager_tabs
 - 分隔线 + 经典 TortoiseGit 命令（`_CLASSIC_MENU`）
 - 分隔线 + **Settings**（`_dispatch("settings", extra={"path": path})`）
 
-仓库管理 tab 的仓库节点右键（`_build_classic_menu`）同样追加 **Settings**，
-与目录树仓库节点保持一致。
+仓库管理 tab 的仓库节点右键（`_add_tortoisegit_submenu`）与目录树仓库节点同构：
+第一层命令 + 「TortoiseGit」子菜单，同样含 **Settings**。
 
 ### 执行方式
 
@@ -463,3 +481,39 @@ def _refresh_folder_item(self, item):
   Switch・Checkout/Merge/Settings）；仓库外仅 Clone+Settings。
 
 > 时序：模型异步填充，测试用 `QTest.qWait` 轮询 `rowCount>0` 后再断言。
+
+## 13. 仓库管理面板多选（2026-09-10 追加）
+
+`repo_tree` 启用 `ExtendedSelection` + `SelectRows`：Ctrl 点选、Shift 连选、
+空白处拖拽框选（与右侧内容区一致）。
+
+### 选中集合
+
+- `_selected_repo_items()`：按树中顺序返回选中节点（顶层仓库 + 其子模块）。
+- `_selected_repo_paths()`：折算为仓库根路径（子模块取 `ROLE_PARENT`），去重。
+- `_selected_repo_roots()`：跳过子模块节点，供批量命令使用。
+- `_multi_selected()`：选中节点 > 1。
+
+### 行为
+
+- **状态栏/提示**：多选时状态栏显示「已选中 N 个仓库 · 首个路径」，
+  欢迎区显示「已选中 N 项」；回到单选/空选恢复原文案。
+- **单击**：多选状态下不切换右侧内容（避免连选时内容区反复跳转）。
+- **重建树**：`_refresh_repo_tree` 在 `clear()` 前记下选中路径，重建后恢复；
+  仅当原本无选中项时才把当前仓库设为默认选中。
+- **右键**：未选中项 → 重置为单选；已选中项 → 保留整个多选集合。
+  多选时追加「打开 N 个仓库」「对选中的 N 个仓库运行…」（
+  `_populate_batch_menu` 取各仓库 `itemStates` 的**并集**，`_dispatch_each`
+  对每个仓库各分发一次），「从列表移除」变为批量移除
+  （`_remove_repos_from_list`）。
+
+### 测试要点（追加）
+
+- `test_repo_tree_supports_ctrl_shift_multiselect`：选择模式 + 追加选中 → 路径集合。
+- `test_repo_multiselect_status_and_content`：多选时状态栏计数、内容区不跳转。
+- `test_repo_tree_keeps_selection_after_refresh`：重建树后选中保持。
+- `test_repo_multiselect_remove_all`：批量移除并落盘 QSettings。
+- `test_repo_multiselect_actions_apply_to_all`：批量打开 + 批量命令分发到每个仓库。
+- `test_repo_batch_menu_merges_states`：批量菜单按状态并集生成。
+- `test_repo_context_menu_uses_tortoisegit_submenu`：第一层命令与
+  「TortoiseGit」子菜单分层，顶层无克隆/创建仓库。

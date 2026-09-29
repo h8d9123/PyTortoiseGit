@@ -2634,7 +2634,8 @@ def test_mainmenu_content_context_menu_classic_for_worktree(
     # 工作树内目录 → 经典菜单（含 提交、设置）
     menu = dlg._build_classic_menu(str(sub), dlg.content_list)
     labels = [a.text() for a in menu.actions()]
-    assert "提交…" in labels
+    # 工作树内目录 → 经典菜单（含 提交[-> "分支"]、设置）
+    assert any(t.startswith("提交…") for t in labels), labels
     assert "设置" in labels
     # 仓库外目录 → 基本操作 + TortoiseGit(Clone/Settings)
     menu2 = dlg._build_folder_nonrepo_menu(str(plain))
@@ -2666,15 +2667,17 @@ def test_mainmenu_blank_area_context_menu_uses_current_dir(
     menu = dlg._build_blank_menu(dlg._current_dir(), dlg.content_list)
     top = [a.text() for a in menu.actions() if a.text()]
     assert "复制" in top
-    for expected in ("同步", "提交…"):
-        assert expected in top, expected
+    assert "同步" in top, top
+    # 「提交…」带目标分支后缀（对齐原版 Commit -> "branch"...）
+    commit_top = [t for t in top if t.startswith("提交…")]
+    assert commit_top and 'main"' in commit_top[0], top
     tg = _submenu(menu, "TortoiseGit")
     labels = [a.text() for a in tg.actions()]
     for expected in ("拉取…", "推送…", "差异…", "显示日志",
                      "仓库浏览器", "储藏更改…", "还原…", "切换/检出…", "合并…", "设置"):
         assert expected in labels, expected
     # 第一层命令不出现在子菜单里
-    assert "提交…" not in labels
+    assert not any(t.startswith("提交…") for t in labels), labels
     # 工作树内子目录本身不显示 Git Clone（文件夹已在 git 中）
     assert "Git 克隆…" not in labels
     # 当前浏览为仓库外目录 → 第一层 Clone/CreateRepo；子菜单 Settings
@@ -2685,7 +2688,7 @@ def test_mainmenu_blank_area_context_menu_uses_current_dir(
     tg2 = _submenu(menu2, "TortoiseGit")
     labels2 = [a.text() for a in tg2.actions()]
     assert "设置" in labels2
-    assert "提交…" not in labels2
+    assert not any(t.startswith("提交…") for t in labels2), labels2
     dlg.reject()
 
 
@@ -2715,19 +2718,20 @@ def test_mainmenu_file_menu_includes_tg_commands(
     assert "复制" in top
     assert "粘贴" in top
     assert "新建文件" in top
-    assert "提交…" in top
+    commit_top = [t for t in top if t.startswith("提交…")]
+    assert commit_top and 'main"' in commit_top[0], top
     tg = _submenu(menu, "TortoiseGit")
     labels = [a.text() for a in tg.actions()]
     for expected in ("差异…", "显示日志", "储藏更改…",
                      "追溯…", "设置", "还原…", "移除…"):
         assert expected in labels, expected
-    assert "提交…" not in labels
+    assert not any(t.startswith("提交…") for t in labels), labels
     # 工作树内子目录中的文件
     menu2 = dlg._build_file_menu(str(sub / "b.txt"), dlg.content_list)
     tg2 = _submenu(menu2, "TortoiseGit")
     labels2 = [a.text() for a in tg2.actions()]
     assert "储藏更改…" in labels2
-    assert "提交…" not in labels2
+    assert not any(t.startswith("提交…") for t in labels2), labels2
     dlg.reject()
 
 
@@ -2746,7 +2750,7 @@ def test_mainmenu_file_menu_outside_repo_only_system(
     assert "复制" in top
     tg = _submenu(menu, "TortoiseGit")
     labels = [a.text() for a in tg.actions()] if tg is not None else []
-    assert "提交…" not in labels
+    assert not any(t.startswith("提交…") for t in labels), labels
     assert "储藏更改…" not in labels
     assert "差异…" not in labels
     dlg.reject()
@@ -2773,16 +2777,20 @@ def test_mainmenu_menu_actions_have_tortoisegit_icons(
     def by_label(actions, label):
         return next(a for a in actions if a.text() == label)
 
+    def by_prefix(actions, prefix):
+        return next(a for a in actions if a.text().startswith(prefix))
+
     # 经典菜单：提交/日志/拉取/推送/同步/还原/清理/设置 均有图标
+    # （提交菜单带目标分支后缀，故按前缀匹配）
     classic = dlg._build_classic_menu(str(repo))
-    for label in ["提交…", "显示日志", "拉取…", "推送…", "同步",
-                  "还原…", "清理…", "设置"]:
+    for label in ["显示日志", "拉取…", "推送…", "同步", "还原…", "清理…", "设置"]:
         act = by_label(classic.actions(), label)
         assert not act.icon().isNull(), label
+    assert not by_prefix(classic.actions(), "提交…").icon().isNull()
     # 文件菜单：顶层基本操作「打开」+ 第一层「提交…」；其余在子菜单
     fmenu = dlg._build_file_menu(str(repo / "a.txt"), dlg.content_list)
     assert not by_label(fmenu.actions(), "打开").icon().isNull()
-    assert not by_label(fmenu.actions(), "提交…").icon().isNull()
+    assert not by_prefix(fmenu.actions(), "提交…").icon().isNull()
     tg = _submenu(fmenu, "TortoiseGit")
     for label in ["差异…", "显示日志",
                   "储藏更改…", "追溯…", "设置"]:

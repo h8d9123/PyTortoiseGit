@@ -308,6 +308,11 @@ class _AuthPage(_WizardPage):
 class FirstStartWizard(QWizard):
     def __init__(self, parent=None):
         super().__init__(parent)
+        # 打开向导时的界面语言：取消时要回滚到它。必须在构造时快照——
+        # 语言在向导内是即时生效的，等 exec_wizard() 再 get_language()
+        # 拿到的已经是用户刚选的新语言，回滚就成了空操作。
+        from ..res.strings import get_language
+        self._original_language = get_language()
         self._wizard_title_key = ("firststart_title",
                                   "First Start Wizard - PyTortoiseGit")
         self.setWindowTitle(tr(*self._wizard_title_key))
@@ -344,16 +349,25 @@ class FirstStartWizard(QWizard):
             page.retranslate()
 
     def exec_wizard(self) -> bool:
+        """运行向导：接受则保存语言，取消则把界面语言回滚到打开前的状态。
+
+        语言在向导内是即时生效的（便于其余页面立刻用新语言显示），所以
+        取消时必须回滚到 `self._original_language`（打开向导时的快照），
+        避免"取消后界面语言却变了"。
+        """
+        from ..res.strings import set_language
         result = self.exec()
         ok = (result == QWizard.DialogCode.Accepted
               if hasattr(QWizard, "DialogCode") else result == 1)
-        if ok:
-            self.language = self._language_page.selected_language()
-            from ..res.strings import set_language
-            set_language(self.language)
-            try:
-                from .settingsdlg import general_settings
-                general_settings().setValue("language", self.language)
-            except Exception:  # noqa: BLE001
-                pass
-        return ok
+        if not ok:
+            set_language(self._original_language)
+            self.language = _combo_key(self._original_language)
+            return False
+        self.language = self._language_page.selected_language()
+        set_language(self.language)
+        try:
+            from .settingsdlg import general_settings
+            general_settings().setValue("language", self.language)
+        except Exception:  # noqa: BLE001
+            pass
+        return True

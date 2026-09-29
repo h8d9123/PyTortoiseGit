@@ -3261,6 +3261,72 @@ def test_firststart_language_switch_retranslates(qapp):
         strings.set_language(before)
 
 
+class _FakeSettings:
+    """最小 QSettings 替身：只记录 setValue。"""
+
+    def __init__(self):
+        self.values = {}
+
+    def setValue(self, key, value):  # noqa: N802
+        self.values[key] = value
+
+
+def test_firststart_cancel_rolls_back_language(qapp, monkeypatch):
+    """向导里改了语言但点取消 → 回滚到打开向导时的语言，且不写入设置。
+
+    注意两点（都是踩过的坑）：
+      * 必须 patch 子类 FirstStartWizard.exec —— 在子类实例上 patch
+        QWizard.exec 对 PySide6 无效（QDialog::exec 走 C++ 侧非虚路径），
+        那样会真的弹出模态向导；
+      * 起点语言要显式设为中文并断言，否则回滚目标本身就可能是错的
+        （原始值必须在向导构造时快照，不能在 exec_wizard 里取）。
+    """
+    from pytortoisegit.dialogs import settingsdlg
+    from pytortoisegit.dialogs.firststartdlg import FirstStartWizard
+    from pytortoisegit.res import strings
+
+    before = strings.get_language()
+    strings.set_language("zh")
+    fake = _FakeSettings()
+    monkeypatch.setattr(settingsdlg, "general_settings", lambda: fake)
+    try:
+        wiz = FirstStartWizard()
+        combo = wiz._language_page.lang_combo
+
+        # 取消 → 回滚到打开向导时的「中文」
+        combo.setCurrentIndex(combo.findData("English"))
+        assert strings.get_language() == "en"
+        monkeypatch.setattr(
+            FirstStartWizard, "exec",
+            lambda self: FirstStartWizard.DialogCode.Rejected)
+        assert wiz.exec_wizard() is False
+        assert strings.get_language() == "zh", "取消后应回滚到打开时的语言"
+        assert "language" not in fake.values
+
+        # 接受 → 保留选择并写入设置
+        combo.setCurrentIndex(combo.findData("English"))
+        monkeypatch.setattr(
+            FirstStartWizard, "exec",
+            lambda self: FirstStartWizard.DialogCode.Accepted)
+        assert wiz.exec_wizard() is True
+        assert strings.get_language() == "en"
+        assert fake.values.get("language") == "English"
+
+        # 反向：以英文打开、改中文后取消 → 仍回到英文
+        strings.set_language("en")
+        wiz2 = FirstStartWizard()
+        combo2 = wiz2._language_page.lang_combo
+        combo2.setCurrentIndex(combo2.findData("zh_CN"))
+        assert strings.get_language() == "zh"
+        monkeypatch.setattr(
+            FirstStartWizard, "exec",
+            lambda self: FirstStartWizard.DialogCode.Rejected)
+        assert wiz2.exec_wizard() is False
+        assert strings.get_language() == "en", "取消后应回到打开时的英文"
+    finally:
+        strings.set_language(before)
+
+
 def test_progress_dialog_has_animation(qapp):
     from pytortoisegit.dialogs.progress import ProgressDialog, _ANIMATION
     assert _ANIMATION.is_file()

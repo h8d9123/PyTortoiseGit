@@ -349,12 +349,10 @@ class _ColorPage(_SettingPage):
         invalidate()
 
 
-# 语言下拉可选项（文本, 语言键）
+# 语言下拉可选项（文本, 语言键）—— 界面只提供中文与英文
 _LANGUAGES = [
     ("English", "English"),
-    ("简体中文", "zh_CN"),
-    ("繁體中文", "zh_TW"),
-    ("Deutsch", "Deutsch"),
+    ("中文", "zh_CN"),
 ]
 
 

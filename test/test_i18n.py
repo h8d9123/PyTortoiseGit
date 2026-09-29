@@ -21,8 +21,9 @@ def test_set_language_variants():
     assert strings.get_language() == "zh"
     strings.set_language("English")
     assert strings.get_language() == "en"
+    # 界面只支持中文与英文：其它写法（含繁体/德语）回退中文
     strings.set_language("Deutsch")
-    assert strings.get_language() == "en"
+    assert strings.get_language() == "zh"
     strings.set_language("zh_TW")
     assert strings.get_language() == "zh"
     strings.set_language("zh")
@@ -59,14 +60,14 @@ def test_all_tr_keys_registered():
 def test_no_chinese_ui_literals():
     """UI 源码中不应再有中文文案（default 统一为英文，中文入 STRINGS）。
 
-    白名单：语言下拉的本地化名称。
+    白名单：语言下拉的本地化名称（界面只提供中文与英文）。
     """
     import ast
     import glob
     import os
 
     root = os.path.join(os.path.dirname(__file__), "..", "pytortoisegit")
-    allowed = {"简体中文", "繁體中文"}
+    allowed = {"中文"}
     offenders = []
     for path in glob.glob(os.path.join(root, "**", "*.py"), recursive=True):
         if path.endswith("strings.py"):

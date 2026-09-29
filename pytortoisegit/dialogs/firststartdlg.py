@@ -244,14 +244,18 @@ def _launch_puttygen(path: str) -> None:
         pass
 
 
-# 内部语言码（strings.get_language()）→ 下拉框选项键
-_LANG_ALIASES = {"zh": "zh_CN", "zh_tw": "zh_TW", "en": "English"}
+# 内部语言码（strings.get_language()）→ 下拉框选项键（界面只有中/英两种）
+_LANG_ALIASES = {"zh": "zh_CN", "en": "English"}
 
 
 def _combo_key(lang: str) -> str:
-    """把当前语言码规范成下拉可选项的键（zh → zh_CN，en → English…）。"""
+    """把当前语言码规范成下拉可选项的键（zh → zh_CN，en → English…）。
+
+    未知语言码按 set_language() 的回退规则视为中文，这样下拉显示与实际
+    界面语言保持一致（历史遗留的 "Deutsch"/"zh_TW" 存值即属此类）。
+    """
     v = (lang or "").strip()
-    return _LANG_ALIASES.get(v.lower(), v or "English")
+    return _LANG_ALIASES.get(v.lower(), "zh_CN")
 
 
 class _AuthPage(_WizardPage):

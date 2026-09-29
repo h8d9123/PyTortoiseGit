@@ -1888,10 +1888,13 @@ def tr(key: str, default: str | None = None) -> str:
 
 
 def set_language(lang: str) -> None:
-    """切换界面语言："zh"（中文）/ "en"（英文）；其余回退中文。"""
+    """切换界面语言："zh"（中文）/ "en"（英文）；其余回退中文。
+
+    界面只提供中文与英文两种语言（"zh_CN"/"English" 等写法都归一到这里）。
+    """
     global _current_lang
     v = str(lang or "").lower()
-    _current_lang = "zh" if v.startswith("zh") else ("en" if v.startswith(("en", "de")) else "zh")
+    _current_lang = "zh" if v.startswith("zh") else ("en" if v.startswith("en") else "zh")
 
 
 def get_language() -> str:

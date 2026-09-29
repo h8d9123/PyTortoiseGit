@@ -3205,7 +3205,7 @@ def test_settings_language_combo_switches(qapp):
             target, combo = page, page.language_combo
     assert combo is not None
     assert [combo.itemText(i) for i in range(combo.count())] == [
-        "English", "简体中文", "繁體中文", "Deutsch"]
+        "English", "中文"]
     try:
         combo.setCurrentIndex(combo.findData("English"))
         target.apply_to_settings()
@@ -3219,10 +3219,11 @@ def test_settings_language_combo_switches(qapp):
 def test_firststart_language_mapping(qapp):
     from pytortoisegit.dialogs.firststartdlg import _LanguagePage
     page = _LanguagePage()
-    assert page.lang_combo.count() == 4
-    assert [page.lang_combo.itemData(i) for i in range(4)] == [
-        "English", "zh_CN", "zh_TW", "Deutsch"]
-    for idx, expected in enumerate(("English", "zh_CN", "zh_TW", "Deutsch")):
+    # 界面只支持中文与英文
+    assert page.lang_combo.count() == 2
+    assert [page.lang_combo.itemData(i) for i in range(2)] == [
+        "English", "zh_CN"]
+    for idx, expected in enumerate(("English", "zh_CN")):
         page.lang_combo.setCurrentIndex(idx)
         assert page.selected_language() == expected
 

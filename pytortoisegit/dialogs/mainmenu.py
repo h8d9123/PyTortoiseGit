@@ -124,6 +124,9 @@ _ORIGINAL_COMMANDS = {
 # （ContextMenu.cpp：勾选项直接进主菜单，其余进「TortoiseGit」子菜单）
 _DEFAULT_TOP_COMMANDS = {"sync", "repocreate", "clone", "commit"}
 
+# 仓库管理面板的仓库节点 / 批量命令：仓库已在磁盘上，克隆/创建仓库无意义
+_REPO_MENU_EXCLUDE_TOP = {"clone", "repocreate"}
+
 
 class MainMenuDlg(QMainWindow):
     """主窗口：菜单栏 + 标签面板（仓库管理 / 目录树）+ 命令面板。"""
@@ -301,14 +304,22 @@ class MainMenuDlg(QMainWindow):
         self.repo_tree.setColumnWidth(2, 140)
         self.repo_tree.setRootIsDecorated(True)
         self.repo_tree.setIndentation(16)
+        # 多选：Ctrl 点选、Shift 连选、空白处拖拽框选
+        from PySide6.QtWidgets import QAbstractItemView
+        self.repo_tree.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.repo_tree.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
         self.repo_tree.itemClicked.connect(self._on_repo_clicked)
         self.repo_tree.itemDoubleClicked.connect(self._on_repo_double_clicked)
         self.repo_tree.itemExpanded.connect(self._on_item_expanded)
+        self.repo_tree.itemSelectionChanged.connect(self._on_repo_selection_changed)
         self.repo_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.repo_tree.customContextMenuRequested.connect(self._on_repo_context_menu)
         panel_lay.addWidget(self.repo_tree)
         panel_lay.addWidget(QLabel(
-            tr("repo_manager_hint", "Double-click a repository to switch; expand to view submodules"),
+            tr("repo_manager_hint",
+               "Double-click to switch; Ctrl/Shift-click to multi-select; expand to view submodules"),
             self.repo_manager_panel))
         # 标签页 2：目录树
         self.folder_tree_panel = QWidget(self)
@@ -600,10 +611,96 @@ class MainMenuDlg(QMainWindow):
         return self.fs_model.filePath(index)
 
     def _on_repo_clicked(self, item, _col):
-        """单击仓库节点：右侧显示仓库根内子文件夹与文件。"""
+        """单击仓库节点：右侧显示仓库根内子文件夹与文件。
+
+        多选（Ctrl/Shift）时不改变右侧内容，只更新状态栏的选中计数，
+        避免连选过程中内容区反复跳转。
+        """
+        if self._multi_selected():
+            self._update_selection_status()
+            return
         path = item.data(0, ROLE_PATH)
         if path:
             self._navigate(path)
+
+    # ---- 仓库管理树：多选辅助 ----
+    def _selected_repo_items(self) -> list:
+        """仓库管理树当前选中的节点（按树中显示顺序）。"""
+        items = self.repo_tree.selectedItems()
+        if not items:
+            return []
+        chosen = set(items)
+        out = []
+        for i in range(self.repo_tree.topLevelItemCount()):
+            top = self.repo_tree.topLevelItem(i)
+            for it in (top, *(top.child(c) for c in range(top.childCount()))):
+                if it in chosen:
+                    out.append(it)
+        # 选中但不在可见树中的节点（理论上不存在）按原顺序补齐
+        for it in items:
+            if it not in out:
+                out.append(it)
+        return out
+
+    def _selected_repo_paths(self) -> list:
+        """仓库管理树当前选中的仓库根路径（子模块取其父仓库根）。"""
+        out, seen = [], set()
+        for it in self._selected_repo_items():
+            if it.data(0, ROLE_KIND) == "submodule":
+                path = it.data(0, ROLE_PARENT) or it.data(0, ROLE_PATH)
+            else:
+                path = it.data(0, ROLE_PATH)
+            if not path:
+                continue
+            key = os.path.normcase(os.path.abspath(path))
+            if key not in seen:
+                seen.add(key)
+                out.append(path)
+        return out
+
+    def _multi_selected(self) -> bool:
+        """是否处于多选状态（选中节点 > 1）。"""
+        return len(self.repo_tree.selectedItems()) > 1
+
+    def _selected_repo_roots(self) -> list:
+        """选中的仓库根路径（跳过子模块节点），用于批量命令。"""
+        return [p for it, p in
+                ((it, it.data(0, ROLE_PATH))
+                 for it in self._selected_repo_items()
+                 if it.data(0, ROLE_KIND) != "submodule")
+                if p]
+
+    def _on_repo_selection_changed(self):
+        """选择变化时刷新状态栏的选中计数/汇总信息。"""
+        self._update_selection_status()
+        if self._multi_selected():
+            self._welcome.setText(format_string(
+                tr("repo_multi_hint", "Selected {count} items"),
+                count=str(len(self.repo_tree.selectedItems()))))
+        else:
+            self._welcome.setText(tr(
+                "content_hint",
+                "Click a folder/repository on the left to view subfolders; "
+                "double-click to enter or open."))
+
+    def _update_selection_status(self):
+        """状态栏显示当前选中的仓库（多个时显示计数与首项）。"""
+        paths = self._selected_repo_paths()
+        if len(paths) > 1:
+            self.status.setText(format_string(
+                tr("repo_multi_status",
+                   "{count} repositories selected · {first}"),
+                count=str(len(paths)), first=paths[0]))
+        elif len(paths) == 1:
+            self.status.setText(self._status_of_repo(paths[0]))
+
+    @staticmethod
+    def _status_of_repo(path: str) -> str:
+        """仓库状态栏文本（打开失败时原样显示路径）。"""
+        try:
+            return f" {path} · {Repository.open(path).current_branch()}"
+        except Exception:  # noqa: BLE001
+            return f" {path}"
 
     def _on_folder_clicked(self, item, _col):
         """单击目录树节点：右侧显示该目录内子文件夹与文件。"""
@@ -764,12 +861,14 @@ class MainMenuDlg(QMainWindow):
 
     def _populate_tortoisegit_menu(self, menu, path: str,
                                    shift: bool | None = None,
-                                   *, top_level: bool | None = None) -> int:
+                                   *, top_level: bool | None = None,
+                                   exclude: set | None = None) -> int:
         """把状态驱动的 TortoiseGit 菜单项填入给定菜单，返回添加条数。
 
         top_level=True  → 只放“第一层”勾选命令（显示在主菜单）
         top_level=False → 只放未勾选命令（显示在「TortoiseGit」子菜单）
         top_level=None  → 不过滤层级（平铺全部，用于经典单级菜单）
+        exclude         → 不显示的命令名集合（仅作用于第一层）
         """
         from .. import menuitems as mi
         if shift is None:
@@ -791,12 +890,15 @@ class MainMenuDlg(QMainWindow):
             is_top = entry.command in enabled
             if top_level is not None and top_level != is_top:
                 continue
+            if top_level and exclude and entry.command in exclude:
+                continue
             if not shift and entry.command in hidden:
                 continue
             if pending_sep:
                 menu.addSeparator()
                 pending_sep = False
             label_key, label = entry.label_key, entry.label
+            submodule_commit = False
             # 右击子模块时「提交」改为「提交子模块…」（对齐原版
             # IDS_MENUCOMMITSUBMODULE / ContextMenu.cpp）
             if (entry.command == "commit"
@@ -804,7 +906,15 @@ class MainMenuDlg(QMainWindow):
                     and states & mi.ITEMIS_SUBMODULE):
                 label_key, label = ("menu_cmd_commitsubmodule",
                                     "Commit submodule…")
-            act = menu.addAction(tr(label_key, label))
+                submodule_commit = True
+            # 注意：必须先 tr() 取到本地化文案再拼后缀 —— 中文界面下
+            # tr(key, default) 只返回 STRINGS[key]，会覆盖掉 default。
+            text = tr(label_key, label)
+            if entry.command == "commit" and not submodule_commit:
+                # 提交到哪个分支：对齐原版 ContextMenu.cpp 的
+                # `Commit -> "master"...` 后缀
+                text = self._commit_label_with_branch(text, path)
+            act = menu.addAction(text)
             icon_id = entry.icon_id or _CMD_ICON.get(entry.command)
             if icon_id:
                 self._set_action_icon(act, icon_id)
@@ -1021,12 +1131,17 @@ class MainMenuDlg(QMainWindow):
             pass
         self._refresh_content()
 
-    def _add_tortoisegit_submenu(self, menu, path: str):
+    def _add_tortoisegit_submenu(self, menu, path: str,
+                                 exclude_top: set | None = None):
         """第一层命令加到 menu，其余挂到「TortoiseGit」子菜单（对齐原版）。
+
+        exclude_top 用于排除对当前场景无意义的第一层命令（例如仓库管理面板
+        里的仓库节点已存在于磁盘，不需要「Git 克隆…」「创建仓库…」）。
 
         返回子菜单对象；子菜单为空则不挂载（镜像 ContextMenu.cpp 的 bMenuEmpty）。
         """
-        self._populate_tortoisegit_menu(menu, path, top_level=True)
+        self._populate_tortoisegit_menu(menu, path, top_level=True,
+                                        exclude=exclude_top)
         tg = self._add_submenu(menu, tr("menu_tortoisegit", "TortoiseGit"))
         self._populate_tortoisegit_menu(tg, path, top_level=False)
         if not tg.actions():
@@ -1128,7 +1243,7 @@ class MainMenuDlg(QMainWindow):
         self._refresh_repo_tree()
 
     def _refresh_repo_tree(self):
-        """重建仓库管理树（保留展开状态）。
+        """重建仓库管理树（保留展开状态与选中项）。
 
         先**同步**放行（只做纯文件系统查找，不跑 git），窗口立即可见；分支与
         提交信息随后在后台线程补齐，避免启动时几十次 git 调用把界面卡住。
@@ -1140,6 +1255,9 @@ class MainMenuDlg(QMainWindow):
                 p = it.data(0, ROLE_PATH)
                 if p:
                     expanded_paths.add(p)
+        # 重建会清空选中；先记下多选项，重建后恢复（Ctrl/Shift 选择不丢失）
+        selected_paths = {os.path.normcase(os.path.abspath(p))
+                          for p in self._selected_repo_paths()}
         self.repo_tree.clear()
         valid_paths: list[str] = []
         for path in self._repo_list:
@@ -1156,18 +1274,22 @@ class MainMenuDlg(QMainWindow):
             item.setData(0, ROLE_PATH, path)
             item.setData(0, ROLE_KIND, "repo")
             self.repo_tree.addTopLevelItem(item)
+            if os.path.normcase(os.path.abspath(path)) in selected_paths:
+                item.setSelected(True)
             if path in expanded_paths:
                 item.setExpanded(True)
-        # 确保当前仓库节点被选中并展开
+        # 确保当前仓库节点被选中并展开（无历史多选时作为默认选中项）
         if self.repo:
             cur_path = os.path.normcase(os.path.abspath(self.repo.root))
             for i in range(self.repo_tree.topLevelItemCount()):
                 it = self.repo_tree.topLevelItem(i)
                 if os.path.normcase(it.data(0, ROLE_PATH)) == cur_path:
-                    self.repo_tree.setCurrentItem(it)
+                    if not selected_paths:
+                        self.repo_tree.setCurrentItem(it)
                     if not it.isExpanded():
                         it.setExpanded(True)
                     break
+        self._update_selection_status()
         # 后台补齐分支/最近提交（用代数号丢弃过期结果）
         self._repo_gen = getattr(self, "_repo_gen", 0) + 1
         gen = self._repo_gen
@@ -1199,6 +1321,42 @@ class MainMenuDlg(QMainWindow):
             it.setText(2, subject)
             it.setToolTip(1, branch)
             it.setToolTip(2, subject)
+
+    # 提交菜单上要显示的分支名最大长度（对齐原版 ContextMenu.cpp 的 64 字符截断）
+    _COMMIT_BRANCH_MAX = 64
+
+    def _commit_label_with_branch(self, label: str, path: str) -> str:
+        """把「提交…」标签补成「提交… -> \\"分支\\"」，提示提交到哪个分支。
+
+        对齐原版（ContextMenu.cpp:529-587）：取不出分支名时保持原标签；
+        分离头（HEAD 是完整 SHA1）取前 8 位加省略号，过长分支名截断。
+        """
+        branch = self._commit_branch_name(path)
+        if not branch:
+            return label
+        if len(branch) > self._COMMIT_BRANCH_MAX:
+            branch = branch[:self._COMMIT_BRANCH_MAX] + "..."
+        return f'{label.rstrip(".")} -> "{branch}"'
+
+    def _commit_branch_name(self, path: str) -> str:
+        """该路径所在仓库的当前分支名（无仓库/不可读时返回空串）。"""
+        target = path
+        if target and os.path.isfile(target):
+            target = os.path.dirname(target)
+        if not target:
+            return ""
+        branch = self._branch_of(target)
+        if not branch:
+            return ""
+        return self._shorten_sha1_ref(branch)
+
+    @staticmethod
+    def _shorten_sha1_ref(ref: str) -> str:
+        """分离头（HEAD 为完整 SHA1）时只显示前 8 位 + 省略号。"""
+        if len(ref) in (40, 64) and all(
+                c in "0123456789abcdefABCDEF" for c in ref):
+            return ref[:8] + "..."
+        return ref
 
     @staticmethod
     def _branch_of(path: str) -> str:
@@ -1286,35 +1444,145 @@ class MainMenuDlg(QMainWindow):
         return self._build_tortoisegit_menu(path, parent)
 
     def _on_repo_context_menu(self, pos):
+        from PySide6.QtWidgets import QMenu
         item = self.repo_tree.itemAt(pos)
         if item is None:
             return
+        # 右键未选中项：重置为单选（与资源管理器一致）；右键已选中项则保留
+        # Ctrl/Shift 建立的整个多选集合。
+        if not item.isSelected():
+            self.repo_tree.clearSelection()
+            self.repo_tree.setCurrentItem(item)
+        selected = self._selected_repo_items()
+        multi = len(selected) > 1
         if item.data(0, ROLE_KIND) == "repo":
-            # 仓库节点：经典 TortoiseGit 菜单 + 移除
-            path = item.data(0, ROLE_PATH)
-            menu = self._build_classic_menu(path, self.repo_tree)
-            menu.addSeparator()
-            act_rem = menu.addAction(tr("repo_menu_remove", "Remove from list"))
-            act_rem.triggered.connect(
-                lambda _=False, it=item: self._remove_repo_from_list(it))
-        else:
-            # 子模块节点：打开子模块
-            from PySide6.QtWidgets import QMenu
+            # 仓库节点：与目录树一致 —— 「第一层」命令留在顶层，其余进
+            # 「TortoiseGit」子菜单；仓库已存在，顶层不再给 Clone/创建仓库。
             menu = QMenu(self.repo_tree)
-            sub_path = item.data(0, ROLE_PATH)
-            act = menu.addAction(tr("repo_menu_open_sub", "Open submodule"))
+            self._add_tortoisegit_submenu(
+                menu, item.data(0, ROLE_PATH),
+                exclude_top=_REPO_MENU_EXCLUDE_TOP)
+            if multi:
+                self._add_multi_repo_actions(menu)
+            menu.addSeparator()
+            label = (format_string(tr("repo_menu_remove_multi",
+                                      "Remove {count} repositories from list"),
+                                   count=str(len(selected)))
+                     if multi else tr("repo_menu_remove", "Remove from list"))
+            act_rem = menu.addAction(label)
+            self._set_action_icon(act_rem, "IDI_DELETE")
+            act_rem.triggered.connect(
+                lambda _=False, its=list(selected):
+                self._remove_repos_from_list(its))
+        else:
+            # 子模块节点：打开子模块（多选时批量打开）
+            menu = QMenu(self.repo_tree)
+            subs = [it.data(0, ROLE_PATH) for it in selected
+                    if it.data(0, ROLE_KIND) == "submodule"
+                    and it.data(0, ROLE_PATH)]
+            label = (format_string(tr("repo_menu_open_sub_multi",
+                                      "Open {count} submodules"),
+                                   count=str(len(subs)))
+                     if len(subs) > 1
+                     else tr("repo_menu_open_sub", "Open submodule"))
+            act = menu.addAction(label)
             act.triggered.connect(
-                lambda _=False, p=sub_path:
-                self._run_async_command("submodule", extra={"path": p}))
+                lambda _=False, ps=list(subs):
+                [self._run_async_command("submodule", extra={"path": p})
+                 for p in ps])
         menu.exec(self.repo_tree.viewport().mapToGlobal(pos))
+
+    def _add_multi_repo_actions(self, menu):
+        """多选时追加批量操作：打开窗口 / 对全部选中仓库运行命令。"""
+        paths = self._selected_repo_roots()
+        menu.addSeparator()
+        act_open = menu.addAction(format_string(
+            tr("repo_menu_open_multi", "Open {count} repositories"),
+            count=str(len(paths))))
+        act_open.triggered.connect(
+            lambda _=False, ps=list(paths): self._open_repos(ps))
+        batch = self._add_submenu(menu, format_string(
+            tr("repo_menu_run_multi", "Run for {count} repositories…"),
+            count=str(len(paths))))
+        self._populate_batch_menu(batch, paths)
+
+    def _open_repos(self, paths):
+        """依次打开多个仓库（最后一个成为当前仓库）。"""
+        for p in paths:
+            self.open_repo(p)
+
+    def _populate_batch_menu(self, menu, paths) -> int:
+        """把作用于多个仓库的命令填入菜单，返回添加条数。
+
+        菜单项按「任一选中仓库可用即显示」合并：勾选状态取各仓库 itemStates
+        的并集，避免因个别仓库缺少上游而隐藏整条命令。
+        """
+        from .. import menuitems as mi
+        if not paths:
+            return 0
+        states = 0
+        for p in paths:
+            states |= mi.compute_item_states(p, extended=False)
+        enabled = self._menu_top_commands()
+        hidden = self._menu_hidden_commands()
+        pending_sep = False
+        added = 0
+        for entry in mi.menu_entries(states, extended=False):
+            if entry.command == "separator":
+                if menu.actions():
+                    pending_sep = True
+                continue
+            if entry.command not in enabled:
+                continue
+            if entry.command in _REPO_MENU_EXCLUDE_TOP:
+                continue
+            if entry.command in hidden:
+                continue
+            if pending_sep:
+                menu.addSeparator()
+                pending_sep = False
+            act = menu.addAction(tr(entry.label_key, entry.label))
+            icon_id = entry.icon_id or _CMD_ICON.get(entry.command)
+            if icon_id:
+                self._set_action_icon(act, icon_id)
+            if entry.command in mi.DISABLED_COMMANDS:
+                act.setEnabled(False)
+                act.setToolTip(tr(
+                    "menu_cmd_disabled",
+                    "This feature is temporarily unavailable"))
+                continue
+            act.triggered.connect(
+                lambda _=False, c=entry.command, ps=list(paths):
+                self._dispatch_each(c, ps))
+            added += 1
+        if added == 0:
+            act = menu.addAction(tr("menu_cmd_unavailable",
+                                    "Not available in the original TortoiseGit UI"))
+            act.setEnabled(False)
+        return added
+
+    def _dispatch_each(self, name: str, paths: list):
+        """对多个仓库依次执行同一命令（各仓库独立，失败不影响其余）。"""
+        for p in paths:
+            self._dispatch(name, extra={"path": p})
 
     def _remove_repo_from_list(self, item):
         """从持久化列表中移除指定仓库。"""
-        path = item.data(0, ROLE_PATH)
-        norm = os.path.normcase(os.path.abspath(path))
+        self._remove_repos_from_list([item])
+
+    def _remove_repos_from_list(self, items):
+        """从持久化列表与树中移除全部给定节点（多选批量移除）。"""
+        norms = set()
+        for it in items:
+            path = it.data(0, ROLE_PATH)
+            if not path:
+                continue
+            norms.add(os.path.normcase(os.path.abspath(path)))
+        if not norms:
+            return
         self._repo_list = [
             p for p in self._repo_list
-            if os.path.normcase(os.path.abspath(p)) != norm
+            if os.path.normcase(os.path.abspath(p)) not in norms
         ]
         self._save_repo_list()
         self._refresh_repo_tree()

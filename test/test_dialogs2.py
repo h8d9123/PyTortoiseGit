@@ -1012,6 +1012,67 @@ def test_overlay_nonversioned_not_green(qapp, tmp_path):
     assert status_of("__pycache__") == "ignored"
 
 
+def test_overlay_submodule_shows_normal(qapp, tmp_path):
+    """已跟踪的子模块目录应显示绿勾(normal)，而非未跟踪的 '?'（原版行为）。"""
+    from PySide6.QtCore import QFileInfo, QSize
+    from PySide6.QtWidgets import QFileIconProvider
+    from pytortoisegit.dialogs.mainmenu import MainMenuDlg
+    from pytortoisegit.res import overlays
+
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    sr = GitRunner(cwd=str(sub))
+    sr.run("init", "-b", "main")
+    sr.run("config", "user.email", "t@example.com")
+    sr.run("config", "user.name", "Tester")
+    (sub / "s.txt").write_text("s\n", encoding="utf-8")
+    sr.run("add", "-A")
+    assert sr.run("commit", "-m", "init").returncode == 0
+    sub_sha = sr.run("rev-parse", "HEAD").stdout.strip()
+
+    main = tmp_path / "main"
+    main.mkdir()
+    mr = GitRunner(cwd=str(main))
+    mr.run("init", "-b", "main")
+    mr.run("config", "user.email", "t@example.com")
+    mr.run("config", "user.name", "Tester")
+    (main / "m.txt").write_text("m\n", encoding="utf-8")
+    mr.run("add", "-A")
+    assert mr.run("commit", "-m", "init").returncode == 0
+    (main / ".gitmodules").write_text(
+        "[submodule \"mysub\"]\n\tpath = mysub\n\turl = {}\n".format(
+            str(sub).replace("\\", "/")), encoding="utf-8")
+    mr.run("add", ".gitmodules")
+    assert mr.run("update-index", "--add", "--cacheinfo", "160000",
+                  sub_sha, "mysub").returncode == 0
+    assert mr.run("commit", "-m", "add submodule").returncode == 0
+    upd = mr.run("-c", "protocol.file.allow=always",
+                 "submodule", "update", "--init")
+    if upd.returncode != 0:
+        pytest.skip("cannot checkout local submodule")
+
+    dlg = MainMenuDlg(repo_path=str(main))
+    tracked = dlg._tracked_dirs(str(main))
+    vnc = os.path.normcase(os.path.abspath(str(main / "mysub")))
+    assert vnc in tracked
+    actual = dlg._build_overlay_icons(str(main))
+
+    def status_of(name):
+        full = str(main / name)
+        p = os.path.normcase(os.path.abspath(full))
+        base = QFileIconProvider().icon(QFileInfo(full))
+        for st in ("normal", "modified", "added", "conflicted", "deleted",
+                   "ignored", "unversioned"):
+            exp = overlays.compose(base, st)
+            if exp is not None and exp.pixmap(QSize(16, 16)).toImage() \
+                    == actual[p].pixmap(QSize(16, 16)).toImage():
+                return st
+        return None
+
+    assert status_of("mysub") == "normal"
+    dlg.reject()
+
+
 def test_pull_dialog_horizontal_resize_only(qapp, repo):
     from pytortoisegit.dialogs.pulldlg import PullFetchDlg
     dlg = PullFetchDlg(repo, fetch_only=False)

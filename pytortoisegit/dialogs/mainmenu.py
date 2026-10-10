@@ -487,8 +487,14 @@ class MainMenuDlg(QMainWindow):
             for rel in out.split("\x00"):
                 if not rel:
                     continue
-                d = os.path.dirname(os.path.normcase(
-                    os.path.abspath(os.path.join(root, rel))))
+                full = os.path.normcase(
+                    os.path.abspath(os.path.join(root, rel)))
+                # 子模块在 ls-files 中是一个 gitlink 路径（无斜杠），且在工作树
+                # 里是目录；此时该路径本身就是一个「已跟踪目录」，需加入，
+                # 否则会被误判为未跟踪而显示 "?"（对齐原版显示绿勾）。
+                if os.path.isdir(full):
+                    dirs.add(full)
+                d = os.path.dirname(full)
                 while d.startswith(root_nc) and len(d) >= len(root_nc):
                     dirs.add(d)
                     if d == root_nc:
@@ -527,8 +533,9 @@ class MainMenuDlg(QMainWindow):
             rel = e.path
             p = os.path.normcase(os.path.abspath(
                 os.path.join(root, rel)))
-            if rel.endswith("/"):
-                # git 以结尾斜杠表示「目录」条目
+            # 目录条目：git 以结尾斜杠表示；子模块是 gitlink（无斜杠）但
+            # 在工作树里是目录，同样按目录处理，否则会被当作文件条目而漏标。
+            if rel.endswith("/") or os.path.isdir(os.path.join(root, rel)):
                 dir_state[p] = overlays.worse(dir_state.get(p), key)
             else:
                 file_state[p] = overlays.worse(file_state.get(p), key)

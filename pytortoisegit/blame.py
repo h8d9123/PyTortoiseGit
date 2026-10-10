@@ -37,6 +37,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .git.repo import Repository
+from .res.strings import tr
 
 _HEADER_RE = re.compile(rb"^([0-9a-f]{40}) (\d+) (\d+)(?: (\d+))?$")
 _TAB = "\t"
@@ -288,15 +289,31 @@ class GitBlame:
         self.repo = repo
 
     # ---- 参数组装 ----
-    def _relative_path(self, filepath: str) -> str:
-        if os.path.isabs(filepath):
-            try:
-                return os.path.relpath(filepath, self.repo.root)
-            except ValueError:  # 不同盘符
-                return filepath
-        return filepath
+    def resolve(self, filepath: str) -> Tuple[str, str]:
+        """解析目标文件的仓库根与仓库内相对路径。
 
-    def _build_args(self, filepath: str, rev: str | None,
+        以**文件自身所在仓库**为准（子模块 / 跨仓库场景），避免用
+        `..` 相对路径喂给 git 导致 "is outside repository"。返回
+        (repo_root, relpath)，relpath 使用 '/' 分隔。
+        """
+        if os.path.isabs(filepath):
+            abspath = os.path.abspath(filepath)
+        else:
+            abspath = os.path.abspath(os.path.join(self.repo.root, filepath))
+        # 延迟导入避免循环依赖
+        from .git.admin import find_repo_root
+        root = find_repo_root(abspath) or self.repo.root
+        rel = os.path.relpath(abspath, root)
+        if rel == os.pardir or rel.startswith(os.pardir + os.sep):
+            raise ValueError(
+                tr("blame_outside_repo",
+                   "File is not inside the repository: {path}").format(path=filepath))
+        return root, rel.replace("\\", "/")
+
+    def _relative_path(self, filepath: str) -> str:
+        return self.resolve(filepath)[1]
+
+    def _build_args(self, relpath: str, rev: str | None,
                     start_line: int | None, end_line: int | None,
                     ignore_whitespace: bool, detect: int,
                     chars_within: int, chars_from: int,
@@ -311,7 +328,7 @@ class GitBlame:
             args.append(rev)
         if start_line is not None and end_line is not None:
             args += ["-L", f"{int(start_line)},{int(end_line)}"]
-        args += ["--", self._relative_path(filepath)]
+        args += ["--", relpath]
         return args
 
     # ---- 公开接口 ----
@@ -323,17 +340,19 @@ class GitBlame:
              first_parent: bool = False,
              encoding: str | None = None) -> BlameData:
         """执行 blame 并返回完整 BlameData。"""
-        args = self._build_args(filepath, rev, start_line, end_line,
+        root, rel = self.resolve(filepath)
+        args = self._build_args(rel, rev, start_line, end_line,
                                 ignore_whitespace, detect, chars_within,
                                 chars_from, first_parent)
-        result = self.repo.runner.run_bytes(*args, check=True)
+        # 以目标文件所在仓库为工作目录（子模块/跨仓库时与 self.repo 根不同）
+        result = self.repo.runner.run_bytes(*args, check=True, cwd=root)
         data = self._parse_porcelain(result.stdout, encoding=encoding)
-        rel = self._relative_path(filepath).replace("\\", "/")
         data.contains_other_filenames = not data.contains_only_filename(rel)
-        data.commits = self.load_commit_infos(data.hashes())
+        data.commits = self.load_commit_infos(data.hashes(), cwd=root)
         return data
 
-    def load_commit_infos(self, hashes: Sequence[str]) -> Dict[str, CommitInfo]:
+    def load_commit_infos(self, hashes: Sequence[str],
+                          cwd: str | None = None) -> Dict[str, CommitInfo]:
         """批量读取提交属性（镜像 CTortoiseGitBlameData 从日志缓存取提交）。"""
         # blame 对 boundary 行可能给出全零 sha（无父提交），必须过滤，
         # 否则 `git show` 会以 "bad object 000...0" 失败。
@@ -347,7 +366,7 @@ class GitBlame:
             chunk = unique[i:i + 200]
             out = self.repo.runner.run_checked(
                 "show", "-s", f"--format={_SHOW_FORMAT}", "--date=iso",
-                *chunk)
+                *chunk, cwd=cwd)
             for record in out.split("\n"):
                 if not record:
                     continue

@@ -709,6 +709,7 @@ STRINGS: Dict[str, str] = {
     "blame_col_origline": "原始行",
     "blame_error": "错误",
     "blame_lines": "行",
+    "blame_outside_repo": "文件不在仓库中：{path}",
     "blame_prev": "追溯上一修订",
     "blame_compare_prev": "与上一修订比较",
     "blame_copy_log": "复制日志",

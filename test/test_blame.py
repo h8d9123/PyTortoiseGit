@@ -178,3 +178,47 @@ def test_blame_absolute_path(blame_repo):
     lines = GitBlame(blame_repo).blame(
         os.path.join(blame_repo.root, "doc.txt"))
     assert len(lines) == 5
+
+
+def test_resolve_returns_repo_root_and_relpath(blame_repo):
+    root, rel = GitBlame(blame_repo).resolve(
+        os.path.join(blame_repo.root, "doc.txt"))
+    assert os.path.normcase(root) == os.path.normcase(blame_repo.root)
+    assert rel == "doc.txt"
+
+
+def test_resolve_rejects_outside_path(blame_repo):
+    with pytest.raises(ValueError):
+        GitBlame(blame_repo).resolve(r"..\..\outside\foo.cpp")
+
+
+def test_blame_file_in_other_repo(tmp_path):
+    """GitBlame 绑定仓库 A，blame 仓库 B 中的文件：应以 B 为工作目录，
+    不再产生 'is outside repository'。"""
+    repo_a = tmp_path / "a"
+    repo_a.mkdir()
+    ra = GitRunner(cwd=str(repo_a))
+    ra.run("init", check=True)
+    ra.run("config", "user.email", "a@b", check=True)
+    ra.run("config", "user.name", "Alice", check=True)
+    (repo_a / "a.txt").write_text("aa\n", encoding="utf-8")
+    ra.run("add", ".", check=True)
+    ra.run("commit", "-m", "A", check=True)
+
+    repo_b = tmp_path / "b"
+    repo_b.mkdir()
+    rb = GitRunner(cwd=str(repo_b))
+    rb.run("init", check=True)
+    rb.run("config", "user.email", "a@b", check=True)
+    rb.run("config", "user.name", "Bob", check=True)
+    (repo_b / "f.txt").write_text("b-one\nb-two\n", encoding="utf-8")
+    rb.run("add", ".", check=True)
+    rb.run("commit", "-m", "B", check=True)
+
+    gb = GitBlame(Repository.open(str(repo_a)))
+    root, rel = gb.resolve(str(repo_b / "f.txt"))
+    assert os.path.normcase(root) == os.path.normcase(str(repo_b))
+    assert rel == "f.txt"
+    lines = gb.blame(str(repo_b / "f.txt"))
+    assert [ln.content for ln in lines] == ["b-one", "b-two"]
+    assert lines[0].author == "Bob"

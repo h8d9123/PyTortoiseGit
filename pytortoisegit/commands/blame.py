@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import os
-
 from ..dialogs.blamedlg import BlameDlg
+from ..git.repo import NotARepositoryError, Repository
 from ._util import repo_from_cl
 from .dispatcher import CommandContext, register
 
@@ -29,8 +28,12 @@ def blame(ctx: CommandContext):
         ]
         if paths:
             filepath = paths[0]
-            if os.path.isfile(filepath):
-                filepath = os.path.relpath(filepath, repo.root)
+            # 以文件自身所在仓库为准（子模块 / 文件与 /path 不同仓库时），
+            # 避免把带 .. 的相对路径交给 git 触发 "outside repository"。
+            try:
+                repo = Repository.open(filepath)
+            except NotARepositoryError:
+                pass
         # 对齐 BlameCommand.cpp：/endrev 是 blame 的终点修订；/line 定位行。
         # 同时兼容直接传 /rev 的调用方（log/repobrowser 等）。
         rev = ctx.cl.value("endrev") or ctx.cl.value("rev") or None

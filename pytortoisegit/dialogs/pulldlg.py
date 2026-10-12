@@ -26,7 +26,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QDialog, QGroupBox, QLabel, QLineEdit,
-    QPushButton, QRadioButton, QSpinBox,
+    QMessageBox, QPushButton, QRadioButton, QSpinBox,
 )
 from ..git.autostash import auto_stash, has_tracked_changes
 from ..git.repo import Repository
@@ -299,6 +299,12 @@ class PullFetchDlg(QDialog):
 
     def _on_ok(self):
         self._save_branch_history()
+        # 对齐原版 CAppUtils::Pull：勾选 rebase 时不执行 `git pull --rebase`，
+        # 而是「先 fetch，再走一系列提示，最后打开变基对话框」。
+        if self.chk_rebase.isChecked() and not self.fetch_only:
+            self._rebase_after_fetch()
+            return
+
         args = self._build_args()
         stash = (not self.fetch_only and self._has_local_changes()
                  and ask_stash(self))
@@ -322,6 +328,172 @@ class PullFetchDlg(QDialog):
                 return _pull()
 
         dlg.run(_bg)
+        dlg.exec()
+        self.accept()
+
+    # ---- 抓取后变基（对齐 PullFetchDlg::OnBnClickedOk + CAppUtils::DoFetch/RebaseAfterFetch）----
+    def _effective_remote(self) -> str:
+        if self.rd_other.isChecked() and self.other_edit.text().strip():
+            return self.other_edit.text().strip()
+        return self.remote_combo.currentText().strip()
+
+    def _is_named_remote(self, name: str) -> bool:
+        remotes = (self.repo.runner.run("remote").stdout or "").split()
+        return bool(name) and name in remotes
+
+    def _rebase_upstream(self, remote: str, branch: str) -> str:
+        """rebase 的 upstream 引用（对齐 DoFetch 的 upstream 计算）。"""
+        if self._is_named_remote(remote):
+            if branch:
+                return f"remotes/{remote}/{branch}"
+            cur = self.repo.current_branch()
+            merge = self.repo.config(f"branch.{cur}.merge")
+            if merge:
+                name = merge.rsplit("/", 1)[-1]
+                pull_remote = self.repo.config(f"branch.{cur}.remote") or remote
+                return f"remotes/{pull_remote}/{name}"
+        # 任意 URL：fetch 后只能指向 FETCH_HEAD
+        return "FETCH_HEAD"
+
+    def _rev_parse(self, ref: str) -> str:
+        if not ref:
+            return ""
+        r = self.repo.runner.run("rev-parse", "--verify", "-q", ref)
+        if r.returncode != 0:
+            return ""
+        return r.stdout.strip()
+
+    def _is_ancestor(self, a: str, b: str) -> bool:
+        if not a or not b:
+            return False
+        return self.repo.runner.run(
+            "merge-base", "--is-ancestor", a, b).returncode == 0
+
+    def _build_fetch_args(self, remote: str, branch: str) -> list:
+        """按当前选项构造 fetch 命令参数（便于测试，不执行命令）。"""
+        args = ["fetch", "-v"]
+        if self.chk_depth.isChecked():
+            args += ["--depth", str(self.depth_edit.value())]
+        if self.chk_prune.isChecked():
+            args.append("--prune")
+        if self.chk_fetchtags.isChecked():
+            args.append("--tags")
+        if remote:
+            args.append(remote)
+        if branch:
+            args.append(branch)
+        return args
+
+    def _run_progress(self, args: list, title: str) -> bool:
+        dlg = ProgressDialog(title=title, parent=self)
+        dlg.set_label("git " + " ".join(args))
+
+        def _bg() -> bool:
+            r = self.repo.runner.run_interactive(*args)
+            if r.stdout:
+                dlg.log(r.stdout)
+            if r.stderr:
+                dlg.log(r.stderr)
+            return r.returncode == 0
+
+        dlg.run(_bg)
+        dlg.exec()
+        return dlg.succeeded
+
+    def _ask_yesno(self, text: str) -> bool:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(tr("app_name", "PyTortoiseGit"))
+        box.setText(text)
+        box.setStandardButtons(QMessageBox.StandardButton.Yes
+                               | QMessageBox.StandardButton.No)
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        return box.exec() == QMessageBox.StandardButton.Yes
+
+    def _ask_ff_action(self, text: str) -> str:
+        """快进提示：返回 'merge' / 'rebase' / 'abort'（对齐 IDS_REBASE_BRANCH_FF）。"""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(tr("app_name", "PyTortoiseGit"))
+        box.setText(text)
+        btn_merge = box.addButton(tr("merge_button", "&Merge"),
+                                  QMessageBox.ButtonRole.AcceptRole)
+        btn_rebase = box.addButton(tr("rebase_button", "&Rebase"),
+                                   QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(tr("abort_button", "A&bort"),
+                      QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(btn_rebase)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is btn_merge:
+            return "merge"
+        if clicked is btn_rebase:
+            return "rebase"
+        return "abort"
+
+    def _rebase_after_fetch(self):
+        branch = self.remote_branch_edit.currentText().strip()
+        if not branch:
+            QMessageBox.warning(
+                self, tr("app_name", "PyTortoiseGit"),
+                tr("pull_emptybranch",
+                   "You asked to pull, but did not specify a remote branch."))
+            return
+        remote = self._effective_remote()
+        upstream = self._rebase_upstream(remote, branch)
+        old_upstream = self._rev_parse(upstream)
+
+        if not self._run_progress(
+                self._build_fetch_args(remote, branch),
+                tr("fetch_title", "Fetch")):
+            return
+
+        head = self._rev_parse("HEAD")
+        up = self._rev_parse(upstream)
+        if not up and upstream == "FETCH_HEAD":
+            up = self._rev_parse("FETCH_HEAD")
+
+        # 先弹提示（在合并之前），由用户决定；终止/否 → 关闭拉取对话框。
+        if head and up and (up == head or self._is_ancestor(up, head)):
+            # 本地已是最新/更新
+            proceed = self._ask_yesno(tr(
+                "rebase_up_to_date",
+                "Current branch is up to date or newer than the fetched "
+                "branch. Open rebase anyway?"))
+        elif up and old_upstream and up == old_upstream and up == head:
+            # 远程分支未变化
+            proceed = self._ask_yesno(tr(
+                "rebase_branch_unchanged",
+                "The remote branch has not changed.\n\n"
+                "Open the rebase dialog anyway?"))
+        elif head and up and self._is_ancestor(head, up):
+            # 可快进 → 合并之前先询问 Merge / Rebase / Abort
+            action = self._ask_ff_action(tr(
+                "rebase_branch_ff",
+                "The fetched branch fast-forwards upon the current branch.\n\n"
+                "Merge or open the rebase dialog anyway?"))
+            if action == "merge":
+                self._run_progress(["merge", "--ff-only", upstream],
+                                   tr("progress", "Progress"))
+                self.accept()
+                return
+            proceed = action == "rebase"
+        else:
+            # 已分叉：询问是否 rebase，再打开变基对话框
+            proceed = self._ask_yesno(tr(
+                "rebase_ask", "Rebase the current branch onto the fetched "
+                "branch?"))
+
+        if not proceed:
+            # 中止/否：关闭拉取对话框
+            self.accept()
+            return
+
+        from .rebasedlg import RebaseDlg
+        dlg = RebaseDlg(self.repo, parent=self)
+        if upstream and upstream != "FETCH_HEAD":
+            dlg.upstream_combo.setCurrentText(upstream)
+            dlg._reload_commits()
         dlg.exec()
         self.accept()
 

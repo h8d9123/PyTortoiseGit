@@ -9,3 +9,4 @@ lnk/
 .coverage
 coverage.xml
 htmlcov/
+logs/

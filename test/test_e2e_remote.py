@@ -10,6 +10,22 @@ from pathlib import Path
 from PySide6.QtWidgets import QDialog
 
 
+def _drive_pull_rebase(monkeypatch):
+    """让 PullFetchDlg 勾选 rebase 后的「fetch → 提示 → 变基对话框」流程在
+    无头测试中自动走完（对齐原版 Launch Rebase After Fetch）。"""
+    from pytortoisegit.dialogs import rebasedlg, pulldlg
+    monkeypatch.setattr(pulldlg.PullFetchDlg, "_ask_yesno",
+                        lambda self, text: True)
+    monkeypatch.setattr(pulldlg.PullFetchDlg, "_ask_ff_action",
+                        lambda self, text: "rebase")
+
+    def fake_exec(self):
+        self._on_continue()
+        return 0
+
+    monkeypatch.setattr(rebasedlg.RebaseDlg, "exec", fake_exec)
+
+
 def _remote_new_commit(remote_repo):
     """从 bare 再克隆一份，提交并推送，使 origin 领先 local。"""
     from pytortoisegit.git.git import GitRunner
@@ -125,12 +141,13 @@ def test_TC_REQPULL_001_accepts(qapp, ui, git_repo, auto_progress):
     assert dlg.result() == QDialog.DialogCode.Accepted
 
 
-def test_TC_FLOW_001_pull_stash_rebase_pop(qapp, ui, remote_repo, auto_progress):
+def test_TC_FLOW_001_pull_stash_rebase_pop(qapp, ui, remote_repo, auto_progress,
+                                           monkeypatch):
     """验证 pull + stash + rebase + stash pop 组合流程目前是否支持。
 
     流程（本地有未提交改动、远端同时前进时最典型的做法）：
       1. 工作区改动 → stash
-      2. pull --rebase（等价 rebase 到远端）
+      2. Pull 勾选 rebase → fetch → 变基对话框
       3. stash pop 恢复本地改动
     断言：远端提交已并入、本地改动恢复、历史线性（无 merge 提交）。
     """
@@ -138,6 +155,7 @@ def test_TC_FLOW_001_pull_stash_rebase_pop(qapp, ui, remote_repo, auto_progress)
     from pytortoisegit.git.stash import GitStash
     from pytortoisegit.dialogs.pulldlg import PullFetchDlg
 
+    _drive_pull_rebase(monkeypatch)
     local = remote_repo.local
     root = Path(local.root)
     runner = remote_repo.runner
@@ -205,14 +223,15 @@ def _prepare_local_wip(remote_repo):
 
 
 def test_TC_PULL_004_auto_stash_yes(qapp, ui, remote_repo, auto_progress, monkeypatch):
-    """本地有改动、选择 stash：自动 stash → pull --rebase → stash pop 恢复。"""
-    from pytortoisegit.dialogs import pulldlg
+    """本地有改动、选择 stash：Pull 勾选 rebase → fetch → 变基（自动 stash → pop）。"""
+    from pytortoisegit.dialogs import pulldlg, rebasedlg
 
+    _drive_pull_rebase(monkeypatch)
     local = remote_repo.local
     root = _prepare_local_wip(remote_repo)
     remote_head = _remote_new_commit(remote_repo)
 
-    monkeypatch.setattr(pulldlg, "ask_stash", lambda *a, **k: True)
+    monkeypatch.setattr(rebasedlg, "ask_stash", lambda *a, **k: True)
 
     dlg = pulldlg.PullFetchDlg(local, fetch_only=False)
     dlg.chk_rebase.setChecked(True)
@@ -228,15 +247,16 @@ def test_TC_PULL_004_auto_stash_yes(qapp, ui, remote_repo, auto_progress, monkey
 
 
 def test_TC_PULL_005_auto_stash_no(qapp, ui, remote_repo, auto_progress, monkeypatch):
-    """选择不 stash：pull --rebase 因工作区不干净失败，本地改动原样保留。"""
-    from pytortoisegit.dialogs import pulldlg
+    """选择不 stash：变基因工作区不干净失败，本地改动原样保留。"""
+    from pytortoisegit.dialogs import pulldlg, rebasedlg
 
+    _drive_pull_rebase(monkeypatch)
     local = remote_repo.local
     root = _prepare_local_wip(remote_repo)
     local_head = local.run("rev-parse", "HEAD").stdout.strip()
     _remote_new_commit(remote_repo)
 
-    monkeypatch.setattr(pulldlg, "ask_stash", lambda *a, **k: False)
+    monkeypatch.setattr(rebasedlg, "ask_stash", lambda *a, **k: False)
 
     dlg = pulldlg.PullFetchDlg(local, fetch_only=False)
     dlg.chk_rebase.setChecked(True)

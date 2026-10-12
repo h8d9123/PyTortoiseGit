@@ -153,6 +153,11 @@ class ProgressDialog(QDialog):
 
         self.run(_bg)
 
+    @property
+    def succeeded(self) -> bool:
+        """后台命令是否已成功结束（exec 返回后可用）。"""
+        return bool(self._done) and self._exit_code == 0
+
     def run(self, fn: Callable):
         """在后台线程执行 fn()；返回 True 或 (ok, exit_code)。完成后调用 _on_finish。"""
         self._done = False

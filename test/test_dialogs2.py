@@ -1091,6 +1091,144 @@ def test_pull_dialog_horizontal_resize_only(qapp, repo):
     assert dlg.width() >= w                  # 不小于最小宽度
 
 
+def test_pull_rebase_fetch_args_and_upstream(qapp, repo):
+    from pytortoisegit.dialogs.pulldlg import PullFetchDlg
+    dlg = PullFetchDlg(repo, fetch_only=False)
+    dlg.chk_rebase.setChecked(True)
+    dlg.chk_prune.setChecked(True)
+    dlg.chk_fetchtags.setChecked(True)
+    dlg.remote_combo.clear()
+    dlg.remote_combo.addItem("origin")
+    dlg.remote_branch_edit.setEditText("main")
+    args = dlg._build_fetch_args("origin", "main")
+    assert args[:2] == ["fetch", "-v"]
+    assert "--prune" in args and "--tags" in args
+    assert "origin" in args and "main" in args
+    # 已配置的远程 → remotes/<remote>/<branch>
+    dlg._is_named_remote = lambda name: name == "origin"
+    assert dlg._rebase_upstream("origin", "main") == "remotes/origin/main"
+    # 任意 URL → FETCH_HEAD
+    assert dlg._rebase_upstream("https://example.com/x.git", "main") == "FETCH_HEAD"
+
+
+def test_pull_rebase_empty_branch_warns(qapp, repo, monkeypatch):
+    from pytortoisegit.dialogs import pulldlg
+    warned = {}
+    monkeypatch.setattr(
+        pulldlg.QMessageBox, "warning",
+        staticmethod(lambda *a, **k: warned.setdefault("y", True)))
+    dlg = pulldlg.PullFetchDlg(repo, fetch_only=False)
+    dlg.chk_rebase.setChecked(True)
+    dlg.remote_branch_edit.setEditText("")
+    dlg._on_ok()
+    assert warned.get("y")
+    assert dlg.result() != dlg.DialogCode.Accepted
+
+
+def test_pull_rebase_dispatches_after_fetch(qapp, repo, monkeypatch):
+    from pytortoisegit.dialogs import pulldlg
+    called = {}
+    monkeypatch.setattr(pulldlg.PullFetchDlg, "_rebase_after_fetch",
+                        lambda self: called.setdefault("after", True))
+    monkeypatch.setattr(
+        pulldlg.PullFetchDlg, "_build_args",
+        lambda self: called.setdefault("pull", True) or ["pull"])
+    dlg = pulldlg.PullFetchDlg(repo, fetch_only=False)
+    dlg.chk_rebase.setChecked(True)
+    dlg.remote_branch_edit.setEditText("main")
+    dlg._on_ok()
+    assert called.get("after") and not called.get("pull")
+
+
+def test_pull_rebase_after_fetch_opens_rebase(qapp, repo, monkeypatch):
+    from pytortoisegit.dialogs import pulldlg
+
+    class _FakeProgress:
+        def __init__(self, *a, **k):
+            self.succeeded = True
+
+        def set_label(self, *a):
+            pass
+
+        def log(self, *a):
+            pass
+
+        def run(self, fn):
+            pass
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr(pulldlg, "ProgressDialog", _FakeProgress)
+    opened = {}
+
+    class _FakeRebase:
+        def __init__(self, *a, **k):
+            from PySide6.QtWidgets import QComboBox
+            self.upstream_combo = QComboBox()
+            opened["init"] = True
+
+        def _reload_commits(self):
+            pass
+
+        def exec(self):
+            opened["exec"] = True
+            return 0
+
+    monkeypatch.setattr("pytortoisegit.dialogs.rebasedlg.RebaseDlg", _FakeRebase)
+    monkeypatch.setattr(pulldlg.PullFetchDlg, "_ask_yesno",
+                        lambda self, text: True)
+    dlg = pulldlg.PullFetchDlg(repo, fetch_only=False)
+    dlg.remote_combo.clear()
+    dlg.remote_combo.addItem("origin")
+    dlg.remote_branch_edit.setEditText("main")
+    dlg._rebase_after_fetch()
+    assert opened.get("init") and opened.get("exec")
+    assert dlg.result() == dlg.DialogCode.Accepted
+
+
+def test_pull_rebase_decline_closes_dialog(qapp, repo, monkeypatch):
+    """选择否/中止：不打开变基对话框，并关闭拉取对话框。"""
+    from pytortoisegit.dialogs import pulldlg
+
+    class _FakeProgress:
+        def __init__(self, *a, **k):
+            self.succeeded = True
+
+        def set_label(self, *a):
+            pass
+
+        def log(self, *a):
+            pass
+
+        def run(self, fn):
+            pass
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr(pulldlg, "ProgressDialog", _FakeProgress)
+    monkeypatch.setattr(pulldlg.PullFetchDlg, "_ask_yesno",
+                        lambda self, text: False)
+    opened = {}
+
+    class _FakeRebase:
+        def __init__(self, *a, **k):
+            opened["yes"] = True
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr("pytortoisegit.dialogs.rebasedlg.RebaseDlg", _FakeRebase)
+    dlg = pulldlg.PullFetchDlg(repo, fetch_only=False)
+    dlg.remote_combo.clear()
+    dlg.remote_combo.addItem("origin")
+    dlg.remote_branch_edit.setEditText("main")
+    dlg._rebase_after_fetch()
+    assert not opened.get("yes")
+    assert dlg.result() == dlg.DialogCode.Accepted
+
+
 def test_reset_dialog(qapp, repo):
     from pytortoisegit.dialogs.resetdlg import ResetDlg
     dlg = _smoke(qapp, lambda: ResetDlg(repo))
